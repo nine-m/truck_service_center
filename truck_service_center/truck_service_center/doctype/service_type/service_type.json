@@ -1,0 +1,124 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:service_type_name",
+ "creation": "2026-01-07 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "service_type_name",
+  "description",
+  "column_break_1",
+  "is_active",
+  "default_duration",
+  "pricing_section",
+  "default_rate",
+  "labor_rate",
+  "column_break_2",
+  "item_code",
+  "income_account",
+  "cost_center"
+ ],
+ "fields": [
+  {
+   "fieldname": "service_type_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19",
+   "default": "1"
+  },
+  {
+   "fieldname": "default_duration",
+   "fieldtype": "Float",
+   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e17\u0e33\u0e07\u0e32\u0e19 (\u0e0a\u0e21.)",
+   "precision": 2,
+   "description": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e43\u0e19\u0e01\u0e32\u0e23\u0e17\u0e33\u0e07\u0e32\u0e19"
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e23\u0e32\u0e04\u0e32"
+  },
+  {
+   "fieldname": "default_rate",
+   "fieldtype": "Currency",
+   "label": "\u0e23\u0e32\u0e04\u0e32\u0e21\u0e32\u0e15\u0e23\u0e10\u0e32\u0e19",
+   "precision": 2
+  },
+  {
+   "fieldname": "labor_rate",
+   "fieldtype": "Currency",
+   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07",
+   "precision": 2,
+   "description": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07\u0e07\u0e32\u0e19\u0e15\u0e48\u0e2d\u0e0a\u0e31\u0e48\u0e27\u0e42\u0e21\u0e07"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "options": "Item",
+   "description": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e01\u0e31\u0e1a Item \u0e43\u0e19 ERPNext"
+  },
+  {
+   "fieldname": "income_account",
+   "fieldtype": "Link",
+   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "\u0e28\u0e39\u0e19\u0e22\u0e4c\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19",
+   "options": "Cost Center"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-07 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "service_type_name",
+ "track_changes": 1
+}
