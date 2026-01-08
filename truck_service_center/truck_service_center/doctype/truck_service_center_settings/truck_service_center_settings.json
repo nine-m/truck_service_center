@@ -1,0 +1,167 @@
+{
+ "actions": [],
+ "creation": "2026-01-08 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "general_section",
+  "default_company",
+  "default_warehouse",
+  "labor_settings_section",
+  "labor_item",
+  "labor_expense_account",
+  "column_break_1",
+  "labor_cost_center",
+  "stock_settings_section",
+  "auto_create_stock_entry",
+  "default_source_warehouse",
+  "column_break_2",
+  "default_expense_account",
+  "default_cost_center",
+  "invoice_settings_section",
+  "auto_submit_sales_invoice",
+  "sales_invoice_series",
+  "column_break_3",
+  "payment_terms_template",
+  "default_income_account"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_section",
+   "fieldtype": "Section Break",
+   "label": "การตั้งค่าทั่วไป"
+  },
+  {
+   "fieldname": "default_company",
+   "fieldtype": "Link",
+   "label": "บริษัทเริ่มต้น",
+   "options": "Company"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "label": "คลังสินค้าเริ่มต้น",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "labor_settings_section",
+   "fieldtype": "Section Break",
+   "label": "การตั้งค่าค่าแรงงาน"
+  },
+  {
+   "fieldname": "labor_item",
+   "fieldtype": "Link",
+   "label": "รายการสินค้าสำหรับค่าแรง",
+   "options": "Item",
+   "description": "เลือก Item ที่ใช้สำหรับบันทึกค่าแรงในใบแจ้งหนี้"
+  },
+  {
+   "fieldname": "labor_expense_account",
+   "fieldtype": "Link",
+   "label": "บัญชีค่าใช้จ่ายค่าแรง",
+   "options": "Account",
+   "description": "บัญชีสำหรับบันทึกค่าใช้จ่ายค่าแรง"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "labor_cost_center",
+   "fieldtype": "Link",
+   "label": "ศูนย์ต้นทุนค่าแรง",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "stock_settings_section",
+   "fieldtype": "Section Break",
+   "label": "การตั้งค่าคลังสินค้า"
+  },
+  {
+   "fieldname": "auto_create_stock_entry",
+   "fieldtype": "Check",
+   "label": "สร้าง Stock Entry อัตโนมัติเมื่อ Submit",
+   "default": "1"
+  },
+  {
+   "fieldname": "default_source_warehouse",
+   "fieldtype": "Link",
+   "label": "คลังต้นทางเริ่มต้น",
+   "options": "Warehouse",
+   "description": "คลังที่จะตัดสต็อกอะไหล่"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_expense_account",
+   "fieldtype": "Link",
+   "label": "บัญชีค่าใช้จ่ายเริ่มต้น",
+   "options": "Account"
+  },
+  {
+   "fieldname": "default_cost_center",
+   "fieldtype": "Link",
+   "label": "ศูนย์ต้นทุนเริ่มต้น",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "invoice_settings_section",
+   "fieldtype": "Section Break",
+   "label": "การตั้งค่าใบแจ้งหนี้"
+  },
+  {
+   "fieldname": "auto_submit_sales_invoice",
+   "fieldtype": "Check",
+   "label": "Submit Sales Invoice อัตโนมัติ",
+   "default": "0"
+  },
+  {
+   "fieldname": "sales_invoice_series",
+   "fieldtype": "Data",
+   "label": "Series ใบแจ้งหนี้",
+   "description": "เช่น SINV-.YYYY.-"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payment_terms_template",
+   "fieldtype": "Link",
+   "label": "เงื่อนไขการชำระเงินเริ่มต้น",
+   "options": "Payment Terms Template"
+  },
+  {
+   "fieldname": "default_income_account",
+   "fieldtype": "Link",
+   "label": "บัญชีรายได้เริ่มต้น",
+   "options": "Account"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-01-08 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Truck Service Center Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

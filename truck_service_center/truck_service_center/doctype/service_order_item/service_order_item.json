@@ -62,7 +62,6 @@
    "read_only": 1
   },
   {
-   "fetch_from": "item_code.standard_rate",
    "fieldname": "rate",
    "fieldtype": "Currency",
    "in_list_view": 1,

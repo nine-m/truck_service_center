@@ -47,34 +47,48 @@ class ServiceOrder(Document):
 		"""สร้าง Stock Entry เพื่อตัดสต็อกอะไหล่"""
 		if not self.service_items:
 			return
-		
-		# ตรวจสอบว่ามี items ที่ต้องตัดสต็อกหรือไม่
-		has_stock_items = False
-		for item in self.service_items:
-			if item.warehouse:
-				has_stock_items = True
-				break
-		
-		if not has_stock_items:
+
+		settings = frappe.get_single("Truck Service Center Settings")
+
+		# ถ้าไม่เลือกให้สร้างอัตโนมัติ ให้ข้าม
+		if settings.auto_create_stock_entry is False:
 			return
-		
+
 		stock_entry = frappe.new_doc("Stock Entry")
 		stock_entry.stock_entry_type = "Material Issue"
-		stock_entry.company = frappe.defaults.get_defaults().company
+		stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
 		stock_entry.set_posting_time = 1
 		stock_entry.posting_date = self.service_date
-		
+
+		missing_warehouse_items = []
+
 		for item in self.service_items:
-			if item.warehouse and item.item_code:
-				stock_entry.append("items", {
-					"item_code": item.item_code,
-					"qty": item.qty,
-					"s_warehouse": item.warehouse,
-					"cost_center": item.cost_center,
-					"expense_account": item.expense_account,
-					"basic_rate": item.rate
-				})
-		
+			if not item.item_code:
+				continue
+
+			# เลือกคลังจากรายการ ถ้าไม่มีให้ใช้ค่าจาก Settings
+			s_warehouse = item.warehouse or settings.default_source_warehouse or settings.default_warehouse
+			if not s_warehouse:
+				missing_warehouse_items.append(item.item_code)
+				continue
+
+			stock_entry.append("items", {
+				"item_code": item.item_code,
+				"qty": item.qty,
+				"s_warehouse": s_warehouse,
+				"cost_center": item.cost_center or settings.default_cost_center,
+				"expense_account": item.expense_account or settings.default_expense_account,
+				"basic_rate": item.rate
+			})
+
+		if missing_warehouse_items:
+			frappe.msgprint(
+				"ไม่สามารถสร้าง Stock Entry สำหรับบางรายการ เนื่องจากไม่พบคลังสินค้า: "
+				+ ", ".join(missing_warehouse_items),
+				indicator="orange",
+				title="ขาดข้อมูลคลังสินค้า"
+			)
+
 		if stock_entry.items:
 			stock_entry.insert()
 			stock_entry.submit()
@@ -96,39 +110,66 @@ class ServiceOrder(Document):
 		if self.sales_invoice:
 			frappe.throw("มีการสร้าง Sales Invoice ไปแล้ว")
 		
+		# ดึงการตั้งค่าจาก Settings
+		settings = frappe.get_single("Truck Service Center Settings")
+		
+		# ดึง company
+		company = settings.default_company or frappe.defaults.get_defaults().get("company") or frappe.db.get_single_value("Global Defaults", "default_company")
+		
 		sales_invoice = frappe.new_doc("Sales Invoice")
 		sales_invoice.customer = self.customer
+		sales_invoice.company = company
 		sales_invoice.posting_date = self.service_date
+		sales_invoice.set_posting_time = 1
 		sales_invoice.due_date = self.service_date
+		
+		# ใช้ Payment Terms Template ถ้ามีการตั้งค่า
+		if settings.payment_terms_template:
+			sales_invoice.payment_terms_template = settings.payment_terms_template
 		
 		# เพิ่มรายการบริการและอะไหล่
 		for item in self.service_items:
-			sales_invoice.append("items", {
-				"item_code": item.item_code,
-				"item_name": item.item_name,
-				"description": item.description,
-				"qty": item.qty,
-				"uom": item.uom,
-				"rate": item.rate,
-				"amount": item.amount,
-				"warehouse": item.warehouse,
-				"expense_account": item.expense_account,
-				"cost_center": item.cost_center
-			})
-		
-		# เพิ่มค่าแรง (ถ้ามี)
-		if self.labor_charges:
-			# ต้องมี Item สำหรับค่าแรงในระบบ
-			labor_item = frappe.db.get_value("Item", {"item_name": "Labor Charge"}, "name")
-			if labor_item:
+			if item.item_code:
 				sales_invoice.append("items", {
-					"item_code": labor_item,
-					"qty": 1,
-					"rate": self.labor_charges,
-					"amount": self.labor_charges
+					"item_code": item.item_code,
+					"item_name": item.item_name or "",
+					"description": item.description or "",
+					"qty": flt(item.qty) or 1,
+					"uom": item.uom,
+					"rate": flt(item.rate) or 0,
+					"warehouse": item.warehouse or settings.default_warehouse,
+					"expense_account": item.expense_account or settings.default_expense_account,
+					"cost_center": item.cost_center or settings.default_cost_center,
+					"income_account": settings.default_income_account
 				})
 		
+		# เพิ่มค่าแรง (ถ้ามี)
+		if flt(self.labor_charges) > 0:
+			# ตรวจสอบว่ามีการตั้งค่า Labor Item หรือไม่
+			if not settings.labor_item:
+				frappe.throw(
+					"กรุณาตั้งค่า 'รายการสินค้าสำหรับค่าแรง' ใน Truck Service Center Settings ก่อนสร้าง Sales Invoice",
+					title="ยังไม่ได้ตั้งค่า"
+				)
+			
+			sales_invoice.append("items", {
+				"item_code": settings.labor_item,
+				"qty": 1,
+				"rate": flt(self.labor_charges),
+				"expense_account": settings.labor_expense_account,
+				"cost_center": settings.labor_cost_center or settings.default_cost_center,
+				"income_account": settings.default_income_account
+			})
+		
+		# ตรวจสอบว่ามีรายการหรือไม่
+		if not sales_invoice.items:
+			frappe.throw("ไม่สามารถสร้าง Sales Invoice ได้เนื่องจากไม่มีรายการสินค้า")
+		
 		sales_invoice.insert()
+		
+		# Submit อัตโนมัติถ้ามีการตั้งค่า
+		if settings.auto_submit_sales_invoice:
+			sales_invoice.submit()
 		
 		# เก็บ reference
 		self.db_set("sales_invoice", sales_invoice.name)
@@ -136,3 +177,68 @@ class ServiceOrder(Document):
 		frappe.msgprint(f"สร้าง Sales Invoice: {sales_invoice.name}")
 		
 		return sales_invoice.name
+
+
+@frappe.whitelist()
+def create_sales_invoice_from_service_order(service_order):
+	"""สร้าง Sales Invoice จาก Service Order - สำหรับเรียกจาก client"""
+	doc = frappe.get_doc("Service Order", service_order)
+	return doc.create_sales_invoice()
+
+
+@frappe.whitelist()
+def get_item_rate(item_code, customer=None, price_list=None):
+	"""ดึงราคาสินค้าจาก Item Price หรือ Standard Rate"""
+	from frappe.utils import flt
+	
+	rate = 0
+	
+	# 1. พยายามดึงจาก Item Price ก่อน
+	if not price_list:
+		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	
+	item_price = frappe.db.get_value(
+		"Item Price",
+		{
+			"item_code": item_code,
+			"price_list": price_list,
+			"selling": 1
+		},
+		"price_list_rate"
+	)
+	
+	if item_price:
+		rate = flt(item_price)
+	else:
+		# 2. ถ้าไม่มีใน Item Price ให้ดึงจาก Item
+		item_data = frappe.db.get_value(
+			"Item",
+			item_code,
+			["standard_rate", "item_name", "description", "stock_uom"],
+			as_dict=1
+		)
+		
+		if item_data:
+			rate = flt(item_data.standard_rate)
+			
+			return {
+				"rate": rate,
+				"item_name": item_data.item_name,
+				"description": item_data.description,
+				"uom": item_data.stock_uom
+			}
+	
+	# 3. ดึงข้อมูลเพิ่มเติมของ Item
+	item_data = frappe.db.get_value(
+		"Item",
+		item_code,
+		["item_name", "description", "stock_uom"],
+		as_dict=1
+	)
+	
+	return {
+		"rate": rate,
+		"item_name": item_data.item_name if item_data else "",
+		"description": item_data.description if item_data else "",
+		"uom": item_data.stock_uom if item_data else ""
+	}

@@ -7,7 +7,7 @@ frappe.ui.form.on('Service Order', {
 		if (frm.doc.docstatus === 1 && !frm.doc.sales_invoice) {
 			frm.add_custom_button(__('Create Sales Invoice'), function() {
 				frappe.call({
-					method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.create_sales_invoice',
+					method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.create_sales_invoice_from_service_order',
 					args: {
 						service_order: frm.doc.name
 					},
@@ -29,14 +29,38 @@ frappe.ui.form.on('Service Order', {
 		} else if (frm.doc.status === 'On Hold') {
 			frm.dashboard.add_indicator(__('Status: On Hold'), 'red');
 		}
+		
+		// ตั้งค่า filter สำหรับ vehicle ตาม customer
+		set_vehicle_filter(frm);
+	},
+	
+	customer: function(frm) {
+		// เมื่อเลือก customer ให้ filter รถของลูกค้านั้น
+		set_vehicle_filter(frm);
+		
+		// ล้างค่ารถถ้าเปลี่ยนลูกค้าและรถที่เลือกไว้ไม่ใช่ของลูกค้านี้
+		if (frm.doc.vehicle) {
+			frappe.db.get_value('Vehicle', frm.doc.vehicle, 'customer', function(r) {
+				if (r && r.customer !== frm.doc.customer) {
+					frm.set_value('vehicle', '');
+				}
+			});
+		}
 	},
 	
 	vehicle: function(frm) {
-		// ดึงข้อมูลลูกค้าจากรถ
+		// ดึงข้อมูลลูกค้าจากรถ (ถ้าเลือกรถก่อน)
 		if (frm.doc.vehicle) {
-			frappe.db.get_value('Vehicle', frm.doc.vehicle, 'customer', function(r) {
-				if (r && r.customer) {
-					frm.set_value('customer', r.customer);
+			frappe.db.get_value('Vehicle', frm.doc.vehicle, ['customer', 'current_mileage'], function(r) {
+				if (r) {
+					// ถ้ายังไม่ได้เลือกลูกค้า หรือลูกค้าไม่ตรง ให้เซ็ตลูกค้าใหม่
+					if (!frm.doc.customer || frm.doc.customer !== r.customer) {
+						frm.set_value('customer', r.customer);
+					}
+					// ดึงเลขไมล์ปัจจุบัน
+					if (r.current_mileage && !frm.doc.current_mileage) {
+						frm.set_value('current_mileage', r.current_mileage);
+					}
 				}
 			});
 		}
@@ -82,18 +106,30 @@ frappe.ui.form.on('Service Order Item', {
 	item_code: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (row.item_code) {
-			// ดึงข้อมูล Item
-			frappe.db.get_value('Item', row.item_code, 
-				['item_name', 'description', 'stock_uom', 'standard_rate'], 
-				function(r) {
-					if (r) {
-						frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
-						frappe.model.set_value(cdt, cdn, 'description', r.description);
-						frappe.model.set_value(cdt, cdn, 'uom', r.stock_uom);
-						frappe.model.set_value(cdt, cdn, 'rate', r.standard_rate);
+			// ดึงข้อมูล Item และราคาจาก Item Price
+			frappe.call({
+				method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_item_rate',
+				args: {
+					item_code: row.item_code,
+					customer: frm.doc.customer
+				},
+				callback: function(r) {
+					if (r.message) {
+						frappe.model.set_value(cdt, cdn, 'item_name', r.message.item_name);
+						frappe.model.set_value(cdt, cdn, 'description', r.message.description);
+						frappe.model.set_value(cdt, cdn, 'uom', r.message.uom);
+						frappe.model.set_value(cdt, cdn, 'rate', r.message.rate || 0);
+						
+						// แสดงข้อความถ้าราคาเป็น 0
+						if (!r.message.rate || r.message.rate === 0) {
+							frappe.show_alert({
+								message: __('No price found for this item. Please set Item Price or Standard Rate.'),
+								indicator: 'orange'
+							});
+						}
 					}
 				}
-			);
+			});
 		}
 	},
 	
@@ -137,4 +173,27 @@ function calculate_totals(frm) {
 	// คำนวณยอดคงค้าง
 	let outstanding = flt(total) - flt(frm.doc.paid_amount);
 	frm.set_value('outstanding_amount', outstanding);
+}
+
+function set_vehicle_filter(frm) {
+	// ตั้งค่า filter สำหรับ Vehicle ให้แสดงเฉพาะรถของลูกค้าที่เลือก
+	if (frm.doc.customer) {
+		frm.set_query('vehicle', function() {
+			return {
+				filters: {
+					'customer': frm.doc.customer,
+					'status': 'Active'
+				}
+			};
+		});
+	} else {
+		// ถ้ายังไม่ได้เลือกลูกค้า ให้แสดงเฉพาะรถที่ Active
+		frm.set_query('vehicle', function() {
+			return {
+				filters: {
+					'status': 'Active'
+				}
+			};
+		});
+	}
 }
