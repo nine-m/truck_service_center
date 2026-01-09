@@ -1,0 +1,217 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-01-08 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "appointment_date",
+  "appointment_slot",
+  "appointment_start",
+  "appointment_end",
+  "all_day",
+  "status",
+  "column_break_1",
+  "customer",
+  "vehicle",
+  "license_plate",
+  "contact_number",
+  "service_details_section",
+  "service_type",
+  "estimated_duration",
+  "column_break_2",
+  "assigned_technician",
+  "notes",
+  "reference_section",
+  "service_order",
+  "column_break_3",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "APT-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "fieldname": "appointment_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "วันที่นัดหมาย",
+   "reqd": 1
+  },
+  {
+   "fieldname": "appointment_slot",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ช่วงเวลา",
+   "options": "Service Appointment Slot",
+   "reqd": 1
+  },
+  {
+   "fieldname": "appointment_start",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "เริ่ม",
+   "read_only": 1
+  },
+  {
+   "fieldname": "appointment_end",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "สิ้นสุด",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "all_day",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "All Day",
+   "read_only": 1
+  },
+  {
+   "default": "Scheduled",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "สถานะ",
+   "options": "Scheduled\nConfirmed\nIn Progress\nCompleted\nCancelled\nNo Show",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ลูกค้า",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "รถ",
+   "options": "Vehicle",
+   "reqd": 1
+  },
+    {
+     "fetch_from": "vehicle.license_plate",
+     "fieldname": "license_plate",
+     "fieldtype": "Data",
+     "in_list_view": 1,
+     "in_standard_filter": 1,
+     "label": "ทะเบียนรถ",
+     "read_only": 1
+    },
+  {
+   "fetch_from": "vehicle.contact_number",
+   "fieldname": "contact_number",
+   "fieldtype": "Data",
+   "label": "เบอร์โทรศัพท์",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "service_details_section",
+   "fieldtype": "Section Break",
+   "label": "รายละเอียดบริการ"
+  },
+  {
+   "fieldname": "service_type",
+   "fieldtype": "Link",
+   "label": "ประเภทบริการ",
+   "options": "Service Type"
+  },
+  {
+   "fetch_from": "service_type.default_duration",
+   "fieldname": "estimated_duration",
+   "fieldtype": "Float",
+   "label": "ระยะเวลาโดยประมาณ (ชม.)",
+   "precision": 2
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "assigned_technician",
+   "fieldtype": "Link",
+   "label": "ช่างที่มอบหมาย",
+   "options": "User"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "หมายเหตุ"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "เอกสารอ้างอิง"
+  },
+  {
+   "fieldname": "service_order",
+   "fieldtype": "Link",
+   "label": "Service Order",
+   "options": "Service Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Service Appointment",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-01-08 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Appointment",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1,
+   "cancel": 1,
+   "amend": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer",
+ "track_changes": 1
+}
