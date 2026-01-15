@@ -8,4 +8,30 @@ frappe.listview_settings["Service Appointment"] = {
 			frappe.set_route("List", "Service Appointment", "Calendar", "default");
 		}
 	},
+	
+	add_fields: ["status", "docstatus"],
+	
+	get_indicator(doc) {
+		const status_colors = {
+			"Scheduled": "gray",
+			"Confirmed": "blue",
+			"In Progress": "orange",
+			"Completed": "green",
+			"Cancelled": "red",
+			"No Show": "darkgray"
+		};
+		
+		const status = doc.status || "Scheduled";
+		const color = status_colors[status] || "gray";
+		
+		return [__(status), color, "status,=," + status];
+	},
+	
+	formatters: {
+		status(value) {
+			// แสดง status ที่กำหนดเองแทน docstatus
+			return value || "Scheduled";
+		}
+	}
 };
+

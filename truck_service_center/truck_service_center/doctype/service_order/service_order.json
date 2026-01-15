@@ -23,6 +23,7 @@
   "contact_number",
   "email",
   "service_details_section",
+  "service_package",
   "service_type",
   "technician",
   "column_break_3",
@@ -169,6 +170,12 @@
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
    "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+  },
+  {
+   "fieldname": "service_package",
+   "fieldtype": "Link",
+   "label": "\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "options": "Service Package"
   },
   {
    "fieldname": "service_type",

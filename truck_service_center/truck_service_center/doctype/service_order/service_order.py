@@ -8,8 +8,30 @@ from frappe.utils import flt
 
 class ServiceOrder(Document):
 	def validate(self):
+		self.apply_service_package()
 		self.calculate_totals()
 		self.update_payment_status()
+	
+	def apply_service_package(self):
+		"""นำรายการบริการจากแพ็คเกจมาใส่ใน service_items"""
+		if self.service_package and not self.service_items:
+			package_details = frappe.get_doc("Service Package", self.service_package)
+			
+			if not package_details.is_active:
+				frappe.throw(f"แพ็คเกจ {self.service_package} ถูกปิดการใช้งานแล้ว")
+			
+			# เพิ่มรายการจากแพ็คเกจ
+			for item in package_details.package_items:
+				self.append("service_items", {
+					"item_code": item.item_code,
+					"qty": item.qty,
+					"rate": item.rate,
+					"warehouse": frappe.db.get_single_value("Stock Settings", "default_warehouse")
+				})
+			
+			# ใช้ราคาแพ็คเกจ
+			if package_details.discount_percent:
+				self.discount_amount = package_details.get_discount_amount()
 	
 	def calculate_totals(self):
 		"""คำนวณยอดรวมทั้งหมด"""
@@ -64,6 +86,13 @@ class ServiceOrder(Document):
 
 		for item in self.service_items:
 			if not item.item_code:
+				continue
+
+			# ตรวจสอบว่า item เป็น stock item หรือไม่
+			is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+			
+			# ข้าม item ที่ไม่ใช่ stock item (เช่น service)
+			if not is_stock_item:
 				continue
 
 			# เลือกคลังจากรายการ ถ้าไม่มีให้ใช้ค่าจาก Settings

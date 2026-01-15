@@ -1,7 +1,7 @@
 {
  "charts": [],
  "content": "[{\"id\":\"hdr_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Truck Service Center</b></span>\",\"col\":12}},{\"id\":\"sc_appointment\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment\",\"col\":3}},{\"id\":\"sc_service_order\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Order\",\"col\":3}},{\"id\":\"sc_vehicle\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Vehicle\",\"col\":3}},{\"id\":\"sc_service_type\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type\",\"col\":3}},{\"id\":\"spacer1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"hdr_admin\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin & Settings</b></span>\",\"col\":12}},{\"id\":\"sc_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Truck Service Center Settings\",\"col\":4}},{\"id\":\"sc_slot\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment Slot\",\"col\":4}}]",
- "creation": "2026-01-09 10:00:00.000000",
+ "creation": "2026-01-09 10:00:00",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -21,12 +21,42 @@
    "type": "Card Break"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Operations",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
    "label": "Service Appointment",
    "link_count": 0,
    "link_to": "Service Appointment",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Service Appointment",
+   "link_count": 0,
+   "link_to": "Service Appointment",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Service Order",
+   "link_count": 0,
+   "link_to": "Service Order",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
@@ -51,6 +81,25 @@
    "type": "Card Break"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Masters",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vehicle",
+   "link_count": 0,
+   "link_to": "Vehicle",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
@@ -68,6 +117,28 @@
    "label": "Service Type",
    "link_count": 0,
    "link_to": "Service Type",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Service Type",
+   "link_count": 0,
+   "link_to": "Service Type",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Service Appointment Slot",
+   "link_count": 0,
+   "link_to": "Service Appointment Slot",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -92,6 +163,25 @@
    "type": "Card Break"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Truck Service Center Settings",
+   "link_count": 0,
+   "link_to": "Truck Service Center Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
@@ -103,7 +193,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-01-09 10:00:00.000000",
+ "modified": "2026-01-09 10:00:00",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",
@@ -122,8 +212,23 @@
    "type": "DocType"
   },
   {
+   "label": "Service Appointment",
+   "link_to": "Service Appointment",
+   "type": "DocType"
+  },
+  {
    "label": "Service Order",
    "link_to": "Service Order",
+   "type": "DocType"
+  },
+  {
+   "label": "Service Order",
+   "link_to": "Service Order",
+   "type": "DocType"
+  },
+  {
+   "label": "Vehicle",
+   "link_to": "Vehicle",
    "type": "DocType"
   },
   {
@@ -137,6 +242,16 @@
    "type": "DocType"
   },
   {
+   "label": "Service Type",
+   "link_to": "Service Type",
+   "type": "DocType"
+  },
+  {
+   "label": "Truck Service Center Settings",
+   "link_to": "Truck Service Center Settings",
+   "type": "DocType"
+  },
+  {
    "label": "Truck Service Center Settings",
    "link_to": "Truck Service Center Settings",
    "type": "DocType"
@@ -144,6 +259,17 @@
   {
    "label": "Service Appointment Slot",
    "link_to": "Service Appointment Slot",
+   "type": "DocType"
+  },
+  {
+   "label": "Service Appointment Slot",
+   "link_to": "Service Appointment Slot",
+   "type": "DocType"
+  },
+  {
+   "doc_view": "",
+   "label": "Service Package",
+   "link_to": "Service Package",
    "type": "DocType"
   }
  ],

@@ -113,6 +113,43 @@ Truck Service Center เป็นแอปพลิเคชันสำหร�
 
 ---
 
+### 5. Service Package (แพ็คเกจบริการ)
+**Path:** `truck_service_center/doctype/service_package/`
+
+**คุณสมบัติ:**
+- สร้างแพ็คเกจบริการที่รวมบริการหลายรายการ
+- กำหนดราคาพิเศษและส่วนลด
+- ตั้งค่าเงื่อนไขการใช้งาน (ระยะเวลา, ระยะทาง, จำนวนครั้ง)
+- เชื่อมโยงกับ Service Order โดยอัตโนมัติ
+
+**ฟิลด์สำคัญ:**
+- `package_name` - ชื่อแพ็คเกจ (Primary Key)
+- `package_type` - ประเภทแพ็คเกจ (Standard, Premium, Basic, Custom)
+- `is_active` - เปิด/ปิดใช้งาน
+- `package_items` - รายการบริการในแพ็คเกจ (Child Table)
+- `total_standard_rate` - ราคามาตรฐานรวม (คำนวณอัตโนมัติ)
+- `discount_percent` - ส่วนลด (%)
+- `package_rate` - ราคาแพ็คเกจ (หลังหักส่วนลด)
+- `validity_days` - ระยะเวลาใช้งาน (วัน)
+- `service_interval_km` - ระยะทางระหว่างบริการ (กม.)
+- `max_services` - จำนวนครั้งบริการสูงสุด
+
+**Methods:**
+- `calculate_totals()` - คำนวณยอดรวมและส่วนลด
+- `get_package_items_for_service_order()` - ดึงรายการบริการสำหรับ Service Order
+- `get_discount_amount()` - คำนวณจำนวนเงินส่วนลด
+
+**ตัวอย่างแพ็คเกจ:**
+- แพ็คเกจบำรุงรักษาพื้นฐาน (เปลี่ยนถ่ายน้ำมัน + ไส้กรอง)
+- แพ็คเกจตรวจเช็คประจำปี (ตรวจสอบระบบทั้งหมด + เปลี่ยนถ่ายน้ำมัน)
+- แพ็คเกจพรีเมียม (บริการครบวงจร พร้อมของแถม)
+
+**Integration กับ Service Order:**
+- เลือกแพ็คเกจใน Service Order จะโหลดรายการบริการอัตโนมัติ
+- ราคาจะถูกคำนวณตามส่วนลดที่กำหนดในแพ็คเกจ
+
+---
+
 ## การใช้งาน
 
 ### 1. เพิ่มรถใหม่
@@ -129,12 +166,22 @@ Desk → Truck Service Center → Vehicle → New
 Desk → Truck Service Center → Service Order → New
 - เลือกรถ (จะดึงข้อมูลลูกค้าอัตโนมัติ)
 - กรอกเลขไมล์ปัจจุบัน
-- เลือกประเภทบริการ
+- เลือกแพ็คเกจบริการ (ถ้ามี) หรือเลือกประเภทบริการ
 - เพิ่มรายการบริการและอะไหล่
 - Submit เมื่อทำงานเสร็จ
 ```
 
-### 3. ตรวจสอบรถที่ถึงกำหนดบริการ
+### 3. สร้างแพ็คเกจบริการ
+```
+Desk → Truck Service Center → Service Package → New
+- ตั้งชื่อแพ็คเกจ
+- เลือกประเภทแพ็คเกจ
+- เพิ่มรายการบริการและอะไหล่
+- กำหนดส่วนลดและราคา
+- ตั้งค่าเงื่อนไขการใช้งาน (ถ้าต้องการ)
+```
+
+### 4. ตรวจสอบรถที่ถึงกำหนดบริการ
 ```
 Report → Truck Service Center → Service Due Report
 ```
@@ -158,7 +205,7 @@ Report → Truck Service Center → Service Due Report
 
 - [ ] Service Reminder (ส่งอีเมลแจ้งเตือนเมื่อถึงกำหนดบริการ)
 - [ ] Technician Management (จัดการช่างและตารางงาน)
-- [ ] Service Package (แพ็คเกจบริการ)
+- [x] Service Package (แพ็คเกจบริการ) - ✅ พัฒนาเสร็จแล้ว
 - [ ] Warranty Management (จัดการการรับประกัน)
 - [ ] Parts Recommendation (แนะนำอะไหล่ตามระยะทาง)
 - [ ] Dashboard & Analytics (สถิติและกราฟ)

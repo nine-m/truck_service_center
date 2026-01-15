@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:package_name",
+ "creation": "2026-01-09 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "package_name",
+  "is_active",
+  "package_type",
+  "column_break_1",
+  "description",
+  "package_details_section",
+  "package_items",
+  "pricing_section",
+  "total_standard_rate",
+  "discount_percent",
+  "column_break_2",
+  "package_rate",
+  "validity_section",
+  "validity_days",
+  "service_interval_km",
+  "column_break_3",
+  "max_services",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "package_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ชื่อแพ็คเกจ",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "เปิดใช้งาน"
+  },
+  {
+   "fieldname": "package_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ประเภทแพ็คเกจ",
+   "options": "Standard\nPremium\nBasic\nCustom",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "รายละเอียดแพ็คเกจ"
+  },
+  {
+   "fieldname": "package_details_section",
+   "fieldtype": "Section Break",
+   "label": "รายการบริการในแพ็คเกจ"
+  },
+  {
+   "fieldname": "package_items",
+   "fieldtype": "Table",
+   "label": "รายการบริการ",
+   "options": "Service Package Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "ราคาและส่วนลด"
+  },
+  {
+   "fieldname": "total_standard_rate",
+   "fieldtype": "Currency",
+   "label": "ราคามาตรฐานรวม",
+   "read_only": 1
+  },
+  {
+   "fieldname": "discount_percent",
+   "fieldtype": "Percent",
+   "label": "ส่วนลด (%)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "package_rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "ราคาแพ็คเกจ",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "validity_section",
+   "fieldtype": "Section Break",
+   "label": "เงื่อนไขการใช้งาน"
+  },
+  {
+   "fieldname": "validity_days",
+   "fieldtype": "Int",
+   "label": "ระยะเวลาใช้งาน (วัน)"
+  },
+  {
+   "fieldname": "service_interval_km",
+   "fieldtype": "Int",
+   "label": "ระยะทางระหว่างบริการ (กม.)"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "max_services",
+   "fieldtype": "Int",
+   "label": "จำนวนครั้งบริการสูงสุด"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "หมายเหตุ"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-09 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Package",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

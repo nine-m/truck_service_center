@@ -85,6 +85,48 @@ frappe.ui.form.on('Service Order', {
 		}
 	},
 	
+	service_package: function(frm) {
+		if (frm.doc.service_package) {
+			frappe.call({
+				method: "truck_service_center.truck_service_center.doctype.service_package.service_package.get_package_details",
+				args: {
+					package_name: frm.doc.service_package
+				},
+				callback: function(r) {
+					if (r.message) {
+						// Clear existing items
+						frm.clear_table("service_items");
+						
+						// Add package items
+						r.message.items.forEach(function(item) {
+							let row = frm.add_child("service_items");
+							row.item_code = item.item_code;
+							row.item_name = item.item_name;
+							row.qty = item.qty;
+							row.rate = item.rate;
+							row.amount = item.amount;
+							row.description = item.description;
+						});
+						
+						// Set discount
+						if (r.message.discount_amount) {
+							frm.set_value("discount_amount", r.message.discount_amount);
+						}
+						
+						// Refresh items table
+						frm.refresh_field("service_items");
+						frm.refresh_field("discount_amount");
+						
+						frappe.show_alert({
+							message: __("Package items loaded successfully"),
+							indicator: "green"
+						});
+					}
+				}
+			});
+		}
+	},
+	
 	labor_charges: function(frm) {
 		calculate_totals(frm);
 	},
