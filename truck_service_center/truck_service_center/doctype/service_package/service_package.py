@@ -10,6 +10,7 @@ class ServicePackage(Document):
 	def validate(self):
 		self.validate_package_items()
 		self.calculate_totals()
+		self.validate_pricing()
 	
 	def validate_package_items(self):
 		"""ตรวจสอบว่ามีรายการบริการในแพ็คเกจ"""
@@ -27,12 +28,54 @@ class ServicePackage(Document):
 		
 		self.total_standard_rate = total_standard
 		
-		# คำนวณราคาแพ็คเกจหลังหักส่วนลด
-		if self.discount_percent:
+		# คำนวณส่วนลดและราคาแพ็คเกจ
+		# ถ้ามีการระบุราคาแพ็คเกจมา ให้คำนวณส่วนลดกลับ
+		if self.package_rate and total_standard > 0:
+			discount_amount = total_standard - flt(self.package_rate)
+			self.discount_percent = (discount_amount / total_standard) * 100
+		# ถ้ามีการระบุส่วนลด ให้คำนวณราคาแพ็คเกจ
+		elif self.discount_percent:
 			discount_amount = total_standard * flt(self.discount_percent) / 100
 			self.package_rate = total_standard - discount_amount
+		# ถ้าไม่มีทั้งสองอย่าง ให้ราคาแพ็คเกจเท่ากับราคามาตรฐาน
 		elif not self.package_rate:
 			self.package_rate = total_standard
+			self.discount_percent = 0
+	
+	def validate_pricing(self):
+		"""ตรวจสอบความถูกต้องของราคาและส่วนลด"""
+		# ตรวจสอบส่วนลด
+		if flt(self.discount_percent) < 0:
+			frappe.throw("ส่วนลดต้องเป็นค่าบวก")
+		
+		if flt(self.discount_percent) > 100:
+			frappe.throw("ส่วนลดไม่สามารถเกิน 100% ได้")
+		
+		# ตรวจสอบราคาแพ็คเกจ
+		if flt(self.package_rate) < 0:
+			frappe.throw("ราคาแพ็คเกจต้องเป็นค่าบวก")
+		
+		if flt(self.package_rate) > flt(self.total_standard_rate):
+			frappe.msgprint(
+				msg="ราคาแพ็คเกจสูงกว่าราคามาตรฐานรวม",
+				title="คำเตือน",
+				indicator="orange"
+			)
+		
+		# ตรวจสอบความสอดคล้องระหว่างราคาแพ็คเกจและส่วนลด
+		if self.total_standard_rate > 0:
+			calculated_rate = flt(self.total_standard_rate) * (1 - flt(self.discount_percent) / 100)
+			rate_difference = abs(flt(self.package_rate) - calculated_rate)
+			
+			# ให้ความคลาดเคลื่อนไม่เกิน 0.01 (เพื่อรองรับการปัดเศษ)
+			if rate_difference > 0.01:
+				frappe.throw(
+					f"ราคาแพ็คเกจไม่สอดคล้องกับส่วนลด<br>"
+					f"ราคามาตรฐาน: {self.total_standard_rate:.2f}<br>"
+					f"ส่วนลด: {self.discount_percent:.2f}%<br>"
+					f"ราคาแพ็คเกจที่คำนวณได้: {calculated_rate:.2f}<br>"
+					f"ราคาแพ็คเกจที่ระบุ: {self.package_rate:.2f}"
+				)
 	
 	def get_package_items_for_service_order(self):
 		"""ดึงรายการบริการในแพ็คเกจเพื่อใช้ใน Service Order"""

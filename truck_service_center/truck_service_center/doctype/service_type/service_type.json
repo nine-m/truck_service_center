@@ -8,6 +8,8 @@
  "engine": "InnoDB",
  "field_order": [
   "service_type_name",
+  "maintenance_type",
+  "service_type_group",
   "description",
   "column_break_1",
   "is_active",
@@ -25,14 +27,31 @@
    "fieldname": "service_type_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "ชื่อประเภทบริการ",
    "reqd": 1,
    "unique": 1
   },
   {
+   "fieldname": "maintenance_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ประเภทการบำรุงรักษา",
+   "options": "PM\nCM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "service_type_group",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "กลุ่มบริการ",
+   "options": "Service Type Group"
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
+   "label": "คำอธิบาย"
   },
   {
    "fieldname": "column_break_1",
@@ -41,33 +60,33 @@
   {
    "fieldname": "is_active",
    "fieldtype": "Check",
-   "label": "\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19",
+   "label": "ใช้งาน",
    "default": "1"
   },
   {
    "fieldname": "default_duration",
    "fieldtype": "Float",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e17\u0e33\u0e07\u0e32\u0e19 (\u0e0a\u0e21.)",
+   "label": "ระยะเวลาทำงาน (ชม.)",
    "precision": 2,
-   "description": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e43\u0e19\u0e01\u0e32\u0e23\u0e17\u0e33\u0e07\u0e32\u0e19"
+   "description": "ระยะเวลาโดยประมาณในการทำงาน"
   },
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e04\u0e32"
+   "label": "ราคา"
   },
   {
    "fieldname": "default_rate",
    "fieldtype": "Currency",
-   "label": "\u0e23\u0e32\u0e04\u0e32\u0e21\u0e32\u0e15\u0e23\u0e10\u0e32\u0e19",
+   "label": "ราคามาตรฐาน",
    "precision": 2
   },
   {
    "fieldname": "labor_rate",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07",
+   "label": "ค่าแรง",
    "precision": 2,
-   "description": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07\u0e07\u0e32\u0e19\u0e15\u0e48\u0e2d\u0e0a\u0e31\u0e48\u0e27\u0e42\u0e21\u0e07"
+   "description": "ค่าแรงงานต่อชั่วโมง"
   },
   {
    "fieldname": "column_break_2",
@@ -76,20 +95,20 @@
   {
    "fieldname": "item_code",
    "fieldtype": "Link",
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "รหัสสินค้า",
    "options": "Item",
-   "description": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e01\u0e31\u0e1a Item \u0e43\u0e19 ERPNext"
+   "description": "เชื่อมโยงกับ Item ใน ERPNext"
   },
   {
    "fieldname": "income_account",
    "fieldtype": "Link",
-   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49",
+   "label": "บัญชีรายได้",
    "options": "Account"
   },
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "label": "\u0e28\u0e39\u0e19\u0e22\u0e4c\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19",
+   "label": "ศูนย์ต้นทุน",
    "options": "Cost Center"
   }
  ],

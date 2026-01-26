@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "naming_series:",
- "creation": "2026-01-07 10:00:00.000000",
+ "creation": "2026-01-07 10:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -13,20 +13,30 @@
   "column_break_1",
   "customer",
   "vehicle",
-  "current_mileage",
   "vehicle_info_section",
   "vehicle_type",
   "brand",
   "model",
+  "current_mileage",
   "column_break_2",
   "contact_person",
   "contact_number",
   "email",
   "service_details_section",
   "service_package",
-  "service_type",
+  "service_types",
+  "technician_section",
+  "received_by",
   "technician",
-  "column_break_3",
+  "technician_2",
+  "column_break_tech",
+  "technician_3",
+  "technician_4",
+  "fuel_section",
+  "fuel_level_in",
+  "column_break_fuel",
+  "fuel_level_out",
+  "time_section",
   "estimated_time",
   "actual_time",
   "priority",
@@ -66,12 +76,12 @@
    "reqd": 1
   },
   {
-   "default": "Today",
+   "default": "Now",
    "fieldname": "service_date",
-   "fieldtype": "Date",
+   "fieldtype": "Datetime",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "วันที่เข้าบริการ",
    "reqd": 1
   },
   {
@@ -80,7 +90,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30",
+   "label": "สถานะ",
    "options": "Draft\nIn Progress\nCompleted\nCancelled\nOn Hold",
    "reqd": 1
   },
@@ -93,7 +103,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32",
+   "label": "ลูกค้า",
    "options": "Customer",
    "reqd": 1
   },
@@ -102,41 +112,40 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e23\u0e16",
+   "label": "รถ",
    "options": "Vehicle",
    "reqd": 1
   },
   {
    "fieldname": "current_mileage",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19 (\u0e01\u0e21.)",
-   "precision": 2
+   "label": "เลขไมล์ปัจจุบัน (กม.)",
+   "precision": "2"
   },
   {
-   "collapsible": 1,
    "fieldname": "vehicle_info_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e16"
+   "label": "ข้อมูลรถ/ติดต่อ"
   },
   {
    "fetch_from": "vehicle.vehicle_type",
    "fieldname": "vehicle_type",
    "fieldtype": "Data",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e23\u0e16",
+   "label": "ประเภทรถ",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.brand",
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "\u0e22\u0e35\u0e48\u0e2b\u0e49\u0e2d",
+   "label": "ยี่ห้อ",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.model",
    "fieldname": "model",
    "fieldtype": "Data",
-   "label": "\u0e23\u0e38\u0e48\u0e19",
+   "label": "รุ่น",
    "read_only": 1
   },
   {
@@ -144,102 +153,153 @@
    "fieldtype": "Column Break"
   },
   {
-   "fetch_from": "vehicle.contact_person",
    "fieldname": "contact_person",
    "fieldtype": "Data",
-   "label": "\u0e1c\u0e39\u0e49\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d",
-   "read_only": 1
+   "label": "ผู้ติดต่อ"
   },
   {
-   "fetch_from": "vehicle.contact_number",
    "fieldname": "contact_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e1a\u0e2d\u0e23\u0e4c\u0e42\u0e17\u0e23\u0e28\u0e31\u0e1e\u0e17\u0e4c",
-   "options": "Phone",
-   "read_only": 1
+   "label": "เบอร์โทรศัพท์",
+   "options": "Phone"
   },
   {
-   "fetch_from": "vehicle.email",
    "fieldname": "email",
    "fieldtype": "Data",
-   "label": "\u0e2d\u0e35\u0e40\u0e21\u0e25",
-   "options": "Email",
-   "read_only": 1
+   "label": "อีเมล",
+   "options": "Email"
   },
   {
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "label": "รายละเอียดบริการ"
   },
   {
    "fieldname": "service_package",
    "fieldtype": "Link",
-   "label": "\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "แพ็คเกจบริการ",
    "options": "Service Package"
   },
   {
-   "fieldname": "service_type",
+   "fieldname": "service_types",
+   "fieldtype": "Table",
+   "label": "ประเภทบริการ",
+   "options": "Service Order Service Type"
+  },
+  {
+   "fieldname": "technician_section",
+   "fieldtype": "Section Break",
+   "label": "ข้อมูลช่างและพนักงาน"
+  },
+  {
+   "fieldname": "received_by",
    "fieldtype": "Link",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
-   "options": "Service Type"
+   "label": "พนักงานรับรถ",
+   "options": "User"
   },
   {
    "fieldname": "technician",
    "fieldtype": "Link",
-   "label": "\u0e0a\u0e48\u0e32\u0e07\u0e1c\u0e39\u0e49\u0e23\u0e31\u0e1a\u0e1c\u0e34\u0e14\u0e0a\u0e2d\u0e1a",
+   "label": "ช่างผู้รับผิดชอบ 1",
    "options": "User"
   },
   {
-   "fieldname": "column_break_3",
+   "fieldname": "technician_2",
+   "fieldtype": "Link",
+   "label": "ช่างผู้รับผิดชอบ 2",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_tech",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "technician_3",
+   "fieldtype": "Link",
+   "label": "ช่างผู้รับผิดชอบ 3",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_4",
+   "fieldtype": "Link",
+   "label": "ช่างผู้รับผิดชอบ 4",
+   "options": "User"
+  },
+  {
+   "fieldname": "fuel_section",
+   "fieldtype": "Section Break",
+   "label": "สถานะน้ำมัน"
+  },
+  {
+   "fieldname": "fuel_level_in",
+   "fieldtype": "Select",
+   "label": "สถานะน้ำมันรับเข้า",
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+  },
+  {
+   "fieldname": "column_break_fuel",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fuel_level_out",
+   "fieldtype": "Select",
+   "label": "สถานะน้ำมันออก",
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+  },
+  {
+   "fieldname": "time_section",
+   "fieldtype": "Section Break",
+   "label": "เวลาและความสำคัญ"
   },
   {
    "fieldname": "estimated_time",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e01\u0e32\u0e23 (\u0e0a\u0e21.)",
-   "precision": 2
+   "label": "เวลาประมาณการรวม (ชม.)",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "actual_time",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e27\u0e25\u0e32\u0e08\u0e23\u0e34\u0e07 (\u0e0a\u0e21.)",
-   "precision": 2
+   "label": "เวลาจริง (ชม.)",
+   "precision": "2"
   },
   {
    "default": "Medium",
    "fieldname": "priority",
    "fieldtype": "Select",
-   "label": "\u0e04\u0e27\u0e32\u0e21\u0e2a\u0e33\u0e04\u0e31\u0e0d",
+   "label": "ความสำคัญ",
    "options": "Low\nMedium\nHigh\nUrgent"
   },
   {
    "fieldname": "service_items_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e41\u0e25\u0e30\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48"
+   "label": "รายการบริการและอะไหล่"
   },
   {
    "fieldname": "service_items",
    "fieldtype": "Table",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23",
+   "label": "รายการ",
    "options": "Service Order Item"
   },
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e04\u0e32"
+   "label": "ราคา"
   },
   {
    "fieldname": "total_parts_amount",
    "fieldtype": "Currency",
-   "label": "\u0e23\u0e27\u0e21\u0e04\u0e48\u0e32\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
-   "read_only": 1,
-   "precision": 2
+   "label": "รวมค่าอะไหล่",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "labor_charges",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07",
-   "precision": 2
+   "label": "ค่าแรงรวม",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_4",
@@ -248,39 +308,39 @@
   {
    "fieldname": "discount_amount",
    "fieldtype": "Currency",
-   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14",
-   "precision": 2
+   "label": "ส่วนลด",
+   "precision": "2"
   },
   {
    "fieldname": "tax_amount",
    "fieldtype": "Currency",
-   "label": "\u0e20\u0e32\u0e29\u0e35",
-   "precision": 2
+   "label": "ภาษี",
+   "precision": "2"
   },
   {
+   "bold": 1,
    "fieldname": "total_amount",
    "fieldtype": "Currency",
-   "label": "\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14",
-   "read_only": 1,
-   "precision": 2,
-   "bold": 1
+   "label": "ยอดรวมทั้งหมด",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "payment_section",
    "fieldtype": "Section Break",
-   "label": "\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19"
+   "label": "การชำระเงิน"
   },
   {
    "default": "Unpaid",
    "fieldname": "payment_status",
    "fieldtype": "Select",
-   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19",
+   "label": "สถานะการชำระเงิน",
    "options": "Unpaid\nPartially Paid\nPaid"
   },
   {
    "fieldname": "payment_method",
    "fieldtype": "Select",
-   "label": "\u0e27\u0e34\u0e18\u0e35\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19",
+   "label": "วิธีชำระเงิน",
    "options": "Cash\nCredit Card\nBank Transfer\nQR Code"
   },
   {
@@ -290,30 +350,30 @@
   {
    "fieldname": "paid_amount",
    "fieldtype": "Currency",
-   "label": "\u0e22\u0e2d\u0e14\u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27",
-   "precision": 2
+   "label": "ยอดชำระแล้ว",
+   "precision": "2"
   },
   {
    "fieldname": "outstanding_amount",
    "fieldtype": "Currency",
-   "label": "\u0e22\u0e2d\u0e14\u0e04\u0e49\u0e32\u0e07",
-   "read_only": 1,
-   "precision": 2
+   "label": "ยอดค้าง",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "notes_section",
    "fieldtype": "Section Break",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38"
+   "label": "หมายเหตุ"
   },
   {
    "fieldname": "customer_complaints",
    "fieldtype": "Text Editor",
-   "label": "\u0e2d\u0e32\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48\u0e41\u0e08\u0e49\u0e07"
+   "label": "อาการที่แจ้ง"
   },
   {
    "fieldname": "service_notes",
    "fieldtype": "Text Editor",
-   "label": "\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e01\u0e32\u0e23\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "label": "บันทึกการบริการ"
   },
   {
    "fieldname": "column_break_6",
@@ -322,18 +382,18 @@
   {
    "fieldname": "technician_remarks",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e41\u0e19\u0e30\u0e19\u0e33\u0e08\u0e32\u0e01\u0e0a\u0e48\u0e32\u0e07"
+   "label": "คำแนะนำจากช่าง"
   },
   {
    "fieldname": "recommendations",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e41\u0e19\u0e30\u0e19\u0e33\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+   "label": "คำแนะนำเพิ่มเติม"
   },
   {
    "collapsible": 1,
    "fieldname": "references_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e2d\u0e49\u0e32\u0e07\u0e2d\u0e34\u0e07"
+   "label": "เอกสารอ้างอิง"
   },
   {
    "fieldname": "sales_invoice",
@@ -366,7 +426,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-07 10:00:00.000000",
+ "modified": "2026-01-20 11:13:28.924421",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",
@@ -374,6 +434,8 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -384,11 +446,10 @@
    "role": "System Manager",
    "share": 1,
    "submit": 1,
-   "write": 1,
-   "cancel": 1,
-   "amend": 1
+   "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

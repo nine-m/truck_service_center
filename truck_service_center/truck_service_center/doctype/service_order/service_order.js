@@ -2,7 +2,15 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Service Order', {
+	onload: function(frm) {
+		// คำนวณยอดรวมเมื่อโหลดครั้งแรก
+		calculate_totals(frm);
+	},
+	
 	refresh: function(frm) {
+		// ตั้งค่า filter สำหรับ service_type ใน child table
+		setup_service_type_filter(frm);
+		
 		// ปุ่มสร้าง Sales Invoice
 		if (frm.doc.docstatus === 1 && !frm.doc.sales_invoice) {
 			frm.add_custom_button(__('Create Sales Invoice'), function() {
@@ -49,35 +57,29 @@ frappe.ui.form.on('Service Order', {
 	},
 	
 	vehicle: function(frm) {
-		// ดึงข้อมูลลูกค้าจากรถ (ถ้าเลือกรถก่อน)
+		// ดึงข้อมูลลูกค้าและข้อมูลติดต่อจากรถ
 		if (frm.doc.vehicle) {
-			frappe.db.get_value('Vehicle', frm.doc.vehicle, ['customer', 'current_mileage'], function(r) {
-				if (r) {
-					// ถ้ายังไม่ได้เลือกลูกค้า หรือลูกค้าไม่ตรง ให้เซ็ตลูกค้าใหม่
-					if (!frm.doc.customer || frm.doc.customer !== r.customer) {
-						frm.set_value('customer', r.customer);
-					}
-					// ดึงเลขไมล์ปัจจุบัน
-					if (r.current_mileage && !frm.doc.current_mileage) {
-						frm.set_value('current_mileage', r.current_mileage);
-					}
-				}
-			});
-		}
-	},
-	
-	service_type: function(frm) {
-		// ดึงข้อมูลจาก Service Type
-		if (frm.doc.service_type) {
-			frappe.db.get_value('Service Type', frm.doc.service_type, 
-				['default_duration', 'labor_rate', 'item_code'], 
+			frappe.db.get_value('Vehicle', frm.doc.vehicle, 
+				['customer', 'current_mileage', 'contact_person', 'contact_number', 'email'], 
 				function(r) {
 					if (r) {
-						if (r.default_duration) {
-							frm.set_value('estimated_time', r.default_duration);
+						// ถ้ายังไม่ได้เลือกลูกค้า หรือลูกค้าไม่ตรง ให้เซ็ตลูกค้าใหม่
+						if (!frm.doc.customer || frm.doc.customer !== r.customer) {
+							frm.set_value('customer', r.customer);
 						}
-						if (r.labor_rate) {
-							frm.set_value('labor_charges', r.labor_rate);
+						// ดึงเลขไมล์ปัจจุบัน (ดึงทุกครั้งเพื่ออัพเดทเป็นค่าล่าสุด)
+						if (r.current_mileage) {
+							frm.set_value('current_mileage', r.current_mileage);
+						}
+						// ดึงข้อมูลติดต่อ (ถ้ายังไม่ได้กรอก)
+						if (r.contact_person && !frm.doc.contact_person) {
+							frm.set_value('contact_person', r.contact_person);
+						}
+						if (r.contact_number && !frm.doc.contact_number) {
+							frm.set_value('contact_number', r.contact_number);
+						}
+						if (r.email && !frm.doc.email) {
+							frm.set_value('email', r.email);
 						}
 					}
 				}
@@ -144,6 +146,25 @@ frappe.ui.form.on('Service Order', {
 	}
 });
 
+// Event handlers สำหรับ child table ประเภทบริการ
+frappe.ui.form.on('Service Order Service Type', {
+	service_types_add: function(frm) {
+		calculate_totals(frm);
+	},
+	
+	service_types_remove: function(frm) {
+		calculate_totals(frm);
+	},
+	
+	labor_charges: function(frm, cdt, cdn) {
+		calculate_totals(frm);
+	},
+	
+	estimated_time: function(frm, cdt, cdn) {
+		calculate_totals(frm);
+	}
+});
+
 frappe.ui.form.on('Service Order Item', {
 	item_code: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
@@ -177,10 +198,16 @@ frappe.ui.form.on('Service Order Item', {
 	
 	qty: function(frm, cdt, cdn) {
 		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
 	},
 	
 	rate: function(frm, cdt, cdn) {
 		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	
+	service_items_add: function(frm) {
+		calculate_totals(frm);
 	},
 	
 	service_items_remove: function(frm) {
@@ -192,8 +219,8 @@ function calculate_item_amount(frm, cdt, cdn) {
 	let row = locals[cdt][cdn];
 	let amount = flt(row.qty) * flt(row.rate);
 	frappe.model.set_value(cdt, cdn, 'amount', amount);
-	calculate_totals(frm);
 }
+
 
 function calculate_totals(frm) {
 	let total_parts = 0;
@@ -238,4 +265,59 @@ function set_vehicle_filter(frm) {
 			};
 		});
 	}
+}
+
+// คำนวณยอดรวมทั้งหมด
+function calculate_totals(frm) {
+	// คำนวณค่าแรงรวมและเวลาประมาณการรวม
+	let total_labor = 0;
+	let total_time = 0;
+	
+	if (frm.doc.service_types) {
+		frm.doc.service_types.forEach(function(row) {
+			total_labor += flt(row.labor_charges);
+			total_time += flt(row.estimated_time);
+		});
+	}
+	
+	// อัพเดทค่าแรงและเวลารวม
+	frm.set_value('labor_charges', total_labor);
+	frm.set_value('estimated_time', total_time);
+	
+	// คำนวณยอดรวมอะไหล่
+	let total_parts = 0;
+	if (frm.doc.service_items) {
+		frm.doc.service_items.forEach(function(item) {
+			total_parts += flt(item.qty) * flt(item.rate);
+		});
+	}
+	frm.set_value('total_parts_amount', total_parts);
+	
+	// คำนวณยอดรวมทั้งหมด
+	let subtotal = total_parts + total_labor;
+	let total = subtotal - flt(frm.doc.discount_amount) + flt(frm.doc.tax_amount);
+	frm.set_value('total_amount', total);
+	
+	// คำนวณยอดคงค้าง
+	let outstanding = total - flt(frm.doc.paid_amount);
+	frm.set_value('outstanding_amount', outstanding);
+}
+
+function setup_service_type_filter(frm) {
+	// ตั้งค่า filter สำหรับ service_type ใน child table service_types
+	frm.set_query('service_type', 'service_types', function(doc, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		let filters = {
+			'is_active': 1
+		};
+		
+		// ถ้ามีการเลือก service_type_group ให้ filter ตาม group
+		if (row.service_type_group) {
+			filters['service_type_group'] = row.service_type_group;
+		}
+		
+		return {
+			filters: filters
+		};
+	});
 }

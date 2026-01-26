@@ -41,6 +41,13 @@ class ServiceOrder(Document):
 			item.amount = flt(item.qty) * flt(item.rate)
 			self.total_parts_amount += item.amount
 		
+		# คำนวณค่าแรงรวมและเวลารวมจากประเภทบริการทั้งหมด
+		self.labor_charges = 0
+		self.estimated_time = 0
+		for service_type in self.service_types:
+			self.labor_charges += flt(service_type.labor_charges)
+			self.estimated_time += flt(service_type.estimated_time)
+		
 		# คำนวณยอดรวมทั้งหมด
 		subtotal = flt(self.total_parts_amount) + flt(self.labor_charges)
 		total = subtotal - flt(self.discount_amount) + flt(self.tax_amount)

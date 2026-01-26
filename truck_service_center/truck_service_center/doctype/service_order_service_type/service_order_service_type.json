@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "creation": "2026-01-23 10:30:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "service_type_group",
+  "service_type",
+  "maintenance_type",
+  "estimated_time",
+  "labor_charges",
+  "repair_position",
+  "repair_cause",
+  "remark"
+ ],
+ "fields": [
+  {
+   "fieldname": "service_type_group",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "กลุ่มบริการ",
+   "options": "Service Type Group"
+  },
+  {
+   "fieldname": "service_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ประเภทบริการ",
+   "options": "Service Type",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "service_type.maintenance_type",
+   "fieldname": "maintenance_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ประเภทการบำรุงรักษา",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "service_type.default_duration",
+   "fieldname": "estimated_time",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "เวลาประมาณการ (ชม.)",
+   "precision": 2
+  },
+  {
+   "fetch_from": "service_type.labor_rate",
+   "fieldname": "labor_charges",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "ค่าแรง",
+   "precision": 2
+  },
+  {
+   "fieldname": "repair_position",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ตำแหน่งที่ซ่อม",
+   "options": "Repair Position"
+  },
+  {
+   "fieldname": "repair_cause",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "สาเหตุที่ซ่อม"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "หมายเหตุ"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-01-23 10:30:00",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Order Service Type",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -35,31 +35,97 @@ Truck Service Center เป็นแอปพลิเคชันสำหร�
 
 ---
 
-### 2. Service Type (ประเภทบริการ)
+### 2. Service Type Group (กลุ่มบริการ)
+**Path:** `truck_service_center/doctype/service_type_group/`
+
+**คุณสมบัติ:**
+- จัดกลุ่มประเภทบริการตามหมวดหมู่
+- ช่วยในการค้นหาและจัดระบบประเภทบริการ
+- รองรับการเปิด/ปิดใช้งาน
+
+**ฟิลด์สำคัญ:**
+- `group_code` - รหัสกลุ่ม (Primary Key)
+- `group_name` - ชื่อกลุ่ม
+- `is_active` - เปิด/ปิดใช้งาน
+- `remark` - หมายเหตุ
+
+**กลุ่มบริการมาตรฐาน:**
+- SU100 - เครื่องล่าง
+- EL100 - ไฟฟ้า
+- TY100 - ยาง
+- OT100 - อื่นๆ
+- RM100 - ระบบการทำงานของรถ
+- TR100 - ส่งกำลัง
+- WE100 - เชื่อม
+- CH100 - ตัวถัง
+
+---
+
+### 3. Repair Position (ตำแหน่งที่ซ่อม)
+**Path:** `truck_service_center/doctype/repair_position/`
+
+**คุณสมบัติ:**
+- กำหนดตำแหน่งส่วนต่างๆ ของรถที่สามารถซ่อมได้
+- ใช้เป็น Master Data สำหรับระบุตำแหน่งการซ่อม
+- จัดกลุ่มตามระบบของรถ (ไฟฟ้า, เครื่องยนต์, ช่วงล่าง, ยาง ฯลฯ)
+
+**ฟิลด์สำคัญ:**
+- `position_code` - รหัสตำแหน่ง (Primary Key) เช่น EL01, EN00, SU01
+- `position_name` - ชื่อตำแหน่ง
+- `remark` - หมายเหตุรายละเอียด
+- `is_active` - เปิด/ปิดใช้งาน
+
+**รหัสกลุ่มตำแหน่ง:**
+- **EL** - ระบบไฟฟ้า (Electrical System)
+- **EN** - เครื่องยนต์ (Engine)
+- **SU** - ช่วงล่าง (Suspension)
+- **TY** - ยาง (Tires)
+
+**ตัวอย่างตำแหน่ง:**
+- EL00: ระบบไฟฟ้า
+- EL01: ไฟตรงเซ็นไฟ (ไฟตรงเซ็นไฟจากภายนอก)
+- EL02: ไฟตรงเซ็นไฟจากเคลื่อน (ไฟเลี้ยวซ้ายขวาและไฟถอยหลัง)
+- EN00: เครื่องยนต์
+- EN01: มาติวจากเครื่องยนต์
+- SU00: ช่วงล่าง
+- SU01: ใบยเนอเรทรองล่าง
+- TY00: ยาง
+- TY01: ขายตาของยางล่าง
+
+---
+
+### 4. Service Type (ประเภทบริการ)
 **Path:** `truck_service_center/doctype/service_type/`
 
 **คุณสมบัติ:**
 - กำหนดประเภทบริการต่างๆ
 - ตั้งราคามาตรฐานและค่าแรง
 - เชื่อมโยงกับ Item ใน ERPNext
+- จัดกลุ่มตามประเภทการบำรุงรักษา (PM/CM)
 
 **ฟิลด์สำคัญ:**
 - `service_type_name` - ชื่อประเภทบริการ (Primary Key)
+- `maintenance_type` - ประเภทการบำรุงรักษา (PM = Preventive Maintenance, CM = Corrective Maintenance)
+- `service_type_group` - กลุ่มบริการ (Link to Service Type Group)
 - `default_rate` - ราคามาตรฐาน
 - `labor_rate` - ค่าแรง
 - `default_duration` - ระยะเวลาทำงานโดยประมาณ
 - `item_code` - เชื่อมโยงกับ Item (Link to Item)
 
+**ประเภทการบำรุงรักษา:**
+- **PM (Preventive Maintenance)** - การบำรุงรักษาเชิงป้องกัน เช่น เปลี่ยนถ่ายน้ำมัน, เช็คระยะ
+- **CM (Corrective Maintenance)** - การซ่อมบำรุงแก้ไข เช่น ซ่อมเครื่องยนต์, ซ่อมระบบเบรก
+
 **ตัวอย่างประเภทบริการ:**
-- เปลี่ยนถ่ายน้ำมันเครื่อง
-- เช็คระยะ 10,000 กม.
-- เปลี่ยนยาง
-- ตรวจเช็คระบบเบรก
-- เปลี่ยนไส้กรองอากาศ
+- เปลี่ยนถ่ายน้ำมันเครื่อง (PM - กลุ่ม RM100)
+- เช็คระยะ 10,000 กม. (PM - กลุ่ม RM100)
+- เปลี่ยนยาง (PM - กลุ่ม TY100)
+- ตรวจเช็คระบบเบรก (PM - กลุ่ม SU100)
+- ซ่อมระบบไฟฟ้า (CM - กลุ่ม EL100)
 
 ---
 
-### 3. Service Order (ใบสั่งงานบริการ)
+### 5. Service Order (ใบสั่งงานบริการ)
 **Path:** `truck_service_center/doctype/service_order/`
 
 **คุณสมบัติ:**
@@ -68,20 +134,22 @@ Truck Service Center เป็นแอปพลิเคชันสำหร�
 - สร้าง Stock Entry อัตโนมัติเมื่อ submit
 - อัพเดทข้อมูลรถอัตโนมัติ
 - สามารถสร้าง Sales Invoice
+- รองรับหลายประเภทบริการในใบสั่งงานเดียว
 
 **ฟิลด์สำคัญ:**
 - `naming_series` - รหัสใบสั่งงาน (SO-.YYYY.-)
-- `service_date` - วันที่เข้าบริการ
+- `service_date` - วันเวลาที่เข้าบริการ
 - `customer` - ลูกค้า (Link to Customer)
 - `vehicle` - รถ (Link to Vehicle)
 - `current_mileage` - เลขไมล์ปัจจุบัน
-- `service_type` - ประเภทบริการ (Link to Service Type)
-- `service_items` - รายการบริการและอะไหล่ (Table)
+- `service_package` - แพ็คเกจบริการ (Link to Service Package)
+- `service_types` - ประเภทบริการ (Child Table - Service Order Service Type)
+- `service_items` - รายการบริการและอะไหล่ (Child Table)
 - `total_amount` - ยอดรวมทั้งหมด
 - `status` - สถานะ (Draft, In Progress, Completed, Cancelled, On Hold)
 
 **Methods:**
-- `calculate_totals()` - คำนวณยอดรวม
+- `calculate_totals()` - คำนวณยอดรวม (รวมค่าแรงจากทุกประเภทบริการ)
 - `update_payment_status()` - อัพเดทสถานะการชำระเงิน
 - `create_stock_entry()` - สร้าง Stock Entry ตัดสต็อก
 - `update_vehicle_info()` - อัพเดทข้อมูลรถ
@@ -89,13 +157,37 @@ Truck Service Center เป็นแอปพลิเคชันสำหร�
 
 **Workflow:**
 1. สร้าง Service Order (Draft)
-2. เพิ่มรายการบริการและอะไหล่
-3. Submit → สร้าง Stock Entry และอัพเดทข้อมูลรถ
-4. สร้าง Sales Invoice (ถ้าต้องการ)
+2. เลือกรถ → ระบบจะดึงข้อมูลลูกค้าและข้อมูลติดต่ออัตโนมัติ
+3. เลือกแพ็คเกจบริการ (ถ้ามี) หรือเพิ่มประเภทบริการด้วยตัวเอง
+4. เพิ่มรายการบริการและอะไหล่
+5. Submit → สร้าง Stock Entry และอัพเดทข้อมูลรถ
+6. สร้าง Sales Invoice (ถ้าต้องการ)
 
 ---
 
-### 4. Service Order Item (รายการบริการ - Child Table)
+### 6. Service Order Service Type (ประเภทบริการในใบสั่งงาน - Child Table)
+**Path:** `truck_service_center/doctype/service_order_service_type/`
+
+**คุณสมบัติ:**
+- Child table สำหรับเก็บประเภทบริการหลายรายการใน Service Order
+- รองรับการ filter ตามกลุ่มบริการ
+- ดึงข้อมูลค่าแรงและเวลาอัตโนมัติจาก Service Type
+
+**ฟิลด์สำคัญ:**
+- `service_type_group` - กลุ่มบริการ (Link to Service Type Group) - ใช้สำหรับ filter
+- `service_type` - ประเภทบริการ (Link to Service Type)
+- `maintenance_type` - ประเภทการบำรุงรักษา (PM/CM) - ดึงอัตโนมัติ
+- `estimated_time` - เวลาประมาณการ (ชม.) - ดึงอัตโนมัติ
+- `labor_charges` - ค่าแรง - ดึงอัตโนมัติ
+
+**การใช้งาน:**
+1. เลือกกลุ่มบริการ (ถ้าต้องการ filter)
+2. เลือกประเภทบริการ → ระบบจะดึงข้อมูลค่าแรง เวลา และประเภทการบำรุงรักษาอัตโนมัติ
+3. สามารถแก้ไขค่าแรงและเวลาได้ตามต้องการ
+
+---
+
+### 7. Service Order Item (รายการบริการ - Child Table)
 **Path:** `truck_service_center/doctype/service_order_item/`
 
 **คุณสมบัติ:**
@@ -113,7 +205,7 @@ Truck Service Center เป็นแอปพลิเคชันสำหร�
 
 ---
 
-### 5. Service Package (แพ็คเกจบริการ)
+### 8. Service Package (แพ็คเกจบริการ)
 **Path:** `truck_service_center/doctype/service_package/`
 
 **คุณสมบัติ:**
@@ -164,9 +256,12 @@ Desk → Truck Service Center → Vehicle → New
 ### 2. สร้างใบสั่งงานบริการ
 ```
 Desk → Truck Service Center → Service Order → New
-- เลือกรถ (จะดึงข้อมูลลูกค้าอัตโนมัติ)
+- เลือกรถ (จะดึงข้อมูลลูกค้าและข้อมูลติดต่ออัตโนมัติ)
 - กรอกเลขไมล์ปัจจุบัน
-- เลือกแพ็คเกจบริการ (ถ้ามี) หรือเลือกประเภทบริการ
+- เลือกแพ็คเกจบริการ (ถ้ามี) หรือเพิ่มประเภทบริการด้วยตัวเอง:
+  * เลือกกลุ่มบริการ (เพื่อ filter ประเภทบริการ)
+  * เลือกประเภทบริการ (ระบบจะดึงค่าแรงและเวลาอัตโนมัติ)
+  * สามารถเพิ่มหลายประเภทบริการได้
 - เพิ่มรายการบริการและอะไหล่
 - Submit เมื่อทำงานเสร็จ
 ```
