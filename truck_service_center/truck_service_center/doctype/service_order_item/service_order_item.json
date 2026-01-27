@@ -15,6 +15,9 @@
   "amount",
   "section_break_1",
   "warehouse",
+  "material_issue",
+  "material_issue_status",
+  "column_break_2",
   "expense_account",
   "cost_center"
  ],
@@ -85,6 +88,23 @@
    "fieldtype": "Link",
    "label": "\u0e04\u0e25\u0e31\u0e07\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
    "options": "Warehouse"
+  },
+  {
+   "fieldname": "material_issue",
+   "fieldtype": "Link",
+   "label": "\u0e43\u0e1a\u0e40\u0e1a\u0e34\u0e01\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "material_issue_status",
+   "fieldtype": "Data",
+   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e43\u0e1a\u0e40\u0e1b\u0e34\u0e01",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "expense_account",

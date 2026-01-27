@@ -41,6 +41,7 @@
   "actual_time",
   "priority",
   "service_items_section",
+  "material_issue_summary",
   "service_items",
   "pricing_section",
   "total_parts_amount",
@@ -275,6 +276,11 @@
    "fieldname": "service_items_section",
    "fieldtype": "Section Break",
    "label": "รายการบริการและอะไหล่"
+  },
+  {
+   "fieldname": "material_issue_summary",
+   "fieldtype": "HTML",
+   "label": "สรุปใบเบิกอะไหล่"
   },
   {
    "fieldname": "service_items",

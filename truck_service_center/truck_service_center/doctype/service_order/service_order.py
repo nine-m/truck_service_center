@@ -11,6 +11,7 @@ class ServiceOrder(Document):
 		self.apply_service_package()
 		self.calculate_totals()
 		self.update_payment_status()
+		self.update_material_issue_status()
 	
 	def apply_service_package(self):
 		"""นำรายการบริการจากแพ็คเกจมาใส่ใน service_items"""
@@ -64,6 +65,21 @@ class ServiceOrder(Document):
 			self.payment_status = "Paid"
 		else:
 			self.payment_status = "Partially Paid"
+	
+	def update_material_issue_status(self):
+		"""อัพเดทสถานะ Material Issue ในแต่ละ Item"""
+		for item in self.service_items:
+			if item.material_issue:
+				# ดึงสถานะจาก Stock Entry
+				status = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
+				if status == 0:
+					item.material_issue_status = "Draft"
+				elif status == 1:
+					item.material_issue_status = "Submitted"
+				elif status == 2:
+					item.material_issue_status = "Cancelled"
+			else:
+				item.material_issue_status = None
 	
 	def on_submit(self):
 		"""เมื่อ submit ให้สร้าง Stock Entry และอัพเดทข้อมูลรถ"""
@@ -291,4 +307,165 @@ def get_item_rate(item_code, customer=None, price_list=None):
 		"item_name": item_data.item_name if item_data else "",
 		"description": item_data.description if item_data else "",
 		"uom": item_data.stock_uom if item_data else ""
+	}
+
+
+@frappe.whitelist()
+def create_material_issue(service_order, item_rows=None):
+	"""สร้าง Material Issue สำหรับ items ที่ยังไม่มีใบเบิก
+	
+	Args:
+		service_order: ชื่อของ Service Order
+		item_rows: list ของ row indices ที่ต้องการสร้าง Material Issue (ถ้าไม่ระบุจะสร้างทั้งหมด)
+	"""
+	import json
+	
+	if isinstance(item_rows, str):
+		item_rows = json.loads(item_rows)
+	
+	doc = frappe.get_doc("Service Order", service_order)
+	
+	# ดึง settings
+	settings = frappe.get_single("Truck Service Center Settings")
+	
+	# สร้าง Stock Entry
+	stock_entry = frappe.new_doc("Stock Entry")
+	stock_entry.stock_entry_type = "Material Issue"
+	stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
+	stock_entry.set_posting_time = 1
+	stock_entry.posting_date = doc.service_date
+	stock_entry.custom_service_order = service_order  # Link กลับไป Service Order
+	
+	items_added = []
+	
+	for idx, item in enumerate(doc.service_items):
+		# ถ้าระบุ item_rows ให้ตรวจสอบว่า item นี้อยู่ในรายการหรือไม่
+		if item_rows and idx not in item_rows:
+			continue
+		
+		# ข้าม item ที่มี Material Issue แล้ว
+		if item.material_issue:
+			continue
+		
+		# ตรวจสอบว่าเป็น stock item
+		is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+		if not is_stock_item:
+			continue
+		
+		# เลือกคลัง
+		s_warehouse = item.warehouse or settings.default_source_warehouse or settings.default_warehouse
+		if not s_warehouse:
+			frappe.msgprint(f"ไม่พบคลังสินค้าสำหรับ {item.item_code}", indicator="orange")
+			continue
+		
+		stock_entry.append("items", {
+			"item_code": item.item_code,
+			"qty": item.qty,
+			"s_warehouse": s_warehouse,
+			"cost_center": item.cost_center or settings.default_cost_center,
+			"expense_account": item.expense_account or settings.default_expense_account,
+			"basic_rate": item.rate,
+			"custom_service_order_item_idx": idx  # เก็บ index เพื่อ link กลับ
+		})
+		items_added.append(idx)
+	
+	if not stock_entry.items:
+		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
+	
+	stock_entry.insert()
+	
+	# อัพเดท Material Issue reference ใน Service Order Items
+	for idx in items_added:
+		doc.service_items[idx].material_issue = stock_entry.name
+		doc.service_items[idx].material_issue_status = "Draft"
+	
+	doc.save()
+	
+	frappe.msgprint(f"สร้าง Material Issue: {stock_entry.name}")
+	
+	return stock_entry.name
+
+
+@frappe.whitelist()
+def sync_material_issue(service_order, material_issue):
+	"""ซิงค์ข้อมูลจาก Material Issue กลับมายัง Service Order
+	
+	Args:
+		service_order: ชื่อของ Service Order
+		material_issue: ชื่อของ Stock Entry (Material Issue)
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	stock_entry = frappe.get_doc("Stock Entry", material_issue)
+	
+	# ตรวจสอบว่า Material Issue ยัง Draft อยู่หรือไม่
+	if stock_entry.docstatus != 0:
+		frappe.throw("สามารถ Sync ได้เฉพาะ Material Issue ที่อยู่ในสถานะ Draft เท่านั้น")
+	
+	# อัพเดทข้อมูลจาก Stock Entry กลับมายัง Service Order Items
+	updated_items = []
+	
+	for stock_item in stock_entry.items:
+		# หา item ใน Service Order ที่ตรงกัน
+		idx = stock_item.get("custom_service_order_item_idx")
+		
+		if idx is not None and idx < len(doc.service_items):
+			service_item = doc.service_items[idx]
+			
+			# อัพเดทข้อมูล
+			service_item.qty = stock_item.qty
+			service_item.rate = stock_item.basic_rate or stock_item.valuation_rate
+			service_item.warehouse = stock_item.s_warehouse
+			
+			updated_items.append(service_item.item_code)
+	
+	doc.save()
+	
+	if updated_items:
+		frappe.msgprint(f"Sync ข้อมูลจาก Material Issue เรียบร้อย: {', '.join(updated_items)}")
+	else:
+		frappe.msgprint("ไม่พบรายการที่ต้อง Sync", indicator="orange")
+	
+	return True
+
+
+@frappe.whitelist()
+def get_material_issue_summary(service_order):
+	"""ดึงสรุปข้อมูล Material Issues ทั้งหมดของ Service Order
+	
+	Returns:
+		dict: สถิติและรายการ Material Issues
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	
+	# รวบรวม Material Issues ทั้งหมด
+	material_issues = {}
+	
+	for item in doc.service_items:
+		if item.material_issue:
+			if item.material_issue not in material_issues:
+				# ดึงข้อมูล Stock Entry
+				stock_entry = frappe.db.get_value(
+					"Stock Entry",
+					item.material_issue,
+					["name", "docstatus", "posting_date", "total_amount"],
+					as_dict=1
+				)
+				
+				if stock_entry:
+					status_map = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
+					material_issues[item.material_issue] = {
+						"name": stock_entry.name,
+						"status": status_map.get(stock_entry.docstatus, "Unknown"),
+						"posting_date": stock_entry.posting_date,
+						"total_amount": stock_entry.total_amount,
+						"item_count": 0
+					}
+			
+			# นับจำนวน items
+			if item.material_issue in material_issues:
+				material_issues[item.material_issue]["item_count"] += 1
+	
+	return {
+		"total_count": len(material_issues),
+		"material_issues": list(material_issues.values())
 	}

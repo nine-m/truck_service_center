@@ -11,6 +11,21 @@ frappe.ui.form.on('Service Order', {
 		// ตั้งค่า filter สำหรับ service_type ใน child table
 		setup_service_type_filter(frm);
 		
+		// แสดงสรุป Material Issues
+		show_material_issue_summary(frm);
+		
+		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
+		if (frm.doc.docstatus === 0 && frm.doc.service_items && frm.doc.service_items.length > 0) {
+			// ตรวจสอบว่ามี item ที่ยังไม่มี Material Issue หรือไม่
+			let has_unlinked_items = frm.doc.service_items.some(item => !item.material_issue && item.item_code);
+			
+			if (has_unlinked_items) {
+				frm.add_custom_button(__('Create Material Issue'), function() {
+					create_material_issue_dialog(frm);
+				}, __('Actions'));
+			}
+		}
+		
 		// ปุ่มสร้าง Sales Invoice
 		if (frm.doc.docstatus === 1 && !frm.doc.sales_invoice) {
 			frm.add_custom_button(__('Create Sales Invoice'), function() {
@@ -212,6 +227,29 @@ frappe.ui.form.on('Service Order Item', {
 	
 	service_items_remove: function(frm) {
 		calculate_totals(frm);
+	},
+	
+	material_issue: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		// ถ้ามี Material Issue ให้ทำให้ field อื่นเป็น read-only
+		if (row.material_issue) {
+			// ดึงสถานะของ Material Issue
+			frappe.db.get_value('Stock Entry', row.material_issue, 'docstatus', function(r) {
+				if (r && r.docstatus !== undefined) {
+					let status_map = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
+					frappe.model.set_value(cdt, cdn, 'material_issue_status', status_map[r.docstatus]);
+					
+					// ถ้า Material Issue เป็น Submitted แล้ว ไม่ให้แก้ไข item นี้
+					if (r.docstatus === 1) {
+						frm.fields_dict.service_items.grid.update_docfield_property('item_code', 'read_only', 1, cdn);
+						frm.fields_dict.service_items.grid.update_docfield_property('qty', 'read_only', 1, cdn);
+						frm.fields_dict.service_items.grid.update_docfield_property('rate', 'read_only', 1, cdn);
+						frm.fields_dict.service_items.grid.update_docfield_property('warehouse', 'read_only', 1, cdn);
+					}
+				}
+			});
+		}
 	}
 });
 
@@ -321,3 +359,106 @@ function setup_service_type_filter(frm) {
 		};
 	});
 }
+
+function show_material_issue_summary(frm) {
+	if (!frm.doc.name || frm.doc.__islocal) return;
+	
+	frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_material_issue_summary',
+		args: {
+			service_order: frm.doc.name
+		},
+		callback: function(r) {
+			if (r.message) {
+				let summary = r.message;
+				let html = '';
+				
+				if (summary.total_count > 0) {
+					html = '<div class="row">';
+					html += '<div class="col-12"><h5>Material Issues (' + summary.total_count + ')</h5></div>';
+					
+					summary.material_issues.forEach(function(issue) {
+						let badge_class = issue.status === 'Submitted' ? 'success' : 
+										  issue.status === 'Draft' ? 'warning' : 'danger';
+						
+						html += '<div class="col-md-6 col-12" style="margin-bottom: 10px;">';
+						html += '<div class="card" style="border-left: 3px solid var(--bs-' + badge_class + ');">';
+						html += '<div class="card-body" style="padding: 10px;">';
+						html += '<a href="/app/stock-entry/' + issue.name + '" target="_blank"><strong>' + issue.name + '</strong></a>';
+						html += '<span class="badge badge-' + badge_class + '" style="float: right;">' + issue.status + '</span>';
+						html += '<br><small>' + issue.posting_date + ' | Items: ' + issue.item_count + '</small>';
+						
+						// ปุ่ม Sync สำหรับ Draft
+						if (issue.status === 'Draft') {
+							html += '<br><button class="btn btn-xs btn-default" style="margin-top: 5px;" ';
+							html += 'onclick="sync_material_issue(\'' + frm.doc.name + '\', \'' + issue.name + '\')">';
+							html += '<i class="fa fa-refresh"></i> Sync</button>';
+						}
+						
+						html += '</div></div></div>';
+					});
+					
+					html += '</div>';
+				} else {
+					html = '<p class="text-muted">ยังไม่มี Material Issue</p>';
+				}
+				
+				frm.fields_dict.material_issue_summary.$wrapper.html(html);
+			}
+		}
+	});
+}
+
+function create_material_issue_dialog(frm) {
+	// แสดง dialog เพื่อให้เลือก items ที่จะสร้าง Material Issue
+	let unlinked_items = [];
+	
+	frm.doc.service_items.forEach(function(item, idx) {
+		if (!item.material_issue && item.item_code) {
+			unlinked_items.push({
+				idx: idx,
+				item_code: item.item_code,
+				item_name: item.item_name,
+				qty: item.qty,
+				warehouse: item.warehouse
+			});
+		}
+	});
+	
+	if (unlinked_items.length === 0) {
+		frappe.msgprint(__('All items are already linked to Material Issues'));
+		return;
+	}
+	
+	// สร้าง Material Issue สำหรับทุก item ที่ยังไม่ link
+	frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.create_material_issue',
+		args: {
+			service_order: frm.doc.name
+		},
+		callback: function(r) {
+			if (r.message) {
+				frappe.show_alert({
+					message: __('Material Issue {0} created', [r.message]),
+					indicator: 'green'
+				});
+				frm.reload_doc();
+			}
+		}
+	});
+}
+
+window.sync_material_issue = function(service_order, material_issue) {
+	frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.sync_material_issue',
+		args: {
+			service_order: service_order,
+			material_issue: material_issue
+		},
+		callback: function(r) {
+			if (r.message) {
+				cur_frm.reload_doc();
+			}
+		}
+	});
+};
