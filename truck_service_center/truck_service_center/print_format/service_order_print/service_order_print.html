@@ -1,0 +1,567 @@
+{% set company = frappe.get_doc("Company", doc.company) if doc.company else None %}
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap');
+    
+    * {
+        font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    .print-format {
+        font-size: 11pt;
+        color: #333;
+        line-height: 1.5;
+    }
+    
+    .header-section {
+        border-bottom: 3px solid #2c3e50;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .company-name {
+        font-size: 22pt;
+        font-weight: 700;
+        color: #2c3e50;
+        margin: 0;
+        text-transform: uppercase;
+    }
+    
+    .document-title {
+        font-size: 16pt;
+        font-weight: 600;
+        color: #e74c3c;
+        margin: 5px 0;
+    }
+    
+    .header-info {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+    }
+    
+    .info-box {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+    
+    .info-box-title {
+        font-size: 10pt;
+        font-weight: 600;
+        color: #6c757d;
+        text-transform: uppercase;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 5px;
+        margin-bottom: 8px;
+    }
+    
+    .info-row {
+        display: flex;
+        margin-bottom: 5px;
+    }
+    
+    .info-label {
+        font-weight: 600;
+        min-width: 140px;
+        color: #495057;
+    }
+    
+    .info-value {
+        flex: 1;
+        color: #212529;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 9pt;
+        text-transform: uppercase;
+    }
+    
+    .status-completed { background: #d4edda; color: #155724; }
+    .status-in-progress { background: #fff3cd; color: #856404; }
+    .status-draft { background: #e7e7e7; color: #6c757d; }
+    .status-cancelled { background: #f8d7da; color: #721c24; }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 15px;
+        font-size: 10pt;
+    }
+    
+    .service-table th {
+        background: #34495e;
+        color: white;
+        font-weight: 600;
+        padding: 10px 8px;
+        text-align: left;
+        border: 1px solid #2c3e50;
+    }
+    
+    .service-table td {
+        padding: 8px;
+        border: 1px solid #dee2e6;
+    }
+    
+    .service-table tbody tr:nth-child(even) {
+        background: #f8f9fa;
+    }
+    
+    .text-right {
+        text-align: right;
+    }
+    
+    .text-center {
+        text-align: center;
+    }
+    
+    .totals-section {
+        margin-top: 20px;
+        border-top: 2px solid #2c3e50;
+        padding-top: 15px;
+    }
+    
+    .total-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 8px;
+        font-size: 11pt;
+    }
+    
+    .total-label {
+        font-weight: 600;
+        min-width: 180px;
+        text-align: right;
+        padding-right: 15px;
+        color: #495057;
+    }
+    
+    .total-value {
+        min-width: 150px;
+        text-align: right;
+        color: #212529;
+    }
+    
+    .grand-total {
+        font-size: 14pt;
+        font-weight: 700;
+        color: #e74c3c;
+        border-top: 2px solid #2c3e50;
+        padding-top: 10px;
+        margin-top: 10px;
+    }
+    
+    .notes-section {
+        margin-top: 20px;
+        padding: 12px;
+        background: #f8f9fa;
+        border-left: 4px solid #3498db;
+        border-radius: 3px;
+    }
+    
+    .notes-title {
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 5px;
+    }
+    
+    .signature-section {
+        margin-top: 40px;
+        page-break-inside: avoid;
+    }
+    
+    .signature-box {
+        display: inline-block;
+        width: 45%;
+        text-align: center;
+        margin: 10px 2%;
+    }
+    
+    .signature-line {
+        border-top: 1px solid #333;
+        margin: 50px 20px 5px 20px;
+        padding-top: 5px;
+    }
+    
+    .footer-note {
+        margin-top: 30px;
+        padding-top: 15px;
+        border-top: 1px solid #dee2e6;
+        text-align: center;
+        font-size: 9pt;
+        color: #6c757d;
+    }
+    
+    @media print {
+        .info-box {
+            page-break-inside: avoid;
+        }
+        
+        .service-table {
+            page-break-inside: auto;
+        }
+        
+        .service-table tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+    }
+</style>
+
+<div class="print-format">
+    <!-- Header -->
+    <div class="header-section">
+        <h1 class="company-name">
+            {{ company.company_name if company else "ศูนย์บริการรถ" }}
+        </h1>
+        <div class="document-title">ใบสั่งงานบริการ / SERVICE ORDER</div>
+        <div class="header-info">
+            <div style="flex: 1;">
+                {% if company and company.company_address %}
+                <div style="font-size: 9pt; color: #6c757d;">
+                    {{ company.company_address }}
+                </div>
+                {% endif %}
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 12pt; font-weight: 600;">เลขที่: {{ doc.name }}</div>
+                <div style="font-size: 9pt; color: #6c757d;">
+                    วันที่: {{ frappe.utils.format_datetime(doc.service_date, "dd/MM/yyyy HH:mm") }}
+                </div>
+                <div style="margin-top: 5px;">
+                    <span class="status-badge status-{{ doc.status.lower().replace(' ', '-') }}">
+                        {{ doc.status }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer and Vehicle Information -->
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+        <div style="flex: 1;">
+            <div class="info-box">
+                <div class="info-box-title">ข้อมูลลูกค้า</div>
+                <div class="info-row">
+                    <div class="info-label">ชื่อลูกค้า:</div>
+                    <div class="info-value">{{ doc.customer }}</div>
+                </div>
+                {% if doc.contact_person %}
+                <div class="info-row">
+                    <div class="info-label">ผู้ติดต่อ:</div>
+                    <div class="info-value">{{ doc.contact_person }}</div>
+                </div>
+                {% endif %}
+                {% if doc.contact_number %}
+                <div class="info-row">
+                    <div class="info-label">โทรศัพท์:</div>
+                    <div class="info-value">{{ doc.contact_number }}</div>
+                </div>
+                {% endif %}
+                {% if doc.email %}
+                <div class="info-row">
+                    <div class="info-label">อีเมล:</div>
+                    <div class="info-value">{{ doc.email }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div style="flex: 1;">
+            <div class="info-box">
+                <div class="info-box-title">ข้อมูลรถ</div>
+                <div class="info-row">
+                    <div class="info-label">ทะเบียนรถ:</div>
+                    <div class="info-value" style="font-weight: 700; font-size: 12pt; color: #e74c3c;">
+                        {{ doc.vehicle }}
+                    </div>
+                </div>
+                {% if doc.brand %}
+                <div class="info-row">
+                    <div class="info-label">ยี่ห้อ/รุ่น:</div>
+                    <div class="info-value">{{ doc.brand }} {{ doc.model or '' }}</div>
+                </div>
+                {% endif %}
+                {% if doc.vehicle_type %}
+                <div class="info-row">
+                    <div class="info-label">ประเภทรถ:</div>
+                    <div class="info-value">{{ doc.vehicle_type }}</div>
+                </div>
+                {% endif %}
+                {% if doc.current_mileage %}
+                <div class="info-row">
+                    <div class="info-label">เลขไมล์:</div>
+                    <div class="info-value">{{ "{:,.0f}".format(doc.current_mileage) }} กม.</div>
+                </div>
+                {% endif %}
+                {% if doc.fuel_level_in %}
+                <div class="info-row">
+                    <div class="info-label">สถานะน้ำมัน:</div>
+                    <div class="info-value">{{ doc.fuel_level_in }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Technician and Time Information -->
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+        {% if doc.technician or doc.received_by %}
+        <div style="flex: 1;">
+            <div class="info-box">
+                <div class="info-box-title">ข้อมูลช่างและพนักงาน</div>
+                {% if doc.received_by %}
+                <div class="info-row">
+                    <div class="info-label">พนักงานรับรถ:</div>
+                    <div class="info-value">{{ frappe.db.get_value("User", doc.received_by, "full_name") or doc.received_by }}</div>
+                </div>
+                {% endif %}
+                {% if doc.technician %}
+                <div class="info-row">
+                    <div class="info-label">ช่างผู้รับผิดชอบ:</div>
+                    <div class="info-value">
+                        {{ frappe.db.get_value("User", doc.technician, "full_name") or doc.technician }}
+                        {% if doc.technician_2 %}
+                        , {{ frappe.db.get_value("User", doc.technician_2, "full_name") or doc.technician_2 }}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div style="flex: 1;">
+            <div class="info-box">
+                <div class="info-box-title">เวลาและความสำคัญ</div>
+                {% if doc.estimated_time %}
+                <div class="info-row">
+                    <div class="info-label">เวลาประมาณการ:</div>
+                    <div class="info-value">{{ doc.estimated_time }} ชม.</div>
+                </div>
+                {% endif %}
+                {% if doc.actual_time %}
+                <div class="info-row">
+                    <div class="info-label">เวลาจริง:</div>
+                    <div class="info-value">{{ doc.actual_time }} ชม.</div>
+                </div>
+                {% endif %}
+                {% if doc.priority %}
+                <div class="info-row">
+                    <div class="info-label">ความสำคัญ:</div>
+                    <div class="info-value">{{ doc.priority }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Complaints -->
+    {% if doc.customer_complaints %}
+    <div class="notes-section">
+        <div class="notes-title">อาการที่แจ้ง / Customer Complaints:</div>
+        <div>{{ doc.customer_complaints|safe }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Service Types -->
+    {% if doc.service_types %}
+    <div style="margin-top: 20px;">
+        <h3 style="font-size: 12pt; font-weight: 600; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">
+            รายการประเภทบริการ / Service Types
+        </h3>
+        <table class="service-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">#</th>
+                    <th style="width: 40%;">ประเภทบริการ</th>
+                    <th style="width: 25%;">กลุ่ม</th>
+                    <th style="width: 15%; text-align: right;">เวลา (ชม.)</th>
+                    <th style="width: 15%; text-align: right;">ค่าแรง (บาท)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in doc.service_types %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td>{{ item.service_type }}</td>
+                    <td>{{ item.service_group or '-' }}</td>
+                    <td class="text-right">{{ "{:.2f}".format(item.estimated_time or 0) }}</td>
+                    <td class="text-right">{{ "{:,.2f}".format(item.labor_charges or 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Service Items/Parts -->
+    {% if doc.service_items %}
+    <div style="margin-top: 20px;">
+        <h3 style="font-size: 12pt; font-weight: 600; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">
+            รายการอะไหล่และบริการ / Parts & Services
+        </h3>
+        <table class="service-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">#</th>
+                    <th style="width: 15%;">รหัส</th>
+                    <th style="width: 35%;">รายการ</th>
+                    <th style="width: 10%; text-align: center;">จำนวน</th>
+                    <th style="width: 10%; text-align: center;">หน่วย</th>
+                    <th style="width: 12%; text-align: right;">ราคา/หน่วย</th>
+                    <th style="width: 13%; text-align: right;">จำนวนเงิน</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in doc.service_items %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td>{{ item.item_code }}</td>
+                    <td>
+                        {{ item.item_name or item.item_code }}
+                        {% if item.description %}
+                        <br><small style="color: #6c757d;">{{ item.description }}</small>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ "{:.2f}".format(item.qty or 0) }}</td>
+                    <td class="text-center">{{ item.uom or '-' }}</td>
+                    <td class="text-right">{{ "{:,.2f}".format(item.rate or 0) }}</td>
+                    <td class="text-right">{{ "{:,.2f}".format(item.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Totals -->
+    <div class="totals-section">
+        <div class="total-row">
+            <div class="total-label">รวมค่าอะไหล่:</div>
+            <div class="total-value">{{ "{:,.2f}".format(doc.total_parts_amount or 0) }}</div>
+        </div>
+        <div class="total-row">
+            <div class="total-label">รวมค่าแรง:</div>
+            <div class="total-value">{{ "{:,.2f}".format(doc.labor_charges or 0) }}</div>
+        </div>
+        {% if doc.discount_amount %}
+        <div class="total-row">
+            <div class="total-label">ส่วนลด:</div>
+            <div class="total-value" style="color: #e74c3c;">-{{ "{:,.2f}".format(doc.discount_amount) }}</div>
+        </div>
+        {% endif %}
+        {% if doc.tax_amount %}
+        <div class="total-row">
+            <div class="total-label">ภาษี:</div>
+            <div class="total-value">{{ "{:,.2f}".format(doc.tax_amount) }}</div>
+        </div>
+        {% endif %}
+        <div class="total-row grand-total">
+            <div class="total-label">ยอดรวมทั้งหมด / GRAND TOTAL:</div>
+            <div class="total-value">{{ "{:,.2f}".format(doc.total_amount or 0) }}</div>
+        </div>
+    </div>
+
+    <!-- Payment Information -->
+    {% if doc.paid_amount or doc.payment_status %}
+    <div style="margin-top: 15px;">
+        <div class="info-box">
+            <div class="info-box-title">ข้อมูลการชำระเงิน</div>
+            <div style="display: flex; gap: 30px;">
+                <div class="info-row" style="flex: 1;">
+                    <div class="info-label">สถานะการชำระ:</div>
+                    <div class="info-value">{{ doc.payment_status }}</div>
+                </div>
+                {% if doc.payment_method %}
+                <div class="info-row" style="flex: 1;">
+                    <div class="info-label">วิธีชำระเงิน:</div>
+                    <div class="info-value">{{ doc.payment_method }}</div>
+                </div>
+                {% endif %}
+            </div>
+            <div style="display: flex; gap: 30px; margin-top: 5px;">
+                <div class="info-row" style="flex: 1;">
+                    <div class="info-label">ยอดชำระแล้ว:</div>
+                    <div class="info-value" style="font-weight: 600; color: #28a745;">
+                        {{ "{:,.2f}".format(doc.paid_amount or 0) }} บาท
+                    </div>
+                </div>
+                <div class="info-row" style="flex: 1;">
+                    <div class="info-label">ยอดค้าง:</div>
+                    <div class="info-value" style="font-weight: 600; color: {{ '#e74c3c' if (doc.outstanding_amount or 0) > 0 else '#28a745' }};">
+                        {{ "{:,.2f}".format(doc.outstanding_amount or 0) }} บาท
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Service Notes and Recommendations -->
+    {% if doc.service_notes or doc.technician_remarks or doc.recommendations %}
+    <div style="margin-top: 20px;">
+        {% if doc.service_notes %}
+        <div class="notes-section" style="margin-bottom: 10px;">
+            <div class="notes-title">บันทึกการบริการ / Service Notes:</div>
+            <div>{{ doc.service_notes|safe }}</div>
+        </div>
+        {% endif %}
+        
+        {% if doc.technician_remarks %}
+        <div class="notes-section" style="margin-bottom: 10px;">
+            <div class="notes-title">คำแนะนำจากช่าง / Technician Remarks:</div>
+            <div>{{ doc.technician_remarks|safe }}</div>
+        </div>
+        {% endif %}
+        
+        {% if doc.recommendations %}
+        <div class="notes-section">
+            <div class="notes-title">คำแนะนำเพิ่มเติม / Recommendations:</div>
+            <div>{{ doc.recommendations|safe }}</div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Signatures -->
+    <div class="signature-section">
+        <div style="display: flex; justify-content: space-between;">
+            <div class="signature-box">
+                <div class="signature-line">
+                    ลายเซ็นช่างผู้รับผิดชอบ<br>
+                    <small style="font-size: 9pt; color: #6c757d;">Technician Signature</small>
+                </div>
+                <div style="margin-top: 5px; font-size: 9pt;">
+                    วันที่: _____/_____/_________
+                </div>
+            </div>
+            
+            <div class="signature-box">
+                <div class="signature-line">
+                    ลายเซ็นลูกค้า/ผู้รับมอบ<br>
+                    <small style="font-size: 9pt; color: #6c757d;">Customer Signature</small>
+                </div>
+                <div style="margin-top: 5px; font-size: 9pt;">
+                    วันที่: _____/_____/_________
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-note">
+        <div style="margin-bottom: 5px;">
+            <strong>หมายเหตุ:</strong> กรุณาตรวจสอบรายการและรับรถภายใน 7 วัน มิฉะนั้นทางร้านจะไม่รับผิดชอบความเสียหายใดๆ
+        </div>
+        <div style="font-size: 8pt; color: #adb5bd;">
+            เอกสารฉบับนี้ออกโดยระบบอัตโนมัติ | Generated by Truck Service Center System
+        </div>
+    </div>
+</div>

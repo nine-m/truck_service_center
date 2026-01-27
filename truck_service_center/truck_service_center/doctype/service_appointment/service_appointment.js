@@ -75,6 +75,9 @@ frappe.ui.form.on('Service Appointment', {
 		
 		// ตั้งค่า filter สำหรับ vehicle
 		set_vehicle_filter(frm);
+		
+		// ตั้งค่า filter สำหรับ service_type
+		set_service_type_filter(frm);
 	},
 	
 	customer: function(frm) {
@@ -86,6 +89,20 @@ frappe.ui.form.on('Service Appointment', {
 			frappe.db.get_value('Vehicle', frm.doc.vehicle, 'customer', function(r) {
 				if (r && r.customer !== frm.doc.customer) {
 					frm.set_value('vehicle', '');
+				}
+			});
+		}
+	},
+	
+	service_type_group: function(frm) {
+		// ตั้งค่า filter สำหรับ service_type
+		set_service_type_filter(frm);
+		
+		// ล้างค่า service_type ถ้าเปลี่ยน group
+		if (frm.doc.service_type) {
+			frappe.db.get_value('Service Type', frm.doc.service_type, 'service_type_group', function(r) {
+				if (r && r.service_type_group !== frm.doc.service_type_group) {
+					frm.set_value('service_type', '');
 				}
 			});
 		}
@@ -144,6 +161,27 @@ function set_vehicle_filter(frm) {
 			return {
 				filters: {
 					'status': 'Active'
+				}
+			};
+		});
+	}
+}
+
+function set_service_type_filter(frm) {
+	if (frm.doc.service_type_group) {
+		frm.set_query('service_type', function() {
+			return {
+				filters: {
+					'service_type_group': frm.doc.service_type_group,
+					'is_active': 1
+				}
+			};
+		});
+	} else {
+		frm.set_query('service_type', function() {
+			return {
+				filters: {
+					'is_active': 1
 				}
 			};
 		});

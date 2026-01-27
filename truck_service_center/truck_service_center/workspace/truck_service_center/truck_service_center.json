@@ -1,7 +1,7 @@
 {
  "app": "truck_service_center",
  "charts": [],
- "content": "[{\"id\":\"hdr_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Truck Service Center</b></span>\",\"col\":12}},{\"id\":\"sc_appointment\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment\",\"col\":3}},{\"id\":\"sc_service_order\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Order\",\"col\":3}},{\"id\":\"sc_vehicle\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Vehicle\",\"col\":3}},{\"id\":\"sc_service_type\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type\",\"col\":3}},{\"id\":\"Y6NOCvJKeL\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Package\",\"col\":3}},{\"id\":\"spacer1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"hdr_admin\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin &amp; Settings</b></span>\",\"col\":12}},{\"id\":\"sc_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Truck Service Center Settings\",\"col\":4}},{\"id\":\"sc_slot\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment Slot\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Truck Service Center</b></span>\",\"col\":12}},{\"id\":\"sc_vehicle\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Vehicle\",\"col\":4}},{\"id\":\"sc_appointment\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment\",\"col\":4}},{\"id\":\"sc_service_order\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Order\",\"col\":4}},{\"id\":\"spacer1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"KExoBj2aYE\",\"type\":\"paragraph\",\"data\":{\"text\":\"Master Data\",\"col\":12}},{\"id\":\"I53F07N0HQ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type\",\"col\":4}},{\"id\":\"EF06wiZrln\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type Group\",\"col\":4}},{\"id\":\"YQSbUNA9j0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Package\",\"col\":4}},{\"id\":\"hdr_admin\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin &amp; Settings</b></span>\",\"col\":12}},{\"id\":\"sc_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Truck Service Center Settings\",\"col\":4}},{\"id\":\"sc_slot\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment Slot\",\"col\":4}}]",
  "creation": "2026-01-09 10:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -80,7 +80,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-01-15 14:13:21.086510",
+ "modified": "2026-01-27 07:52:30.234972",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",
@@ -101,8 +101,8 @@
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Service Package",
-   "link_to": "Service Package",
+   "label": "Service Type",
+   "link_to": "Service Type",
    "stats_filter": "[]",
    "type": "DocType"
   },
@@ -112,13 +112,24 @@
    "type": "DocType"
   },
   {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Service Type Group",
+   "link_to": "Service Type Group",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
    "label": "Vehicle",
    "link_to": "Vehicle",
    "type": "DocType"
   },
   {
-   "label": "Service Type",
-   "link_to": "Service Type",
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Service Package",
+   "link_to": "Service Package",
+   "stats_filter": "[]",
    "type": "DocType"
   },
   {

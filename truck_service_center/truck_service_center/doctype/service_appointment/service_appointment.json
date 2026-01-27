@@ -8,23 +8,29 @@
  "engine": "InnoDB",
  "field_order": [
   "naming_series",
+  "status",
+  "column_break_1",
   "appointment_date",
   "appointment_slot",
   "appointment_start",
   "appointment_end",
   "all_day",
-  "status",
-  "column_break_1",
+  "customer_vehicle_section",
   "customer",
   "vehicle",
+  "column_break_cv",
   "license_plate",
   "contact_number",
   "service_details_section",
+  "service_type_group",
   "service_type",
-  "estimated_duration",
   "column_break_2",
+  "estimated_duration",
   "assigned_technician",
-  "notes",
+  "repair_details_section",
+  "repair_cause",
+  "column_break_repair",
+  "service_remark",
   "reference_section",
   "service_order",
   "column_break_3",
@@ -91,6 +97,11 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "customer_vehicle_section",
+   "fieldtype": "Section Break",
+   "label": "ข้อมูลลูกค้าและรถ"
+  },
+  {
    "fieldname": "customer",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -107,15 +118,19 @@
    "options": "Vehicle",
    "reqd": 1
   },
-    {
-     "fetch_from": "vehicle.license_plate",
-     "fieldname": "license_plate",
-     "fieldtype": "Data",
-     "in_list_view": 1,
-     "in_standard_filter": 1,
-     "label": "ทะเบียนรถ",
-     "read_only": 1
-    },
+  {
+   "fieldname": "column_break_cv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "vehicle.license_plate",
+   "fieldname": "license_plate",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ทะเบียนรถ",
+   "read_only": 1
+  },
   {
    "fetch_from": "vehicle.contact_number",
    "fieldname": "contact_number",
@@ -129,10 +144,17 @@
    "label": "รายละเอียดบริการ"
   },
   {
+   "fieldname": "service_type_group",
+   "fieldtype": "Link",
+   "label": "กลุ่มบริการ",
+   "options": "Service Type Group"
+  },
+  {
    "fieldname": "service_type",
    "fieldtype": "Link",
    "label": "ประเภทบริการ",
-   "options": "Service Type"
+   "options": "Service Type",
+   "reqd": 1
   },
   {
    "fetch_from": "service_type.default_duration",
@@ -152,9 +174,23 @@
    "options": "User"
   },
   {
-   "fieldname": "notes",
-   "fieldtype": "Text Editor",
-   "label": "หมายเหตุ"
+   "fieldname": "repair_details_section",
+   "fieldtype": "Section Break",
+   "label": "รายละเอียดการซ่อม"
+  },
+  {
+   "fieldname": "repair_cause",
+   "fieldtype": "Data",
+   "label": "สาเหตุที่ซ่อม"
+  },
+  {
+   "fieldname": "column_break_repair",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "service_remark",
+   "fieldtype": "Data",
+   "label": "หมายเหตุบริการ"
   },
   {
    "collapsible": 1,

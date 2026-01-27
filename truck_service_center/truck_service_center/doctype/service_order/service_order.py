@@ -69,8 +69,22 @@ class ServiceOrder(Document):
 		"""เมื่อ submit ให้สร้าง Stock Entry และอัพเดทข้อมูลรถ"""
 		self.create_stock_entry()
 		self.update_vehicle_info()
+    
+	def before_submit(self):
+		"""ก่อน submit ให้ตรวจสอบเงื่อนไขและตั้งสถานะเป็น Completed"""
+		# 1. ต้องมีการสร้าง service type อย่างน้อย 1 รายการ
+		if not self.service_types:
+			frappe.throw("กรุณาเพิ่มประเภทบริการอย่างน้อย 1 รายการก่อน Submit")
+		
+		# 2. ราคายอดรวมทั้งหมดต้องมากกว่า 0
+		if flt(self.total_amount) <= 0:
+			frappe.throw("ยอดรวมทั้งหมดต้องมากกว่า 0")
+		
+		# 3. เวลาทำงานจริงต้องมากกว่า 0
+		if flt(self.actual_time) <= 0:
+			frappe.throw("กรุณาระบุเวลาทำงานจริงที่มากกว่า 0")
+		
 		self.status = "Completed"
-		self.save()
 	
 	def create_stock_entry(self):
 		"""สร้าง Stock Entry เพื่อตัดสต็อกอะไหล่"""

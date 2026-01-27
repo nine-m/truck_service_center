@@ -113,10 +113,16 @@ class ServiceAppointment(Document):
 		service_order.customer = self.customer
 		service_order.vehicle = self.vehicle
 		service_order.service_date = self.appointment_date
-		service_order.service_type = self.service_type
 		service_order.technician = self.assigned_technician
-		service_order.estimated_time = self.estimated_duration
-		service_order.customer_complaints = self.notes
+		
+		# รวม customer_complaints จาก repair_cause และ service_remark
+		complaints = []
+		if self.repair_cause:
+			complaints.append(f"สาเหตุที่ซ่อม: {self.repair_cause}")
+		if self.service_remark:
+			complaints.append(f"หมายเหตุ: {self.service_remark}")
+		if complaints:
+			service_order.customer_complaints = "\n".join(complaints)
 
 		# ดึงข้อมูลไมล์จากรถปัจจุบัน
 		vehicle_data = {}
@@ -127,20 +133,25 @@ class ServiceAppointment(Document):
 			if vehicle_data.get("current_mileage"):
 				service_order.current_mileage = vehicle_data.get("current_mileage")
 
-		# ดึง labor rate / duration จาก Service Type
+		# เพิ่ม Service Type ลงใน child table
 		if self.service_type:
 			service_type_data = frappe.db.get_value(
 				"Service Type",
 				self.service_type,
-				["labor_rate", "default_duration"],
+				["labor_rate", "default_duration", "service_type_group"],
 				as_dict=1,
 			)
+			
 			if service_type_data:
-				if service_type_data.get("labor_rate"):
-					service_order.labor_charges = service_type_data.get("labor_rate")
-				# ถ้า estimated_time ยังไม่ถูกกำหนดจาก appointment ให้ใช้ default_duration
-				if not service_order.estimated_time and service_type_data.get("default_duration"):
-					service_order.estimated_time = service_type_data.get("default_duration")
+				# สร้าง row ใน service_types child table
+				service_order.append("service_types", {
+					"service_type": self.service_type,
+					"service_type_group": self.service_type_group or service_type_data.get("service_type_group"),
+					"estimated_time": self.estimated_duration or service_type_data.get("default_duration"),
+					"labor_charges": service_type_data.get("labor_rate"),
+					"repair_cause": self.repair_cause,
+					"remark": self.service_remark
+				})
 		
 		service_order.insert()
 		
