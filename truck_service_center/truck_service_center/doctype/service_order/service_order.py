@@ -8,10 +8,44 @@ from frappe.utils import flt
 
 class ServiceOrder(Document):
 	def validate(self):
+		self.check_material_issue_items()
 		self.apply_service_package()
 		self.calculate_totals()
 		self.update_payment_status()
 		self.update_material_issue_status()
+	
+	def check_material_issue_items(self):
+		"""ตรวจสอบว่าไม่มีการลบแถวที่มี Material Issue ที่ submit ไปแล้ว"""
+		if self.is_new():
+			return
+		
+		# ดึงข้อมูลเดิมจาก database
+		old_doc = self.get_doc_before_save()
+		if not old_doc:
+			return
+		
+		# สร้าง set ของ item names ที่มีอยู่ในเอกสารปัจจุบัน
+		current_item_names = {item.name for item in self.service_items if item.name}
+		
+		# ตรวจสอบแต่ละ item ในเอกสารเดิม
+		for old_item in old_doc.service_items:
+			# ถ้า item ถูกลบออก (ไม่อยู่ใน current_item_names)
+			if old_item.name and old_item.name not in current_item_names:
+				# ตรวจสอบว่า item นี้มี Material Issue ที่ submit แล้วหรือไม่
+				if old_item.material_issue:
+					material_issue_status = frappe.db.get_value(
+						"Stock Entry", 
+						old_item.material_issue, 
+						"docstatus"
+					)
+					
+					if material_issue_status == 1:
+						frappe.throw(
+							f"ไม่สามารถลบรายการ '{old_item.item_name or old_item.item_code}' ได้ "
+							f"เนื่องจากใบเบิกอะไหล่ {old_item.material_issue} ถูก submit ไปแล้ว<br>"
+							f"กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบรายการ",
+							title="ไม่สามารถลบรายการได้"
+						)
 	
 	def apply_service_package(self):
 		"""นำรายการบริการจากแพ็คเกจมาใส่ใน service_items"""

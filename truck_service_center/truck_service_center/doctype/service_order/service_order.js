@@ -14,6 +14,12 @@ frappe.ui.form.on('Service Order', {
 		// แสดงสรุป Material Issues
 		show_material_issue_summary(frm);
 		
+		// Update สถานะ Material Issue ทั้งหมด
+		update_material_issue_statuses(frm);
+		
+		// ป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
+		lock_rows_with_submitted_material_issue(frm);
+		
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
 		if (frm.doc.docstatus === 0 && frm.doc.service_items && frm.doc.service_items.length > 0) {
 			// ตรวจสอบว่ามี item ที่ยังไม่มี Material Issue หรือไม่
@@ -158,6 +164,53 @@ frappe.ui.form.on('Service Order', {
 	
 	paid_amount: function(frm) {
 		calculate_totals(frm);
+	},
+	
+	before_save: function(frm) {
+		// ตรวจสอบว่ามีแถว lock ถูกลบไปหรือไม่
+		if (frm.__locked_rows_backup && frm.__locked_rows_backup.length > 0) {
+			// หา material_issue ที่ยังอยู่
+			let current_material_issues = [];
+			if (frm.doc.service_items) {
+				for (let i = 0; i < frm.doc.service_items.length; i++) {
+					if (frm.doc.service_items[i].material_issue) {
+						current_material_issues.push(frm.doc.service_items[i].material_issue);
+					}
+				}
+			}
+			
+			// หาแถวที่หายไป
+			let deleted_locked_rows = [];
+			for (let j = 0; j < frm.__locked_rows_backup.length; j++) {
+				let backup = frm.__locked_rows_backup[j];
+				if (backup.material_issue && current_material_issues.indexOf(backup.material_issue) === -1) {
+					deleted_locked_rows.push(backup);
+				}
+			}
+			
+			if (deleted_locked_rows.length > 0) {
+				// มีแถวที่ lock ถูกลบ - ต้องหยุดการ save
+				let item_names = [];
+				for (let k = 0; k < deleted_locked_rows.length; k++) {
+					item_names.push(deleted_locked_rows[k].item_name || deleted_locked_rows[k].item_code);
+				}
+				
+				frappe.msgprint({
+					title: __('ไม่สามารถบันทึกได้'),
+					indicator: 'red',
+					message: __('ไม่สามารถลบรายการ "{0}" ได้เพราะมีใบเบิกอะไหล่ที่ถูก submit แล้ว<br>กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบ<br><br>กำลัง reload เอกสาร...', [item_names.join(', ')])
+				});
+				
+				frappe.validated = false;
+				
+				// Reload document หลังจาก 1.5 วินาที
+				setTimeout(function() {
+					frm.reload_doc();
+				}, 1500);
+				
+				return false;
+			}
+		}
 	}
 });
 
@@ -181,8 +234,116 @@ frappe.ui.form.on('Service Order Service Type', {
 });
 
 frappe.ui.form.on('Service Order Item', {
+	service_items_add: function(frm) {
+		calculate_totals(frm);
+	},
+	
+	service_items_remove: function(frm, cdt, cdn) {
+		console.log('=== service_items_remove called ===');
+		console.log('frm.__locked_rows_backup:', frm.__locked_rows_backup);
+		console.log('frm.doc.service_items:', frm.doc.service_items);
+		
+		// ตรวจสอบว่ามีแถว lock ถูกลบไปหรือไม่
+		if (frm.__locked_rows_backup && frm.__locked_rows_backup.length > 0) {
+			// หา material_issue ที่ยังอยู่
+			let current_material_issues = [];
+			if (frm.doc.service_items) {
+				for (let i = 0; i < frm.doc.service_items.length; i++) {
+					if (frm.doc.service_items[i].material_issue) {
+						current_material_issues.push(frm.doc.service_items[i].material_issue);
+					}
+				}
+			}
+			
+			console.log('current_material_issues:', current_material_issues);
+			
+			// หาแถวที่หายไป
+			let missing_rows = [];
+			for (let j = 0; j < frm.__locked_rows_backup.length; j++) {
+				let backup = frm.__locked_rows_backup[j];
+				console.log('checking backup:', backup.material_issue, 'exists:', current_material_issues.indexOf(backup.material_issue));
+				if (backup.material_issue && current_material_issues.indexOf(backup.material_issue) === -1) {
+					missing_rows.push(backup);
+				}
+			}
+			
+			console.log('missing_rows:', missing_rows);
+			
+			if (missing_rows.length > 0) {
+				// แสดงข้อความเตือน
+				let item_names = [];
+				for (let k = 0; k < missing_rows.length; k++) {
+					item_names.push(missing_rows[k].item_name || missing_rows[k].item_code);
+				}
+				
+				frappe.msgprint({
+					title: __('ไม่สามารถลบได้'),
+					indicator: 'red',
+					message: __('ไม่สามารถลบรายการ "{0}" ได้เพราะมีใบเบิกอะไหล่ที่ถูก submit แล้ว<br>กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบ<br><br>กำลังคืนค่า...', [item_names.join(', ')])
+				});
+				
+				console.log('Calling frm.reload_doc()');
+				// Reload document เพื่อคืนค่า
+				frm.reload_doc();
+				return;
+			}
+		} else {
+			console.log('No locked_rows_backup found');
+		}
+		
+		calculate_totals(frm);
+	},
+	
+	// ป้องกันการแก้ไขเมื่อมี Material Issue ที่ submit แล้ว
+	before_service_items_remove: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (row.__is_locked) {
+			frappe.msgprint({
+				title: __('ไม่สามารถลบได้'),
+				indicator: 'red',
+				message: __('ไม่สามารถลบแถวนี้ได้เพราะใบเบิกอะไหล่ {0} ถูก submit แล้ว กรุณายกเลิกใบเบิกอะไหล่ก่อน', 
+					['<a href="/app/stock-entry/' + row.material_issue + '" target="_blank">' + row.material_issue + '</a>'])
+			});
+			frappe.validated = false;
+			return false;
+		}
+	},
+	
+	// ป้องกันการแก้ไขทุก field ก่อนเข้า edit mode
+	form_render: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		let is_locked = row.__is_locked || (row.material_issue && row.material_issue_status === 'Submitted');
+		
+		if (is_locked) {
+			// ทำให้แก้ไขไม่ได้เลย
+			lock_specific_row(frm, cdn);
+			
+			// ซ่อน row-action (มีปุ่ม Delete)
+			setTimeout(function() {
+				let grid_row = frm.fields_dict.service_items.grid.grid_rows_by_docname[cdn];
+				if (grid_row && grid_row.grid_form) {
+					$(grid_row.grid_form.wrapper).find('.row-actions').hide();
+				}
+			}, 50);
+		}
+	},
+	
 	item_code: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
+		
+		// ป้องกันการแก้ไขถ้าแถวถูกล็อค (Material Issue ที่ submit แล้ว)
+		if (row.__is_locked) {
+			frappe.show_alert({
+				message: __('ไม่สามารถแก้ไขได้เพราะใบเบิกอะไหล่ {0} ถูก submit แล้ว', [row.material_issue]),
+				indicator: 'red'
+			});
+			// คืนค่าเดิมที่บันทึกไว้
+			if (row.__locked_old_item_code !== undefined) {
+				frappe.model.set_value(cdt, cdn, 'item_code', row.__locked_old_item_code);
+			}
+			return;
+		}
+		
 		if (row.item_code) {
 			// ดึงข้อมูล Item และราคาจาก Item Price
 			frappe.call({
@@ -212,11 +373,41 @@ frappe.ui.form.on('Service Order Item', {
 	},
 	
 	qty: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		// ป้องกันการแก้ไขถ้าแถวถูกล็อค (Material Issue ที่ submit แล้ว)
+		if (row.__is_locked) {
+			frappe.show_alert({
+				message: __('ไม่สามารถแก้ไขจำนวนได้เพราะใบเบิกอะไหล่ {0} ถูก submit แล้ว', [row.material_issue]),
+				indicator: 'red'
+			});
+			// คืนค่าเดิมที่บันทึกไว้
+			if (row.__locked_old_qty !== undefined) {
+				frappe.model.set_value(cdt, cdn, 'qty', row.__locked_old_qty);
+			}
+			return;
+		}
+		
 		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 	
 	rate: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		// ป้องกันการแก้ไขถ้าแถวถูกล็อค (Material Issue ที่ submit แล้ว)
+		if (row.__is_locked) {
+			frappe.show_alert({
+				message: __('ไม่สามารถแก้ไขราคาได้เพราะใบเบิกอะไหล่ {0} ถูก submit แล้ว', [row.material_issue]),
+				indicator: 'red'
+			});
+			// คืนค่าเดิมที่บันทึกไว้
+			if (row.__locked_old_rate !== undefined) {
+				frappe.model.set_value(cdt, cdn, 'rate', row.__locked_old_rate);
+			}
+			return;
+		}
+		
 		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
@@ -232,23 +423,25 @@ frappe.ui.form.on('Service Order Item', {
 	material_issue: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		
-		// ถ้ามี Material Issue ให้ทำให้ field อื่นเป็น read-only
+		// ถ้ามี Material Issue ให้ดึงสถานะล่าสุด
 		if (row.material_issue) {
-			// ดึงสถานะของ Material Issue
 			frappe.db.get_value('Stock Entry', row.material_issue, 'docstatus', function(r) {
 				if (r && r.docstatus !== undefined) {
 					let status_map = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
 					frappe.model.set_value(cdt, cdn, 'material_issue_status', status_map[r.docstatus]);
 					
-					// ถ้า Material Issue เป็น Submitted แล้ว ไม่ให้แก้ไข item นี้
+					// ถ้า Material Issue เป็น Submitted แล้ว ให้ล็อคแถวนี้
 					if (r.docstatus === 1) {
-						frm.fields_dict.service_items.grid.update_docfield_property('item_code', 'read_only', 1, cdn);
-						frm.fields_dict.service_items.grid.update_docfield_property('qty', 'read_only', 1, cdn);
-						frm.fields_dict.service_items.grid.update_docfield_property('rate', 'read_only', 1, cdn);
-						frm.fields_dict.service_items.grid.update_docfield_property('warehouse', 'read_only', 1, cdn);
+						// รอให้ field update เสร็จก่อน
+						setTimeout(function() {
+							lock_rows_with_submitted_material_issue(frm);
+						}, 100);
 					}
 				}
 			});
+		} else {
+			// ถ้าไม่มี Material Issue ให้ล้างสถานะ
+			frappe.model.set_value(cdt, cdn, 'material_issue_status', null);
 		}
 	}
 });
@@ -442,6 +635,7 @@ function create_material_issue_dialog(frm) {
 					message: __('Material Issue {0} created', [r.message]),
 					indicator: 'green'
 				});
+				// Reload เพื่อ update สถานะ Material Issue
 				frm.reload_doc();
 			}
 		}
@@ -457,8 +651,309 @@ window.sync_material_issue = function(service_order, material_issue) {
 		},
 		callback: function(r) {
 			if (r.message) {
+				// Reload เพื่อ update สถานะ Material Issue
 				cur_frm.reload_doc();
 			}
 		}
 	});
 };
+
+// Update สถานะ Material Issue ทั้งหมดจาก database
+function update_material_issue_statuses(frm) {
+	if (!frm.doc.service_items || frm.doc.__islocal) return;
+	
+	// รวบรวม Material Issue ที่ต้องตรวจสอบ
+	let material_issues = [];
+	frm.doc.service_items.forEach(function(item) {
+		if (item.material_issue && !material_issues.includes(item.material_issue)) {
+			material_issues.push(item.material_issue);
+		}
+	});
+	
+	if (material_issues.length === 0) return;
+	
+	// ดึงสถานะจาก database
+	frappe.call({
+		method: 'frappe.client.get_list',
+		args: {
+			doctype: 'Stock Entry',
+			filters: {
+				name: ['in', material_issues]
+			},
+			fields: ['name', 'docstatus']
+		},
+		callback: function(r) {
+			if (r.message) {
+				// สร้าง map ของสถานะ
+				let status_map = {};
+				r.message.forEach(function(entry) {
+					if (entry.docstatus === 0) {
+						status_map[entry.name] = 'Draft';
+					} else if (entry.docstatus === 1) {
+						status_map[entry.name] = 'Submitted';
+					} else if (entry.docstatus === 2) {
+						status_map[entry.name] = 'Cancelled';
+					}
+				});
+				
+				// Update สถานะในแต่ละแถว
+				let updated = false;
+				frm.doc.service_items.forEach(function(item) {
+					if (item.material_issue && status_map[item.material_issue]) {
+						if (item.material_issue_status !== status_map[item.material_issue]) {
+							item.material_issue_status = status_map[item.material_issue];
+							updated = true;
+						}
+					}
+				});
+				
+				// Refresh grid ถ้ามีการเปลี่ยนแปลง
+				if (updated) {
+					frm.refresh_field('service_items');
+					// เรียก lock_rows อีกครั้งหลังจาก update status
+					setTimeout(function() {
+						lock_rows_with_submitted_material_issue(frm);
+					}, 100);
+				}
+			}
+		}
+	});
+}
+
+// ล็อค field เฉพาะของแถวที่ระบุ
+function lock_specific_row(frm, cdn) {
+	let grid_row = frm.fields_dict.service_items.grid.grid_rows_by_docname[cdn];
+	if (!grid_row) return;
+	
+	let row = grid_row.doc;
+	if (row.material_issue && row.material_issue_status === 'Submitted') {
+		// บันทึกค่าเดิมไว้เฉพาะเมื่อล็อค
+		row.__locked_old_item_code = row.item_code;
+		row.__locked_old_qty = row.qty;
+		row.__locked_old_rate = row.rate;
+		row.__locked_old_warehouse = row.warehouse;
+		row.__is_locked = true;
+		
+		// เพิ่มสไตล์เพื่อแสดงว่าแถวนี้ถูกล็อค
+		if (grid_row.wrapper) {
+			grid_row.wrapper.addClass('locked-row');
+			grid_row.wrapper.css('background-color', '#f5f5f5');
+		}
+	}
+}
+
+// ซ่อนปุ่มลบใน edit form สำหรับแถวที่ lock - ไม่ใช้แล้ว ใช้วิธี restore แทน
+function hide_delete_button_in_form(frm) {
+	// ไม่ทำอะไร - ใช้วิธี restore row แทนการซ่อนปุ่ม
+}
+
+// เก็บข้อมูลแถวที่ lock ไว้สำหรับ restore
+function save_locked_rows_backup(frm) {
+	if (!frm.doc.service_items) {
+		frm.__locked_rows_backup = [];
+		return;
+	}
+	
+	frm.__locked_rows_backup = [];
+	frm.doc.service_items.forEach(function(item) {
+		if (item.__is_locked || (item.material_issue && item.material_issue_status === 'Submitted')) {
+			// เก็บ copy ของข้อมูลแถวที่ lock
+			frm.__locked_rows_backup.push({
+				material_issue: item.material_issue,
+				item_code: item.item_code,
+				item_name: item.item_name,
+				description: item.description,
+				qty: item.qty,
+				uom: item.uom,
+				rate: item.rate,
+				amount: item.amount,
+				warehouse: item.warehouse,
+				material_issue_status: item.material_issue_status,
+				expense_account: item.expense_account,
+				cost_center: item.cost_center,
+				idx: item.idx
+			});
+		}
+	});
+}
+
+// คืนค่าแถวที่ lock ถ้าถูกลบไป
+function restore_deleted_locked_rows(frm) {
+	if (!frm.__locked_rows_backup || frm.__locked_rows_backup.length === 0) {
+		return;
+	}
+	
+	// หา material_issue ที่ยังอยู่
+	let current_material_issues = [];
+	if (frm.doc.service_items) {
+		frm.doc.service_items.forEach(function(item) {
+			if (item.material_issue) {
+				current_material_issues.push(item.material_issue);
+			}
+		});
+	}
+	
+	// หาแถวที่หายไป
+	let missing_rows = [];
+	frm.__locked_rows_backup.forEach(function(backup) {
+		if (backup.material_issue && current_material_issues.indexOf(backup.material_issue) === -1) {
+			missing_rows.push(backup);
+		}
+	});
+	
+	if (missing_rows.length > 0) {
+		// แสดงข้อความเตือน
+		let item_names = missing_rows.map(function(r) { 
+			return r.item_name || r.item_code; 
+		}).join(', ');
+		
+		frappe.msgprint({
+			title: __('ไม่สามารถลบได้'),
+			indicator: 'red',
+			message: __('ไม่สามารถลบรายการ "{0}" ได้เพราะมีใบเบิกอะไหล่ที่ถูก submit แล้ว<br>กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบ', [item_names])
+		});
+		
+		// คืนค่าแถวที่ถูกลบกลับมา
+		missing_rows.forEach(function(backup) {
+			let new_row = frm.add_child('service_items');
+			new_row.item_code = backup.item_code;
+			new_row.item_name = backup.item_name;
+			new_row.description = backup.description;
+			new_row.qty = backup.qty;
+			new_row.uom = backup.uom;
+			new_row.rate = backup.rate;
+			new_row.amount = backup.amount;
+			new_row.warehouse = backup.warehouse;
+			new_row.material_issue = backup.material_issue;
+			new_row.material_issue_status = backup.material_issue_status;
+			new_row.expense_account = backup.expense_account;
+			new_row.cost_center = backup.cost_center;
+			new_row.__is_locked = true;
+		});
+		
+		// Refresh table
+		frm.refresh_field('service_items');
+		
+		// Re-apply lock styles
+		setTimeout(function() {
+			lock_rows_with_submitted_material_issue(frm);
+		}, 200);
+	}
+}
+
+// ฟังก์ชันป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
+function lock_rows_with_submitted_material_issue(frm) {
+	if (!frm.doc.service_items) return;
+	if (!frm.fields_dict.service_items || !frm.fields_dict.service_items.grid) return;
+	
+	frm.doc.service_items.forEach(function(item, idx) {
+		let grid_row = frm.fields_dict.service_items.grid.grid_rows[idx];
+		if (!grid_row) return;
+		
+		// ตรวจสอบว่าควรล็อคแถวนี้หรือไม่
+		let should_lock = item.material_issue && item.material_issue_status === 'Submitted';
+		
+		if (should_lock) {
+			// บันทึกค่าเดิมไว้เฉพาะเมื่อล็อค
+			item.__locked_old_item_code = item.item_code;
+			item.__locked_old_qty = item.qty;
+			item.__locked_old_rate = item.rate;
+			item.__locked_old_warehouse = item.warehouse;
+			item.__is_locked = true;
+			
+			// เพิ่มสไตล์เพื่อแสดงว่าแถวนี้ถูกล็อค
+			if (grid_row.wrapper) {
+				grid_row.wrapper.addClass('locked-row');
+				grid_row.wrapper.css('background-color', '#f5f5f5');
+				grid_row.wrapper.attr('title', 'แถวนี้ถูกล็อคเพราะใบเบิกอะไหล่ ' + item.material_issue + ' ถูก submit แล้ว');
+				
+				// Disable checkbox และปุ่มลบสำหรับแถวที่ lock (ไม่ซ่อน แค่ปิดการใช้งาน)
+				let $checkbox = grid_row.wrapper.find('.grid-row-check');
+				let $deleteBtn = grid_row.wrapper.find('.grid-delete-row');
+				
+				$checkbox.prop('disabled', true);
+				$checkbox.css('opacity', '0.5');
+				$checkbox.css('cursor', 'not-allowed');
+				
+				$deleteBtn.prop('disabled', true);
+				$deleteBtn.css('opacity', '0.5');
+				$deleteBtn.css('cursor', 'not-allowed');
+				$deleteBtn.css('pointer-events', 'none');
+			}
+		} else {
+			// ปลดล็อคแถวนี้
+			delete item.__locked_old_item_code;
+			delete item.__locked_old_qty;
+			delete item.__locked_old_rate;
+			delete item.__locked_old_warehouse;
+			item.__is_locked = false;
+			
+			// ลบสไตล์ล็อค
+			if (grid_row.wrapper) {
+				grid_row.wrapper.removeClass('locked-row');
+				grid_row.wrapper.css('background-color', '');
+				grid_row.wrapper.removeAttr('title');
+				
+				// Enable checkbox และปุ่มลบ
+				let $checkbox = grid_row.wrapper.find('.grid-row-check');
+				let $deleteBtn = grid_row.wrapper.find('.grid-delete-row');
+				
+				$checkbox.prop('disabled', false);
+				$checkbox.css('opacity', '');
+				$checkbox.css('cursor', '');
+				
+				$deleteBtn.prop('disabled', false);
+				$deleteBtn.css('opacity', '');
+				$deleteBtn.css('cursor', '');
+				$deleteBtn.css('pointer-events', '');
+			}
+		}
+	});
+	
+	// เก็บ backup ของแถวที่ lock สำหรับ restore
+	save_locked_rows_backup(frm);
+	
+	// Override ฟังก์ชัน delete สำหรับ grid
+	override_grid_delete(frm);
+}
+
+// Override ฟังก์ชัน delete ของ grid เพื่อป้องกันการลบแถวที่ lock
+function override_grid_delete(frm) {
+	let grid = frm.fields_dict.service_items.grid;
+	if (!grid || grid.__delete_overridden) return;
+	
+	// เก็บฟังก์ชัน delete เดิมไว้
+	let original_delete_row = grid.grid_rows_by_docname ? null : null;
+	
+	// Override ฟังก์ชัน delete_rows
+	let original_delete_rows = grid.delete_rows;
+	grid.delete_rows = function() {
+		// ตรวจสอบว่ามีแถวที่ lock ถูกเลือกหรือไม่
+		let locked_rows = [];
+		this.get_selected_children().forEach(function(doc) {
+			if (doc.__is_locked) {
+				locked_rows.push(doc.item_name || doc.item_code || doc.idx);
+			}
+		});
+		
+		if (locked_rows.length > 0) {
+			frappe.msgprint({
+				title: __('ไม่สามารถลบได้'),
+				indicator: 'red',
+				message: __('ไม่สามารถลบแถวที่ถูกล็อคได้: {0}<br>กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบ', [locked_rows.join(', ')])
+			});
+			// ยกเลิกการเลือก
+			this.select_all_btn && this.select_all_btn.prop('checked', false);
+			this.grid_rows.forEach(function(row) {
+				row.doc.__checked = 0;
+			});
+			this.refresh_remove_rows_button();
+			return;
+		}
+		
+		// เรียกฟังก์ชันเดิม
+		return original_delete_rows.apply(this, arguments);
+	};
+	
+	grid.__delete_overridden = true;
+}
