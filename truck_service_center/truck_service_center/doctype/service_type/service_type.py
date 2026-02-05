@@ -12,9 +12,17 @@ class ServiceType(Document):
 
 	def validate(self):
 		"""ตรวจสอบข้อมูลและดึงราคาจาก item หากมี"""
+		# คำนวณยอดรวมสำหรับรายการอะไหล่
+		self.calculate_item_amounts()
+		
 		# ดึงราคาเฉพาะเมื่อ item_code ถูกเปลี่ยนแปลง
 		if self.has_value_changed('item_code'):
 			self.set_labor_rate_from_item()
+
+	def calculate_item_amounts(self):
+		"""คำนวณยอดรวมสำหรับแต่ละรายการอะไหล่"""
+		for item in self.items:
+			item.amount = (item.qty or 0) * (item.rate or 0)
 
 	def set_labor_rate_from_item(self):
 		"""ดึงราคาจาก Item และ Price List"""

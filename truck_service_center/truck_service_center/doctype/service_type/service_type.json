@@ -18,6 +18,8 @@
   "service_details_section",
   "default_duration",
   "labor_rate",
+  "spare_parts_section",
+  "items",
   "accounting_section",
   "item_code",
   "income_account",
@@ -98,6 +100,18 @@
    "reqd": 1
   },
   {
+   "fieldname": "spare_parts_section",
+   "fieldtype": "Section Break",
+   "label": "รายการอะไหล่มาตรฐาน"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "รายการอะไหล่",
+   "options": "Service Type Item",
+   "description": "รายการอะไหล่ที่ใช้เป็นประจำสำหรับประเภทบริการนี้"
+  },
+  {
    "fieldname": "accounting_section",
    "fieldtype": "Section Break",
    "label": "เชื่อมโยงบัญชี"
@@ -128,7 +142,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-07 10:00:00.000000",
+ "modified": "2026-02-05 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",

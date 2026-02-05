@@ -571,6 +571,34 @@ def sync_material_issue(service_order, material_issue):
 
 
 @frappe.whitelist()
+def get_service_type_items(service_type):
+	"""ดึงรายการอะไหล่ที่ผูกไว้กับ Service Type
+	
+	Args:
+		service_type: ชื่อ Service Type
+		
+	Returns:
+		list: รายการอะไหล่พร้อมรายละเอียด
+	"""
+	doc = frappe.get_doc("Service Type", service_type)
+	
+	items = []
+	if doc.items:
+		for item in doc.items:
+			items.append({
+				"item_code": item.item_code,
+				"item_name": item.item_name,
+				"description": item.description,
+				"qty": item.qty,
+				"uom": item.uom,
+				"rate": item.rate,
+				"amount": item.amount
+			})
+	
+	return items
+
+
+@frappe.whitelist()
 def get_material_issue_summary(service_order):
 	"""ดึงสรุปข้อมูล Material Issues ทั้งหมดของ Service Order
 	

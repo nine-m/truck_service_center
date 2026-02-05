@@ -204,6 +204,9 @@ frappe.ui.form.on('Service Order', {
 						message: __('เพิ่มประเภทบริการ "{0}" เรียบร้อย', [service_type_data.service_type_name]),
 						indicator: 'green'
 					});
+					
+					// ตรวจสอบว่ามีรายการอะไหล่ที่ผูกไว้หรือไม่
+					check_and_add_service_type_items(frm, service_type_data.name);
 				} else {
 					frappe.show_alert({
 						message: __('ไม่พบประเภทบริการที่ตรงกับบาร์โค้ด "{0}"', [barcode]),
@@ -371,6 +374,72 @@ frappe.ui.form.on('Service Order Service Type', {
 	
 	service_types_remove: function(frm) {
 		calculate_totals(frm);
+	},
+	
+	service_type: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (row.service_type) {
+			// ดึงรายการอะไหล่จาก Service Type
+			frappe.call({
+				method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items',
+				args: {
+					service_type: row.service_type
+				},
+				callback: function(r) {
+					if (r.message && r.message.length > 0) {
+						let items = r.message;
+						let item_list = items.map(item => 
+							`• ${item.item_name || item.item_code} - จำนวน: ${item.qty} ${item.uom || ''} (฿${item.rate || 0})`
+						).join('<br>');
+						
+						frappe.confirm(
+							__('ประเภทบริการ "{0}" มีรายการอะไหล่มาตรฐาน {1} รายการ:<br><br>{2}<br><br>ต้องการเพิ่มรายการอะไหล่เหล่านี้ในใบสั่งงานหรือไม่?', 
+								[row.service_type, items.length, item_list]),
+							function() {
+								// Yes - เพิ่มรายการอะไหล่
+								items.forEach(function(item) {
+									// ตรวจสอบว่ามี item นี้อยู่แล้วหรือไม่
+									let exists = false;
+									if (frm.doc.service_items) {
+										for (let i = 0; i < frm.doc.service_items.length; i++) {
+											if (frm.doc.service_items[i].item_code === item.item_code && !frm.doc.service_items[i].material_issue) {
+												// มีอยู่แล้ว และยังไม่มีใบเบิก ให้เพิ่มจำนวน
+												frm.doc.service_items[i].qty += item.qty;
+												frm.doc.service_items[i].amount = frm.doc.service_items[i].qty * frm.doc.service_items[i].rate;
+												exists = true;
+												break;
+											}
+										}
+									}
+									
+									if (!exists) {
+										let new_row = frm.add_child('service_items');
+										new_row.item_code = item.item_code;
+										new_row.item_name = item.item_name;
+										new_row.description = item.description;
+										new_row.qty = item.qty;
+										new_row.uom = item.uom;
+										new_row.rate = item.rate;
+										new_row.amount = item.amount || (item.qty * item.rate);
+									}
+								});
+								
+								frm.refresh_field('service_items');
+								calculate_totals(frm);
+								
+								frappe.show_alert({
+									message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย', [items.length, row.service_type]),
+									indicator: 'green'
+								});
+							},
+							function() {
+								// No - ไม่ต้องทำอะไร
+							}
+						);
+					}
+				}
+			});
+		}
 	},
 	
 	labor_charges: function(frm, cdt, cdn) {
@@ -599,6 +668,78 @@ function calculate_item_amount(frm, cdt, cdn) {
 	let row = locals[cdt][cdn];
 	let amount = flt(row.qty) * flt(row.rate);
 	frappe.model.set_value(cdt, cdn, 'amount', amount);
+}
+
+// ฟังก์ชันตรวจสอบและเพิ่มรายการอะไหล่จาก Service Type
+function check_and_add_service_type_items(frm, service_type) {
+	frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items',
+		args: {
+			service_type: service_type
+		},
+		callback: function(r) {
+			if (r.message && r.message.length > 0) {
+				let items = r.message;
+				let item_list = items.map(item => 
+					`• ${item.item_name || item.item_code} - จำนวน: ${item.qty} ${item.uom || ''} (฿${item.rate || 0})`
+				).join('<br>');
+				
+				frappe.confirm(
+					__('ประเภทบริการ "{0}" มีรายการอะไหล่มาตรฐาน {1} รายการ:<br><br>{2}<br><br>ต้องการเพิ่มรายการอะไหล่เหล่านี้ในใบสั่งงานหรือไม่?', 
+						[service_type, items.length, item_list]),
+					function() {
+						// Yes - เพิ่มรายการอะไหล่
+						add_service_type_items_to_order(frm, items, service_type);
+					},
+					function() {
+						// No - ไม่ต้องทำอะไร
+					}
+				);
+			}
+		}
+	});
+}
+
+// ฟังก์ชันเพิ่มรายการอะไหล่จาก Service Type
+function add_service_type_items_to_order(frm, items, service_type) {
+	let added_count = 0;
+	
+	items.forEach(function(item) {
+		// ตรวจสอบว่ามี item นี้อยู่แล้วหรือไม่
+		let exists = false;
+		if (frm.doc.service_items) {
+			for (let i = 0; i < frm.doc.service_items.length; i++) {
+				if (frm.doc.service_items[i].item_code === item.item_code && !frm.doc.service_items[i].material_issue) {
+					// มีอยู่แล้ว และยังไม่มีใบเบิก ให้เพิ่มจำนวน
+					frm.doc.service_items[i].qty += item.qty;
+					frm.doc.service_items[i].amount = frm.doc.service_items[i].qty * frm.doc.service_items[i].rate;
+					exists = true;
+					added_count++;
+					break;
+				}
+			}
+		}
+		
+		if (!exists) {
+			let new_row = frm.add_child('service_items');
+			new_row.item_code = item.item_code;
+			new_row.item_name = item.item_name;
+			new_row.description = item.description;
+			new_row.qty = item.qty;
+			new_row.uom = item.uom;
+			new_row.rate = item.rate;
+			new_row.amount = item.amount || (item.qty * item.rate);
+			added_count++;
+		}
+	});
+	
+	frm.refresh_field('service_items');
+	calculate_totals(frm);
+	
+	frappe.show_alert({
+		message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย', [added_count, service_type]),
+		indicator: 'green'
+	});
 }
 
 

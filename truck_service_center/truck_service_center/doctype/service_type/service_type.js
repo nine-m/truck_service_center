@@ -34,3 +34,34 @@ frappe.ui.form.on('Service Type', {
 		}
 	}
 });
+
+frappe.ui.form.on('Service Type Item', {
+	item_code: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (row.item_code) {
+			// รอให้ fetch_from ดึงข้อมูลเสร็จก่อน
+			setTimeout(() => {
+				calculate_item_amount(frm, cdt, cdn);
+			}, 500);
+		}
+	},
+	
+	qty: function(frm, cdt, cdn) {
+		calculate_item_amount(frm, cdt, cdn);
+	},
+	
+	rate: function(frm, cdt, cdn) {
+		calculate_item_amount(frm, cdt, cdn);
+	},
+	
+	items_remove: function(frm) {
+		frm.refresh_field('items');
+	}
+});
+
+function calculate_item_amount(frm, cdt, cdn) {
+	let row = locals[cdt][cdn];
+	let qty = row.qty || 0;
+	let rate = row.rate || 0;
+	frappe.model.set_value(cdt, cdn, 'amount', qty * rate);
+}
