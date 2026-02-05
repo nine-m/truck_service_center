@@ -703,7 +703,13 @@ function setup_service_type_filter(frm) {
 }
 
 function show_material_issue_summary(frm) {
-	if (!frm.doc.name || frm.doc.__islocal) return;
+	// ถ้าเป็น document ใหม่ ให้ล้าง HTML และออก
+	if (!frm.doc.name || frm.doc.__islocal) {
+		if (frm.fields_dict.material_issue_summary && frm.fields_dict.material_issue_summary.$wrapper) {
+			frm.fields_dict.material_issue_summary.$wrapper.html('');
+		}
+		return;
+	}
 	
 	frappe.call({
 		method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_material_issue_summary',

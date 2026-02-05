@@ -248,8 +248,49 @@ class ServiceOrder(Document):
 					"income_account": settings.default_income_account
 				})
 		
-		# เพิ่มค่าแรง (ถ้ามี)
-		if flt(self.labor_charges) > 0:
+		# เพิ่มรายการ Service Types (ค่าแรงแยกตามประเภทบริการ)
+		if self.service_types:
+			for service_type_row in self.service_types:
+				if flt(service_type_row.labor_charges) > 0:
+					# ตรวจสอบว่า Service Type ผูกกับ Item หรือไม่
+					service_type_item = frappe.db.get_value(
+						"Service Type",
+						service_type_row.service_type,
+						["item_code", "service_type_name", "income_account", "cost_center"],
+						as_dict=1
+					)
+					
+					if service_type_item and service_type_item.item_code:
+						# ถ้า Service Type ผูกกับ Item ให้ใช้ Item นั้น
+						item_code = service_type_item.item_code
+					else:
+						# ถ้าไม่ผูกให้ใช้ labor_item จาก settings
+						if not settings.labor_item:
+							frappe.throw(
+								f"ประเภทบริการ '{service_type_row.service_type}' ไม่ได้ผูกกับ Item และยังไม่ได้ตั้งค่า 'รายการสินค้าสำหรับค่าแรง' ใน Truck Service Center Settings",
+								title="ยังไม่ได้ตั้งค่า"
+							)
+						item_code = settings.labor_item
+					
+					# สร้าง description สำหรับรายการนี้
+					description = service_type_row.service_type
+					if service_type_row.repair_position:
+						description += f" - {service_type_row.repair_position}"
+					if service_type_row.remark:
+						description += f" ({service_type_row.remark})"
+					
+					sales_invoice.append("items", {
+						"item_code": item_code,
+						"description": description,
+						"qty": 1,
+						"rate": flt(service_type_row.labor_charges),
+						"expense_account": settings.labor_expense_account,
+						"cost_center": service_type_item.cost_center if service_type_item and service_type_item.cost_center else (settings.labor_cost_center or settings.default_cost_center),
+						"income_account": service_type_item.income_account if service_type_item and service_type_item.income_account else settings.default_income_account
+					})
+		
+		# ถ้าไม่มี service_types แต่มี labor_charges รวม ให้เพิ่มเป็นรายการเดียว (backward compatibility)
+		elif flt(self.labor_charges) > 0:
 			# ตรวจสอบว่ามีการตั้งค่า Labor Item หรือไม่
 			if not settings.labor_item:
 				frappe.throw(
