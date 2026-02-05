@@ -61,14 +61,14 @@
   {
    "fieldname": "vehicle_info_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e16"
+   "label": "ข้อมูลรถ"
   },
   {
    "fieldname": "license_plate",
    "fieldtype": "Data",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e17\u0e30\u0e40\u0e1a\u0e35\u0e22\u0e19\u0e23\u0e16",
+   "label": "ทะเบียนรถ",
    "reqd": 1,
    "unique": 1
   },
@@ -77,41 +77,41 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e23\u0e16",
-   "options": "\u0e23\u0e16\u0e1a\u0e23\u0e23\u0e17\u0e38\u0e01 4 \u0e25\u0e49\u0e2d\n\u0e23\u0e16\u0e1a\u0e23\u0e23\u0e17\u0e38\u0e01 6 \u0e25\u0e49\u0e2d\n\u0e23\u0e16\u0e1a\u0e23\u0e23\u0e17\u0e38\u0e01 10 \u0e25\u0e49\u0e2d\n\u0e23\u0e16\u0e2b\u0e31\u0e27\u0e25\u0e32\u0e01\n\u0e23\u0e16\u0e1e\u0e48\u0e27\u0e07",
+   "label": "ประเภทรถ",
+   "options": "รถบรรทุก 4 ล้อ\nรถบรรทุก 6 ล้อ\nรถบรรทุก 10 ล้อ\nรถหัวลาก\nรถพ่วง",
    "reqd": 1
   },
   {
    "fieldname": "brand",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e22\u0e35\u0e48\u0e2b\u0e49\u0e2d"
+   "label": "ยี่ห้อ"
   },
   {
    "fieldname": "model",
    "fieldtype": "Data",
-   "label": "\u0e23\u0e38\u0e48\u0e19"
+   "label": "รุ่น"
   },
   {
    "fieldname": "year",
    "fieldtype": "Int",
-   "label": "\u0e1b\u0e35\u0e17\u0e35\u0e48\u0e1c\u0e25\u0e34\u0e15"
+   "label": "ปีที่ผลิต"
   },
   {
    "fieldname": "vin_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e15\u0e31\u0e27\u0e16\u0e31\u0e07 (VIN)",
+   "label": "เลขตัวถัง (VIN)",
    "unique": 1
   },
   {
    "fieldname": "engine_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e22\u0e19\u0e15\u0e4c"
+   "label": "เลขเครื่องยนต์"
   },
   {
    "fieldname": "color",
    "fieldtype": "Data",
-   "label": "\u0e2a\u0e35"
+   "label": "สี"
   },
   {
    "fieldname": "column_break_1",
@@ -122,25 +122,25 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32",
+   "label": "ลูกค้า",
    "options": "Customer",
    "reqd": 1
   },
   {
    "fieldname": "contact_person",
    "fieldtype": "Data",
-   "label": "\u0e1c\u0e39\u0e49\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d"
+   "label": "ผู้ติดต่อ"
   },
   {
    "fieldname": "contact_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e1a\u0e2d\u0e23\u0e4c\u0e42\u0e17\u0e23\u0e28\u0e31\u0e1e\u0e17\u0e4c",
+   "label": "เบอร์โทรศัพท์",
    "options": "Phone"
   },
   {
    "fieldname": "email",
    "fieldtype": "Data",
-   "label": "\u0e2d\u0e35\u0e40\u0e21\u0e25",
+   "label": "อีเมล",
    "options": "Email"
   },
   {
@@ -148,41 +148,41 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30",
+   "label": "สถานะ",
    "options": "Active\nInactive\nSold\nScrapped",
    "default": "Active"
   },
   {
    "fieldname": "specification_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e32\u0e07\u0e40\u0e17\u0e04\u0e19\u0e34\u0e04"
+   "label": "ข้อมูลทางเทคนิค"
   },
   {
    "fieldname": "engine_type",
    "fieldtype": "Data",
-   "label": "\u0e0a\u0e19\u0e34\u0e14\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e22\u0e19\u0e15\u0e4c"
+   "label": "ชนิดเครื่องยนต์"
   },
   {
    "fieldname": "fuel_type",
    "fieldtype": "Select",
-   "label": "\u0e0a\u0e19\u0e34\u0e14\u0e40\u0e0a\u0e37\u0e49\u0e2d\u0e40\u0e1e\u0e25\u0e34\u0e07",
+   "label": "ชนิดเชื้อเพลิง",
    "options": "Diesel\nGasoline\nLPG\nNGV\nElectric\nHybrid"
   },
   {
    "fieldname": "transmission",
    "fieldtype": "Select",
-   "label": "\u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e01\u0e35\u0e22\u0e23\u0e4c",
+   "label": "ระบบเกียร์",
    "options": "Manual\nAutomatic\nSemi-Automatic"
   },
   {
    "fieldname": "tire_size",
    "fieldtype": "Data",
-   "label": "\u0e02\u0e19\u0e32\u0e14\u0e22\u0e32\u0e07"
+   "label": "ขนาดยาง"
   },
   {
    "fieldname": "tire_count",
    "fieldtype": "Int",
-   "label": "\u0e08\u0e33\u0e19\u0e27\u0e19\u0e25\u0e49\u0e2d",
+   "label": "จำนวนล้อ",
    "default": "10"
   },
   {
@@ -192,65 +192,65 @@
   {
    "fieldname": "current_mileage",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19 (\u0e01\u0e21.)",
+   "label": "เลขไมล์ปัจจุบัน (กม.)",
    "precision": 2
   },
   {
    "fieldname": "last_service_date",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e25\u0e48\u0e32\u0e38\u0e14",
+   "label": "วันที่เข้าบริการล่าุด",
    "read_only": 1
   },
   {
    "fieldname": "last_service_mileage",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14",
+   "label": "เลขไมล์บริการล่าสุด",
    "read_only": 1,
    "precision": 2
   },
   {
    "fieldname": "next_service_due",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e16\u0e31\u0e14\u0e44\u0e1b",
+   "label": "วันที่ครบกำหนดบริการถัดไป",
    "read_only": 1
   },
   {
    "fieldname": "next_service_mileage",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e04\u0e27\u0e23\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "เลขไมล์ที่ควรเข้าบริการ",
    "read_only": 1,
    "precision": 2
   },
   {
    "fieldname": "maintenance_section",
    "fieldtype": "Section Break",
-   "label": "\u0e01\u0e32\u0e23\u0e1a\u0e33\u0e23\u0e38\u0e07\u0e23\u0e31\u0e01\u0e29\u0e32"
+   "label": "การบำรุงรักษา"
   },
   {
    "fieldname": "service_interval_km",
    "fieldtype": "Float",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23 (\u0e01\u0e21.)",
+   "label": "ระยะบริการ (กม.)",
    "default": "10000",
-   "description": "\u0e23\u0e30\u0e22\u0e30\u0e17\u0e32\u0e07\u0e17\u0e35\u0e48\u0e04\u0e27\u0e23\u0e40\u0e02\u0e49\u0e32\u0e23\u0e31\u0e1a\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "description": "ระยะทางที่ควรเข้ารับบริการ"
   },
   {
    "fieldname": "service_interval_months",
    "fieldtype": "Int",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23 (\u0e40\u0e14\u0e37\u0e2d\u0e19)",
+   "label": "ระยะบริการ (เดือน)",
    "default": "6",
-   "description": "\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e17\u0e35\u0e48\u0e04\u0e27\u0e23\u0e40\u0e02\u0e49\u0e32\u0e23\u0e31\u0e1a\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "description": "จำนวนเดือนที่ควรเข้ารับบริการ"
   },
   {
    "fieldname": "oil_capacity",
    "fieldtype": "Float",
-   "label": "\u0e04\u0e27\u0e32\u0e21\u0e08\u0e38\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07 (\u0e25\u0e34\u0e15\u0e23)",
+   "label": "ความจุน้ำมันเครื่อง (ลิตร)",
    "precision": 2
   },
   {
    "fieldname": "oil_grade",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e01\u0e23\u0e14\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07",
-   "description": "\u0e40\u0e0a\u0e48\u0e19 15W-40, 10W-30"
+   "label": "เกรดน้ำมันเครื่อง",
+   "description": "เช่น 15W-40, 10W-30"
   },
   {
    "fieldname": "column_break_3",
@@ -259,43 +259,43 @@
   {
    "fieldname": "coolant_capacity",
    "fieldtype": "Float",
-   "label": "\u0e04\u0e27\u0e32\u0e21\u0e08\u0e38\u0e19\u0e49\u0e33\u0e22\u0e32\u0e2b\u0e25\u0e48\u0e2d\u0e40\u0e22\u0e47\u0e19 (\u0e25\u0e34\u0e15\u0e23)",
+   "label": "ความจุน้ำยาหล่อเย็น (ลิตร)",
    "precision": 2
   },
   {
    "fieldname": "battery_specifications",
    "fieldtype": "Data",
-   "label": "\u0e02\u0e19\u0e32\u0e14\u0e41\u0e1a\u0e15\u0e40\u0e15\u0e2d\u0e23\u0e35\u0e48"
+   "label": "ขนาดแบตเตอรี่"
   },
   {
    "fieldname": "air_filter_type",
    "fieldtype": "Data",
-   "label": "\u0e0a\u0e19\u0e34\u0e14\u0e44\u0e01\u0e23\u0e2d\u0e07\u0e2d\u0e32\u0e01\u0e32\u0e28"
+   "label": "ชนิดไกรองอากาศ"
   },
   {
    "fieldname": "fuel_filter_type",
    "fieldtype": "Data",
-   "label": "\u0e0a\u0e19\u0e34\u0e14\u0e44\u0e01\u0e23\u0e2d\u0e07\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19"
+   "label": "ชนิดไกรองน้ำมัน"
   },
   {
    "fieldname": "insurance_section",
    "fieldtype": "Section Break",
-   "label": "\u0e1b\u0e23\u0e30\u0e01\u0e31\u0e19\u0e41\u0e25\u0e30\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23"
+   "label": "ประกันและเอกสาร"
   },
   {
    "fieldname": "insurance_company",
    "fieldtype": "Data",
-   "label": "\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17\u0e1b\u0e23\u0e30\u0e01\u0e31\u0e19"
+   "label": "บริษัทประกัน"
   },
   {
    "fieldname": "insurance_policy_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48\u0e01\u0e23\u0e21\u0e18\u0e23\u0e23\u0e21\u0e4c"
+   "label": "เลขที่กรมธรรม์"
   },
   {
    "fieldname": "insurance_expiry",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e2b\u0e21\u0e14\u0e2d\u0e32\u0e22\u0e38\u0e1b\u0e23\u0e30\u0e01\u0e31\u0e19"
+   "label": "วันหมดอายุประกัน"
   },
   {
    "fieldname": "column_break_4",
@@ -304,37 +304,37 @@
   {
    "fieldname": "registration_expiry",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e2b\u0e21\u0e14\u0e2d\u0e32\u0e22\u0e38\u0e17\u0e30\u0e40\u0e1a\u0e35\u0e22\u0e19"
+   "label": "วันหมดอายุทะเบียน"
   },
   {
    "fieldname": "road_tax_expiry",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e2b\u0e21\u0e14\u0e2d\u0e32\u0e22\u0e38\u0e20\u0e32\u0e29\u0e35"
+   "label": "วันหมดอายุภาษี"
   },
   {
    "fieldname": "inspection_expiry",
    "fieldtype": "Date",
-   "label": "\u0e27\u0e31\u0e19\u0e2b\u0e21\u0e14\u0e2d\u0e32\u0e22\u0e38\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e20\u0e32\u0e1e"
+   "label": "วันหมดอายุตรวจสภาพ"
   },
   {
    "fieldname": "notes_section",
    "fieldtype": "Section Break",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38"
+   "label": "หมายเหตุ"
   },
   {
    "fieldname": "notes",
    "fieldtype": "Text Editor",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+   "label": "หมายเหตุเพิ่มเติม"
   },
   {
    "fieldname": "attachments_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e41\u0e19\u0e1a"
+   "label": "เอกสารแนบ"
   },
   {
    "fieldname": "vehicle_images",
    "fieldtype": "Attach Image",
-   "label": "\u0e23\u0e39\u0e1b\u0e20\u0e32\u0e1e\u0e23\u0e16"
+   "label": "รูปภาพรถ"
   }
  ],
  "index_web_pages_for_search": 1,

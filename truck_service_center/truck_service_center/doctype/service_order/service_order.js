@@ -150,6 +150,155 @@ frappe.ui.form.on('Service Order', {
 		}
 	},
 	
+	// Handler สำหรับสแกนบาร์โค้ดประเภทบริการ
+	scan_service_type_barcode: function(frm) {
+		let barcode = frm.doc.scan_service_type_barcode;
+		if (!barcode) return;
+		
+		// ค้นหา Service Type จากบาร์โค้ด
+		frappe.call({
+			method: 'frappe.client.get_value',
+			args: {
+				doctype: 'Service Type',
+				filters: { barcode: barcode, is_active: 1 },
+				fieldname: ['name', 'service_type_name', 'service_type_group', 'maintenance_type', 'default_duration', 'labor_rate']
+			},
+			callback: function(r) {
+				// ล้างช่องสแกนก่อน
+				frm.set_value('scan_service_type_barcode', '');
+				
+				if (r.message && r.message.name) {
+					let service_type_data = r.message;
+					
+					// ตรวจสอบว่ามี Service Type นี้อยู่แล้วหรือไม่
+					let exists = false;
+					if (frm.doc.service_types) {
+						for (let i = 0; i < frm.doc.service_types.length; i++) {
+							if (frm.doc.service_types[i].service_type === service_type_data.name) {
+								exists = true;
+								break;
+							}
+						}
+					}
+					
+					if (exists) {
+						frappe.show_alert({
+							message: __('ประเภทบริการ "{0}" มีอยู่แล้วในรายการ', [service_type_data.service_type_name]),
+							indicator: 'orange'
+						});
+						return;
+					}
+					
+					// เพิ่ม Service Type ใหม่
+					let row = frm.add_child('service_types');
+					row.service_type = service_type_data.name;
+					row.service_type_group = service_type_data.service_type_group;
+					row.maintenance_type = service_type_data.maintenance_type;
+					row.estimated_time = service_type_data.default_duration || 0;
+					row.labor_charges = service_type_data.labor_rate || 0;
+					
+					frm.refresh_field('service_types');
+					calculate_totals(frm);
+					
+					frappe.show_alert({
+						message: __('เพิ่มประเภทบริการ "{0}" เรียบร้อย', [service_type_data.service_type_name]),
+						indicator: 'green'
+					});
+				} else {
+					frappe.show_alert({
+						message: __('ไม่พบประเภทบริการที่ตรงกับบาร์โค้ด "{0}"', [barcode]),
+						indicator: 'red'
+					});
+				}
+			}
+		});
+	},
+	
+	// Handler สำหรับสแกนบาร์โค้ดอะไหล่
+	scan_item_barcode: function(frm) {
+		let barcode = frm.doc.scan_item_barcode;
+		if (!barcode) return;
+		
+		// ค้นหา Item จากบาร์โค้ด (ใช้ฟิลด์ barcodes ของ Item)
+		frappe.call({
+			method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_item_by_barcode',
+			args: {
+				barcode: barcode,
+				customer: frm.doc.customer
+			},
+			callback: function(r) {
+				// ล้างช่องสแกนก่อน
+				frm.set_value('scan_item_barcode', '');
+				
+				if (r.message && r.message.item_code) {
+					let item_data = r.message;
+					
+					// ค้นหารายการที่มี item_code เดียวกันและยังไม่มี material_issue
+					let existing_row = null;
+					if (frm.doc.service_items) {
+						for (let i = 0; i < frm.doc.service_items.length; i++) {
+							let row = frm.doc.service_items[i];
+							// หารายการที่ item_code ตรงกัน และยังไม่มีใบเบิก
+							if (row.item_code === item_data.item_code && !row.material_issue) {
+								existing_row = row;
+								break;
+							}
+						}
+					}
+					
+					if (existing_row) {
+						// มีรายการที่ยังไม่มีใบเบิก ให้เพิ่มจำนวน
+						let new_qty = flt(existing_row.qty) + 1;
+						frappe.model.set_value(existing_row.doctype, existing_row.name, 'qty', new_qty);
+						
+						// คำนวณยอดเงินใหม่
+						let new_amount = new_qty * flt(existing_row.rate);
+						frappe.model.set_value(existing_row.doctype, existing_row.name, 'amount', new_amount);
+						
+						frm.refresh_field('service_items');
+						calculate_totals(frm);
+						
+						frappe.show_alert({
+							message: __('เพิ่มจำนวน "{0}" เป็น {1}', [item_data.item_name, new_qty]),
+							indicator: 'green'
+						});
+					} else {
+						// ไม่มีรายการที่ไม่มีใบเบิก หรือเป็นรายการใหม่ ให้สร้างแถวใหม่
+						let row = frm.add_child('service_items');
+						row.item_code = item_data.item_code;
+						row.item_name = item_data.item_name;
+						row.description = item_data.description;
+						row.uom = item_data.uom;
+						row.qty = 1;
+						row.rate = item_data.rate || 0;
+						row.amount = item_data.rate || 0;
+						
+						frm.refresh_field('service_items');
+						calculate_totals(frm);
+						
+						frappe.show_alert({
+							message: __('เพิ่มอะไหล่ "{0}" เรียบร้อย', [item_data.item_name]),
+							indicator: 'green'
+						});
+						
+						// แสดงข้อความถ้าราคาเป็น 0
+						if (!item_data.rate || item_data.rate === 0) {
+							frappe.show_alert({
+								message: __('ไม่พบราคาสำหรับสินค้านี้ กรุณาตั้งค่า Item Price'),
+								indicator: 'orange'
+							});
+						}
+					}
+				} else {
+					frappe.show_alert({
+						message: __('ไม่พบสินค้าที่ตรงกับบาร์โค้ด "{0}"', [barcode]),
+						indicator: 'red'
+					});
+				}
+			}
+		});
+	},
+	
 	labor_charges: function(frm) {
 		calculate_totals(frm);
 	},

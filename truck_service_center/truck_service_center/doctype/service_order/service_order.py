@@ -73,6 +73,11 @@ class ServiceOrder(Document):
 		# คำนวณยอดรวมอะไหล่
 		self.total_parts_amount = 0
 		for item in self.service_items:
+			# ถ้าไม่มี rate ให้ดึงจาก Item
+			if not item.rate:
+				rate = frappe.db.get_value("Item", item.item_code, "valuation_rate") or 0
+				item.rate = rate
+			
 			item.amount = flt(item.qty) * flt(item.rate)
 			self.total_parts_amount += item.amount
 		
@@ -341,6 +346,68 @@ def get_item_rate(item_code, customer=None, price_list=None):
 		"item_name": item_data.item_name if item_data else "",
 		"description": item_data.description if item_data else "",
 		"uom": item_data.stock_uom if item_data else ""
+	}
+
+
+@frappe.whitelist()
+def get_item_by_barcode(barcode, customer=None, price_list=None):
+	"""ค้นหา Item จากบาร์โค้ดและดึงราคา"""
+	from frappe.utils import flt
+	
+	if not barcode:
+		return None
+	
+	# ค้นหา Item จากตาราง Item Barcode
+	item_code = frappe.db.get_value(
+		"Item Barcode",
+		{"barcode": barcode},
+		"parent"
+	)
+	
+	if not item_code:
+		# ถ้าไม่เจอใน Item Barcode ให้ลองค้นหาจาก Item.name โดยตรง
+		if frappe.db.exists("Item", barcode):
+			item_code = barcode
+		else:
+			return None
+	
+	# ดึงข้อมูล Item
+	item_data = frappe.db.get_value(
+		"Item",
+		item_code,
+		["item_code", "item_name", "description", "stock_uom", "standard_rate"],
+		as_dict=1
+	)
+	
+	if not item_data:
+		return None
+	
+	# ดึงราคาจาก Item Price
+	rate = 0
+	if not price_list:
+		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	
+	item_price = frappe.db.get_value(
+		"Item Price",
+		{
+			"item_code": item_code,
+			"price_list": price_list,
+			"selling": 1
+		},
+		"price_list_rate"
+	)
+	
+	if item_price:
+		rate = flt(item_price)
+	else:
+		rate = flt(item_data.standard_rate)
+	
+	return {
+		"item_code": item_data.item_code,
+		"item_name": item_data.item_name,
+		"description": item_data.description,
+		"uom": item_data.stock_uom,
+		"rate": rate
 	}
 
 

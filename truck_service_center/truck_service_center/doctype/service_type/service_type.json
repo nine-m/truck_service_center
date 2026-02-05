@@ -8,18 +8,20 @@
  "engine": "InnoDB",
  "field_order": [
   "service_type_name",
-  "maintenance_type",
-  "service_type_group",
   "description",
+  "identification_section",
+  "barcode",
+  "maintenance_type",
   "column_break_1",
+  "service_type_group",
   "is_active",
+  "service_details_section",
   "default_duration",
-  "pricing_section",
-  "default_rate",
   "labor_rate",
-  "column_break_2",
+  "accounting_section",
   "item_code",
   "income_account",
+  "column_break_2",
   "cost_center"
  ],
  "fields": [
@@ -32,6 +34,24 @@
    "unique": 1
   },
   {
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "คำอธิบาย"
+  },
+  {
+   "fieldname": "identification_section",
+   "fieldtype": "Section Break",
+   "label": "การระบุตัวตน"
+  },
+  {
+   "fieldname": "barcode",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "บาร์โค้ด",
+   "unique": 1,
+   "description": "บาร์โค้ดสำหรับสแกนเพิ่มประเภทบริการ"
+  },
+  {
    "fieldname": "maintenance_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -39,6 +59,10 @@
    "label": "ประเภทการบำรุงรักษา",
    "options": "PM\nCM",
    "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "service_type_group",
@@ -49,19 +73,15 @@
    "options": "Service Type Group"
   },
   {
-   "fieldname": "description",
-   "fieldtype": "Text Editor",
-   "label": "คำอธิบาย"
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "is_active",
    "fieldtype": "Check",
    "label": "ใช้งาน",
    "default": "1"
+  },
+  {
+   "fieldname": "service_details_section",
+   "fieldtype": "Section Break",
+   "label": "รายละเอียดการบริการ"
   },
   {
    "fieldname": "default_duration",
@@ -71,26 +91,16 @@
    "description": "ระยะเวลาโดยประมาณในการทำงาน"
   },
   {
-   "fieldname": "pricing_section",
-   "fieldtype": "Section Break",
-   "label": "ราคา"
-  },
-  {
-   "fieldname": "default_rate",
-   "fieldtype": "Currency",
-   "label": "ราคามาตรฐาน",
-   "precision": 2
-  },
-  {
    "fieldname": "labor_rate",
    "fieldtype": "Currency",
-   "label": "ค่าแรง",
+   "label": "ค่าแรง/ค่าบริการ",
    "precision": 2,
-   "description": "ค่าแรงงานต่อชั่วโมง"
+   "reqd": 1
   },
   {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break"
+   "fieldname": "accounting_section",
+   "fieldtype": "Section Break",
+   "label": "เชื่อมโยงบัญชี"
   },
   {
    "fieldname": "item_code",
@@ -104,6 +114,10 @@
    "fieldtype": "Link",
    "label": "บัญชีรายได้",
    "options": "Account"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "cost_center",

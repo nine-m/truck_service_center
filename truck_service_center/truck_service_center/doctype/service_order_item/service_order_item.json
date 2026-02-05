@@ -26,7 +26,7 @@
    "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "รหัสสินค้า",
    "options": "Item",
    "reqd": 1
   },
@@ -35,14 +35,14 @@
    "fieldname": "item_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "ชื่อสินค้า",
    "read_only": 1
   },
   {
    "fetch_from": "item_code.description",
    "fieldname": "description",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
+   "label": "คำอธิบาย"
   },
   {
    "fieldname": "column_break_1",
@@ -52,7 +52,7 @@
    "fieldname": "qty",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "label": "\u0e08\u0e33\u0e19\u0e27\u0e19",
+   "label": "จำนวน",
    "reqd": 1,
    "precision": 2
   },
@@ -60,7 +60,7 @@
    "fetch_from": "item_code.stock_uom",
    "fieldname": "uom",
    "fieldtype": "Link",
-   "label": "\u0e2b\u0e19\u0e48\u0e27\u0e22",
+   "label": "หน่วย",
    "options": "UOM",
    "read_only": 1
   },
@@ -68,14 +68,14 @@
    "fieldname": "rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "\u0e23\u0e32\u0e04\u0e32",
+   "label": "ราคา",
    "precision": 2
   },
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21",
+   "label": "ยอดรวม",
    "read_only": 1,
    "precision": 2
   },
@@ -86,20 +86,20 @@
   {
    "fieldname": "warehouse",
    "fieldtype": "Link",
-   "label": "\u0e04\u0e25\u0e31\u0e07\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "คลังสินค้า",
    "options": "Warehouse"
   },
   {
    "fieldname": "material_issue",
    "fieldtype": "Link",
-   "label": "\u0e43\u0e1a\u0e40\u0e1a\u0e34\u0e01\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "label": "ใบเบิกอะไหล่",
    "options": "Stock Entry",
    "read_only": 1
   },
   {
    "fieldname": "material_issue_status",
    "fieldtype": "Data",
-   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e43\u0e1a\u0e40\u0e1b\u0e34\u0e01",
+   "label": "สถานะใบเปิก",
    "read_only": 1
   },
   {
@@ -109,13 +109,13 @@
   {
    "fieldname": "expense_account",
    "fieldtype": "Link",
-   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e04\u0e48\u0e32\u0e43\u0e0a\u0e49\u0e08\u0e48\u0e32\u0e22",
+   "label": "บัญชีค่าใช้จ่าย",
    "options": "Account"
   },
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "label": "\u0e28\u0e39\u0e19\u0e22\u0e4c\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19",
+   "label": "ศูนย์ต้นทุน",
    "options": "Cost Center"
   }
  ],
