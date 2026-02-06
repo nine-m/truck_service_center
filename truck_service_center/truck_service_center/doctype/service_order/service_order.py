@@ -4,15 +4,29 @@
 import frappe
 from frappe.model.document import Document
 from frappe.utils import flt
+from frappe.contacts.doctype.address.address import get_address_display
 
 
 class ServiceOrder(Document):
 	def validate(self):
+		self.set_address_display()
 		self.check_material_issue_items()
 		self.apply_service_package()
 		self.calculate_totals()
 		self.update_payment_status()
 		self.update_material_issue_status()
+
+	def set_address_display(self):
+		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
+		if self.customer_address:
+			self.address_display = get_address_display(self.customer_address)
+		else:
+			self.address_display = ""
+
+		if self.shipping_address_name:
+			self.shipping_address = get_address_display(self.shipping_address_name)
+		else:
+			self.shipping_address = ""
 	
 	def check_material_issue_items(self):
 		"""ตรวจสอบว่าไม่มีการลบแถวที่มี Material Issue ที่ submit ไปแล้ว"""
@@ -639,3 +653,10 @@ def get_material_issue_summary(service_order):
 		"total_count": len(material_issues),
 		"material_issues": list(material_issues.values())
 	}
+
+
+@frappe.whitelist()
+def get_party_shipping_address(doctype, name):
+	"""Wrapper for erpnext get_party_shipping_address"""
+	from erpnext.accounts.party import get_party_shipping_address as _get_party_shipping_address
+	return _get_party_shipping_address(doctype, name)

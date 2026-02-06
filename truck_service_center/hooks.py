@@ -256,5 +256,11 @@ fixtures = [
         "filters": [
             ["name", "in", ["Service Order"]]
         ]
+    },
+    {
+        "dt": "Letter Head",
+        "filters": [
+            ["name", "in", ["LINE-LETTER-HEAD"]]
+        ]
     }
 ]
