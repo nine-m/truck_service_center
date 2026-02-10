@@ -78,11 +78,28 @@ frappe.ui.form.on('Service Appointment', {
 		
 		// ตั้งค่า filter สำหรับ service_type
 		set_service_type_filter(frm);
+		
+		// ตั้งค่า filter สำหรับ address ตาม customer
+		set_address_filters(frm);
 	},
 	
 	customer: function(frm) {
 		// ตั้งค่า filter สำหรับ vehicle
 		set_vehicle_filter(frm);
+		
+		// ตั้งค่า filter สำหรับ address ตาม customer
+		set_address_filters(frm);
+		
+		// ดึง default billing/shipping address ของลูกค้า
+		if (frm.doc.customer) {
+			fetch_customer_addresses(frm);
+		} else {
+			// ล้างค่า address ถ้าไม่มีลูกค้า
+			frm.set_value('customer_address', '');
+			frm.set_value('address_display', '');
+			frm.set_value('shipping_address_name', '');
+			frm.set_value('shipping_address', '');
+		}
 		
 		// ล้างค่ารถถ้าเปลี่ยนลูกค้า
 		if (frm.doc.vehicle) {
@@ -91,6 +108,40 @@ frappe.ui.form.on('Service Appointment', {
 					frm.set_value('vehicle', '');
 				}
 			});
+		}
+	},
+	
+	customer_address: function(frm) {
+		// เมื่อเลือก billing address ให้ render address display
+		if (frm.doc.customer_address) {
+			frappe.call({
+				method: 'frappe.contacts.doctype.address.address.get_address_display',
+				args: { address_dict: frm.doc.customer_address },
+				callback: function(r) {
+					if (r.message) {
+						frm.set_value('address_display', r.message);
+					}
+				}
+			});
+		} else {
+			frm.set_value('address_display', '');
+		}
+	},
+	
+	shipping_address_name: function(frm) {
+		// เมื่อเลือก shipping address ให้ render address display
+		if (frm.doc.shipping_address_name) {
+			frappe.call({
+				method: 'frappe.contacts.doctype.address.address.get_address_display',
+				args: { address_dict: frm.doc.shipping_address_name },
+				callback: function(r) {
+					if (r.message) {
+						frm.set_value('shipping_address', r.message);
+					}
+				}
+			});
+		} else {
+			frm.set_value('shipping_address', '');
 		}
 	},
 	
@@ -105,6 +156,19 @@ frappe.ui.form.on('Service Appointment', {
 					frm.set_value('service_type', '');
 				}
 			});
+		}
+	},
+	
+	service_type: function(frm) {
+		// เติมกลุ่มบริการอัตโนมัติเมื่อเลือก service_type
+		if (frm.doc.service_type) {
+			frappe.db.get_value('Service Type', frm.doc.service_type, 'service_type_group', function(r) {
+				if (r && r.service_type_group) {
+					frm.set_value('service_type_group', r.service_type_group);
+				}
+			});
+		} else {
+			frm.set_value('service_type_group', '');
 		}
 	},
 	
@@ -262,6 +326,68 @@ function show_slot_info(frm) {
 					message: message,
 					indicator: indicator
 				}, 5);
+			}
+		}
+	});
+}
+
+// ====== Address Helper Functions ======
+
+function set_address_filters(frm) {
+	// Filter billing address ตาม customer (ผ่าน Dynamic Link)
+	frm.set_query('customer_address', function() {
+		return {
+			query: 'frappe.contacts.doctype.address.address.address_query',
+			filters: {
+				link_doctype: 'Customer',
+				link_name: frm.doc.customer || ''
+			}
+		};
+	});
+	
+	// Filter shipping address ตาม customer (ผ่าน Dynamic Link)
+	frm.set_query('shipping_address_name', function() {
+		return {
+			query: 'frappe.contacts.doctype.address.address.address_query',
+			filters: {
+				link_doctype: 'Customer',
+				link_name: frm.doc.customer || ''
+			}
+		};
+	});
+}
+
+function fetch_customer_addresses(frm) {
+	// ดึง default billing address ของลูกค้า
+	frappe.call({
+		method: 'frappe.contacts.doctype.address.address.get_default_address',
+		args: {
+			doctype: 'Customer',
+			name: frm.doc.customer
+		},
+		callback: function(r) {
+			if (r.message) {
+				frm.set_value('customer_address', r.message);
+			} else {
+				frm.set_value('customer_address', '');
+				frm.set_value('address_display', '');
+			}
+		}
+	});
+	
+	// ดึง default shipping address ของลูกค้า
+	frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_party_shipping_address',
+		args: {
+			doctype: 'Customer',
+			name: frm.doc.customer
+		},
+		callback: function(r) {
+			if (r.message) {
+				frm.set_value('shipping_address_name', r.message);
+			} else {
+				frm.set_value('shipping_address_name', '');
+				frm.set_value('shipping_address', '');
 			}
 		}
 	});

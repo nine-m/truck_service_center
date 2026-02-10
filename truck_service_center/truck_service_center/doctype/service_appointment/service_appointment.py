@@ -4,14 +4,36 @@
 import frappe
 from frappe.model.document import Document
 from frappe.utils import get_datetime, add_to_date, now_datetime, format_datetime
+from frappe.contacts.doctype.address.address import get_address_display
 
 
 class ServiceAppointment(Document):
 	def validate(self):
+		self.set_address_display()
 		self.validate_appointment_datetime()
 		self.check_slot_availability()
 		self.sync_vehicle_info()
 		self.set_slot_datetimes()
+		self.fill_service_group_from_service_type()
+
+	def set_address_display(self):
+		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
+		if self.customer_address:
+			self.address_display = get_address_display(self.customer_address)
+		else:
+			self.address_display = ""
+
+		if self.shipping_address_name:
+			self.shipping_address = get_address_display(self.shipping_address_name)
+		else:
+			self.shipping_address = ""
+	
+	def fill_service_group_from_service_type(self):
+		"""เติมกลุ่มบริการอัตโนมัติจากประเภทบริการที่เลือก"""
+		if self.service_type:
+			service_type_group = frappe.db.get_value("Service Type", self.service_type, "service_type_group")
+			if service_type_group:
+				self.service_type_group = service_type_group
 	
 	def validate_appointment_datetime(self):
 		"""ตรวจสอบวันเวลานัดหมายต้องไม่อยู่ในอดีต"""
@@ -115,6 +137,14 @@ class ServiceAppointment(Document):
 		service_order.service_date = self.appointment_date
 		service_order.technician = self.assigned_technician
 		
+		# ส่งที่อยู่ไปยัง Service Order
+		if self.customer_address:
+			service_order.customer_address = self.customer_address
+			service_order.address_display = self.address_display
+		if self.shipping_address_name:
+			service_order.shipping_address_name = self.shipping_address_name
+			service_order.shipping_address = self.shipping_address
+		
 		# รวม customer_complaints จาก repair_cause และ service_remark
 		complaints = []
 		if self.repair_cause:
@@ -202,3 +232,10 @@ def backfill_license_plate():
 			frappe.db.set_value("Service Appointment", d["name"], "license_plate", plate)
 			updated += 1
 	return {"updated": updated}
+
+
+@frappe.whitelist()
+def get_party_shipping_address(doctype, name):
+	"""Wrapper for erpnext get_party_shipping_address"""
+	from erpnext.accounts.party import get_party_shipping_address as _get_party_shipping_address
+	return _get_party_shipping_address(doctype, name)

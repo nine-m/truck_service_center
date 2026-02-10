@@ -21,6 +21,13 @@
   "column_break_cv",
   "license_plate",
   "contact_number",
+  "address_section",
+  "customer_address",
+  "address_display",
+  "tax_id",
+  "column_break_address",
+  "shipping_address_name",
+  "shipping_address",
   "service_details_section",
   "service_type_group",
   "service_type",
@@ -139,11 +146,54 @@
    "options": "Phone"
   },
   {
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "ที่อยู่"
+  },
+  {
+   "fieldname": "customer_address",
+   "fieldtype": "Link",
+   "label": "Billing Address",
+   "options": "Address",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "address_display",
+   "fieldtype": "Text Editor",
+   "label": "Address Display",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "customer.tax_id",
+   "fieldname": "tax_id",
+   "fieldtype": "Data",
+   "label": "เลขประจำตัวผู้เสียภาษี",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_address",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_address_name",
+   "fieldtype": "Link",
+   "label": "Shipping Address",
+   "options": "Address",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "shipping_address",
+   "fieldtype": "Text Editor",
+   "label": "Shipping Address Display",
+   "read_only": 1
+  },
+  {
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
    "label": "รายละเอียดบริการ"
   },
   {
+   "fetch_from": "service_type.service_type_group",
    "fieldname": "service_type_group",
    "fieldtype": "Link",
    "label": "กลุ่มบริการ",
@@ -222,7 +272,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-08 10:00:00.000000",
+ "modified": "2026-02-10 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment",
