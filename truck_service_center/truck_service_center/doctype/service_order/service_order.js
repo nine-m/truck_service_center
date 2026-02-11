@@ -3,6 +3,21 @@
 
 frappe.ui.form.on('Service Order', {
 	onload: function(frm) {
+		// ตั้งค่าภาษีเริ่มต้นสำหรับเอกสารใหม่
+		if (frm.is_new()) {
+			frappe.db.get_value('Truck Service Center Settings', 'Truck Service Center Settings',
+				['default_tax_type', 'vat_rate'], function(r) {
+					if (r) {
+						if (!frm.doc.tax_type) {
+							frm.set_value('tax_type', r.default_tax_type || 'ราคาแยก VAT');
+						}
+						if (!frm.doc.vat_rate) {
+							frm.set_value('vat_rate', r.vat_rate || 7);
+						}
+					}
+				}
+			);
+		}
 		// คำนวณยอดรวมเมื่อโหลดครั้งแรก
 		calculate_totals(frm);
 	},
@@ -361,7 +376,11 @@ frappe.ui.form.on('Service Order', {
 		calculate_totals(frm);
 	},
 	
-	tax_amount: function(frm) {
+	tax_type: function(frm) {
+		calculate_totals(frm);
+	},
+	
+	vat_rate: function(frm) {
 		calculate_totals(frm);
 	},
 	
@@ -794,28 +813,6 @@ function add_service_type_items_to_order(frm, items, service_type) {
 }
 
 
-function calculate_totals(frm) {
-	let total_parts = 0;
-	
-	// คำนวณรวมอะไหล่
-	if (frm.doc.service_items) {
-		frm.doc.service_items.forEach(function(item) {
-			total_parts += flt(item.amount);
-		});
-	}
-	
-	frm.set_value('total_parts_amount', total_parts);
-	
-	// คำนวณยอดรวมสุทธิ
-	let subtotal = flt(total_parts) + flt(frm.doc.labor_charges);
-	let total = subtotal - flt(frm.doc.discount_amount) + flt(frm.doc.tax_amount);
-	frm.set_value('total_amount', total);
-	
-	// คำนวณยอดคงค้าง
-	let outstanding = flt(total) - flt(frm.doc.paid_amount);
-	frm.set_value('outstanding_amount', outstanding);
-}
-
 function set_vehicle_filter(frm) {
 	// ตั้งค่า filter สำหรับ Vehicle ให้แสดงเฉพาะรถของลูกค้าที่เลือก
 	if (frm.doc.customer) {
@@ -865,9 +862,35 @@ function calculate_totals(frm) {
 	}
 	frm.set_value('total_parts_amount', total_parts);
 	
-	// คำนวณยอดรวมทั้งหมด
-	let subtotal = total_parts + total_labor;
-	let total = subtotal - flt(frm.doc.discount_amount) + flt(frm.doc.tax_amount);
+	// คำนวณยอดก่อนภาษี (subtotal หลังหักส่วนลด)
+	let subtotal = total_parts + total_labor - flt(frm.doc.discount_amount);
+	
+	// คำนวณภาษีตามประเภท
+	let tax_type = frm.doc.tax_type;
+	let vat_rate = flt(frm.doc.vat_rate);
+	let net_total = 0;
+	let tax_amount = 0;
+	let total = 0;
+	
+	if (tax_type === 'ราคารวม VAT' && vat_rate) {
+		// ราคารวม VAT แล้ว → แยก VAT ออกจากยอดรวม
+		tax_amount = flt(subtotal * vat_rate / (100 + vat_rate), 2);
+		net_total = flt(subtotal - tax_amount, 2);
+		total = flt(subtotal, 2);
+	} else if (tax_type === 'ราคาแยก VAT' && vat_rate) {
+		// ราคาแยก VAT → คิด VAT เพิ่มจากยอดสุทธิ
+		net_total = flt(subtotal, 2);
+		tax_amount = flt(subtotal * vat_rate / 100, 2);
+		total = flt(net_total + tax_amount, 2);
+	} else {
+		// ไม่คิด VAT
+		net_total = flt(subtotal, 2);
+		tax_amount = 0;
+		total = flt(subtotal, 2);
+	}
+	
+	frm.set_value('net_total', net_total);
+	frm.set_value('tax_amount', tax_amount);
 	frm.set_value('total_amount', total);
 	
 	// คำนวณยอดคงค้าง

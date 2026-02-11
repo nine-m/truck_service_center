@@ -31,5 +31,62 @@ frappe.ui.form.on('Truck Service Center Settings', {
 				});
 			});
 		}
+
+		// ตั้งค่า filter สำหรับเทมเพลตภาษีตาม company
+		setup_tax_template_filters(frm);
+
+		// แสดงรายละเอียดเทมเพลตที่เลือก
+		show_template_details(frm, 'vat_exclusive_template');
+		show_template_details(frm, 'vat_inclusive_template');
+	},
+
+	default_company: function(frm) {
+		// เมื่อเปลี่ยน company ให้ reset filter ของ template
+		setup_tax_template_filters(frm);
+	},
+
+	vat_exclusive_template: function(frm) {
+		show_template_details(frm, 'vat_exclusive_template');
+	},
+
+	vat_inclusive_template: function(frm) {
+		show_template_details(frm, 'vat_inclusive_template');
 	}
 });
+
+function setup_tax_template_filters(frm) {
+	let company = frm.doc.default_company;
+	let filter = company ? { company: company, disabled: 0 } : { disabled: 0 };
+
+	frm.set_query('vat_exclusive_template', function() {
+		return { filters: filter };
+	});
+
+	frm.set_query('vat_inclusive_template', function() {
+		return { filters: filter };
+	});
+}
+
+function show_template_details(frm, fieldname) {
+	let template_name = frm.doc[fieldname];
+	if (!template_name) return;
+
+	frappe.call({
+		method: 'frappe.client.get',
+		args: {
+			doctype: 'Sales Taxes and Charges Template',
+			name: template_name
+		},
+		callback: function(r) {
+			if (r.message && r.message.taxes) {
+				let taxes = r.message.taxes;
+				let details = taxes.map(function(tax) {
+					let inclusive = tax.included_in_print_rate ? '✅ รวมในราคา' : '❌ ไม่รวมในราคา';
+					return `${tax.description || tax.account_head}: ${tax.charge_type} @ ${tax.rate}% (${inclusive})`;
+				}).join('<br>');
+
+				frm.fields_dict[fieldname].set_description(details);
+			}
+		}
+	});
+}

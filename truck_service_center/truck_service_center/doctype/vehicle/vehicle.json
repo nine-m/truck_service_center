@@ -9,6 +9,7 @@
  "field_order": [
   "vehicle_info_section",
   "license_plate",
+  "truck_number",
   "vehicle_type",
   "brand",
   "model",
@@ -71,6 +72,14 @@
    "label": "ทะเบียนรถ",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "truck_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "หมายเลขรถ",
+   "description": "หมายเลขรถของลูกค้า เช่น L001, A029"
   },
   {
    "fieldname": "vehicle_type",
@@ -339,7 +348,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-07 10:00:00.000000",
+ "modified": "2026-02-11 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Vehicle",

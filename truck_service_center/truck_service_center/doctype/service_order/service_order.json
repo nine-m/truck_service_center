@@ -21,6 +21,7 @@
   "shipping_address_name",
   "shipping_address",
   "vehicle_info_section",
+  "truck_number",
   "vehicle_type",
   "brand",
   "model",
@@ -58,7 +59,10 @@
   "total_parts_amount",
   "labor_charges",
   "column_break_4",
+  "tax_type",
+  "vat_rate",
   "discount_amount",
+  "net_total",
   "tax_amount",
   "total_amount",
   "payment_section",
@@ -180,6 +184,15 @@
    "fieldname": "vehicle_info_section",
    "fieldtype": "Section Break",
    "label": "ข้อมูลรถ/ติดต่อ"
+  },
+  {
+   "fetch_from": "vehicle.truck_number",
+   "fieldname": "truck_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "หมายเลขรถ",
+   "read_only": 1
   },
   {
    "fetch_from": "vehicle.vehicle_type",
@@ -393,16 +406,38 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "tax_type",
+   "fieldtype": "Select",
+   "label": "ประเภทภาษี",
+   "options": "ราคารวม VAT\nราคาแยก VAT\nไม่คิด VAT",
+   "reqd": 1
+  },
+  {
+   "description": "อัตราภาษีมูลค่าเพิ่ม (%)",
+   "fieldname": "vat_rate",
+   "fieldtype": "Float",
+   "label": "อัตรา VAT (%)",
+   "precision": "2"
+  },
+  {
    "fieldname": "discount_amount",
    "fieldtype": "Currency",
    "label": "ส่วนลด",
    "precision": "2"
   },
   {
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "label": "ยอดก่อน VAT",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
    "fieldname": "tax_amount",
    "fieldtype": "Currency",
-   "label": "ภาษี",
-   "precision": "2"
+   "label": "ภาษีมูลค่าเพิ่ม",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "bold": 1,
@@ -513,7 +548,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-03 09:51:47.565599",
+ "modified": "2026-02-11 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

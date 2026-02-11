@@ -24,7 +24,15 @@
   "sales_invoice_series",
   "column_break_3",
   "payment_terms_template",
-  "default_income_account"
+  "default_income_account",
+  "tax_settings_section",
+  "default_tax_type",
+  "column_break_tax",
+  "vat_rate",
+  "tax_template_section",
+  "vat_exclusive_template",
+  "column_break_tax_template",
+  "vat_inclusive_template"
  ],
  "fields": [
   {
@@ -139,12 +147,60 @@
    "fieldtype": "Link",
    "label": "บัญชีรายได้เริ่มต้น",
    "options": "Account"
+  },
+  {
+   "fieldname": "tax_settings_section",
+   "fieldtype": "Section Break",
+   "label": "การตั้งค่าภาษี"
+  },
+  {
+   "default": "ราคาแยก VAT",
+   "fieldname": "default_tax_type",
+   "fieldtype": "Select",
+   "label": "ประเภทภาษีเริ่มต้น",
+   "options": "ราคารวม VAT\nราคาแยก VAT\nไม่คิด VAT"
+  },
+  {
+   "fieldname": "column_break_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "7",
+   "description": "อัตราภาษีมูลค่าเพิ่ม (%)",
+   "fieldname": "vat_rate",
+   "fieldtype": "Float",
+   "label": "อัตรา VAT (%)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "tax_template_section",
+   "fieldtype": "Section Break",
+   "label": "เทมเพลตภาษี (Sales Taxes and Charges Template)",
+   "description": "เชื่อมต่อ 1:1 กับ Sales Taxes and Charges Template ของ ERPNext เพื่อใช้ในการสร้าง Sales Invoice"
+  },
+  {
+   "fieldname": "vat_exclusive_template",
+   "fieldtype": "Link",
+   "label": "เทมเพลต ราคาแยก VAT",
+   "options": "Sales Taxes and Charges Template",
+   "description": "เทมเพลตภาษีสำหรับราคาแยก VAT (VAT จะถูกบวกเพิ่มจากราคาสินค้า)"
+  },
+  {
+   "fieldname": "column_break_tax_template",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vat_inclusive_template",
+   "fieldtype": "Link",
+   "label": "เทมเพลต ราคารวม VAT",
+   "options": "Sales Taxes and Charges Template",
+   "description": "เทมเพลตภาษีสำหรับราคารวม VAT (ราคาสินค้ารวม VAT แล้ว, included_in_print_rate = Yes)"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-01-08 10:00:00.000000",
+ "modified": "2026-02-11 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",

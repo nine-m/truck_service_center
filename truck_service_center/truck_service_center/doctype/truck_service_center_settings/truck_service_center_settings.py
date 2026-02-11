@@ -3,6 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import flt
 
 
 class TruckServiceCenterSettings(Document):
@@ -14,6 +15,75 @@ class TruckServiceCenterSettings(Document):
 				indicator="orange",
 				title="คำแนะนำ"
 			)
+
+		# ตรวจสอบความสอดคล้องของเทมเพลตภาษี
+		self.validate_tax_templates()
+
+	def validate_tax_templates(self):
+		"""ตรวจสอบว่าเทมเพลตภาษีตั้งค่าถูกต้องตามประเภท"""
+		if self.vat_exclusive_template:
+			self._validate_template_type(
+				self.vat_exclusive_template,
+				expected_inclusive=False,
+				label="ราคาแยก VAT"
+			)
+
+		if self.vat_inclusive_template:
+			self._validate_template_type(
+				self.vat_inclusive_template,
+				expected_inclusive=True,
+				label="ราคารวม VAT"
+			)
+
+		# แจ้งเตือนถ้ายังไม่ได้ตั้งค่าเทมเพลต
+		if self.default_tax_type == "ราคาแยก VAT" and not self.vat_exclusive_template:
+			frappe.msgprint(
+				"แนะนำให้ตั้งค่า 'เทมเพลต ราคาแยก VAT' เพื่อให้ Sales Invoice ใช้เทมเพลตภาษีอัตโนมัติ",
+				indicator="orange",
+				title="คำแนะนำ"
+			)
+		elif self.default_tax_type == "ราคารวม VAT" and not self.vat_inclusive_template:
+			frappe.msgprint(
+				"แนะนำให้ตั้งค่า 'เทมเพลต ราคารวม VAT' เพื่อให้ Sales Invoice ใช้เทมเพลตภาษีอัตโนมัติ",
+				indicator="orange",
+				title="คำแนะนำ"
+			)
+
+	def _validate_template_type(self, template_name, expected_inclusive, label):
+		"""ตรวจสอบว่าเทมเพลตมี included_in_print_rate ตรงกับประเภทที่คาดหวัง"""
+		taxes = frappe.get_all(
+			"Sales Taxes and Charges",
+			filters={"parent": template_name, "parenttype": "Sales Taxes and Charges Template"},
+			fields=["included_in_print_rate", "rate", "charge_type"],
+			order_by="idx"
+		)
+
+		if not taxes:
+			frappe.msgprint(
+				f"เทมเพลต '{template_name}' สำหรับ {label} ไม่มีรายการภาษี กรุณาตรวจสอบ",
+				indicator="orange",
+				title="ตรวจสอบเทมเพลตภาษี"
+			)
+			return
+
+		for tax in taxes:
+			if tax.included_in_print_rate != expected_inclusive:
+				expected_text = "รวมในราคา (included_in_print_rate = Yes)" if expected_inclusive else "ไม่รวมในราคา (included_in_print_rate = No)"
+				frappe.msgprint(
+					f"เทมเพลต '{template_name}' สำหรับ {label}: "
+					f"ควรตั้งค่าภาษีเป็น {expected_text}",
+					indicator="orange",
+					title="ตรวจสอบเทมเพลตภาษี"
+				)
+				break
+
+	def get_tax_template_for_type(self, tax_type):
+		"""คืนค่า Sales Taxes and Charges Template ตามประเภทภาษี"""
+		if tax_type == "ราคาแยก VAT":
+			return self.vat_exclusive_template
+		elif tax_type == "ราคารวม VAT":
+			return self.vat_inclusive_template
+		return None
 
 
 @frappe.whitelist()

@@ -9,6 +9,7 @@ from frappe.contacts.doctype.address.address import get_address_display
 
 class ServiceOrder(Document):
 	def validate(self):
+		self.set_tax_defaults()
 		self.set_address_display()
 		self.check_material_issue_items()
 		self.apply_service_package()
@@ -82,6 +83,14 @@ class ServiceOrder(Document):
 			if package_details.discount_percent:
 				self.discount_amount = package_details.get_discount_amount()
 	
+	def set_tax_defaults(self):
+		"""ตั้งค่าภาษีเริ่มต้นจาก Settings"""
+		settings = frappe.get_single("Truck Service Center Settings")
+		if not self.tax_type:
+			self.tax_type = settings.default_tax_type or "ราคาแยก VAT"
+		if not self.vat_rate:
+			self.vat_rate = flt(settings.vat_rate) or 7
+
 	def calculate_totals(self):
 		"""คำนวณยอดรวมทั้งหมด"""
 		# คำนวณยอดรวมอะไหล่
@@ -102,10 +111,27 @@ class ServiceOrder(Document):
 			self.labor_charges += flt(service_type.labor_charges)
 			self.estimated_time += flt(service_type.estimated_time)
 		
-		# คำนวณยอดรวมทั้งหมด
-		subtotal = flt(self.total_parts_amount) + flt(self.labor_charges)
-		total = subtotal - flt(self.discount_amount) + flt(self.tax_amount)
-		self.total_amount = total
+		# คำนวณยอดก่อนภาษี (subtotal หลังหักส่วนลด)
+		subtotal = flt(self.total_parts_amount) + flt(self.labor_charges) - flt(self.discount_amount)
+		
+		# คำนวณภาษีตามประเภท
+		vat_rate = flt(self.vat_rate)
+		
+		if self.tax_type == "ราคารวม VAT" and vat_rate:
+			# ราคารวม VAT แล้ว → แยก VAT ออกจากยอดรวม
+			self.tax_amount = flt(subtotal * vat_rate / (100 + vat_rate), 2)
+			self.net_total = flt(subtotal - self.tax_amount, 2)
+			self.total_amount = flt(subtotal, 2)
+		elif self.tax_type == "ราคาแยก VAT" and vat_rate:
+			# ราคาแยก VAT → คิด VAT เพิ่มจากยอดสุทธิ
+			self.net_total = flt(subtotal, 2)
+			self.tax_amount = flt(subtotal * vat_rate / 100, 2)
+			self.total_amount = flt(subtotal + self.tax_amount, 2)
+		else:
+			# ไม่คิด VAT
+			self.net_total = flt(subtotal, 2)
+			self.tax_amount = 0
+			self.total_amount = flt(subtotal, 2)
 		
 		# คำนวณยอดคงค้าง
 		self.outstanding_amount = flt(self.total_amount) - flt(self.paid_amount)
@@ -336,7 +362,30 @@ class ServiceOrder(Document):
 		if not sales_invoice.items:
 			frappe.throw("ไม่สามารถสร้าง Sales Invoice ได้เนื่องจากไม่มีรายการสินค้า")
 		
+		# ส่วนลด (ถ้ามี)
+		if flt(self.discount_amount) > 0:
+			sales_invoice.discount_amount = flt(self.discount_amount)
+			sales_invoice.additional_discount_percentage = 0
+			sales_invoice.apply_discount_on = "Grand Total"
+		
+		# Insert ก่อนโดยยังไม่ใส่ taxes (ป้องกัน ERPNext override ระหว่าง insert)
 		sales_invoice.insert()
+		
+		# ตั้งค่าเทมเพลตภาษี (taxes_and_charges) จาก Settings หลัง insert
+		tax_type = self.tax_type or settings.default_tax_type or "ราคาแยก VAT"
+		tax_template = settings.get_tax_template_for_type(tax_type)
+		if tax_template:
+			sales_invoice.taxes_and_charges = tax_template
+			# ล้าง taxes ที่ ERPNext อาจตั้งค่าอัตโนมัติ แล้วใส่จากเทมเพลตของเรา
+			sales_invoice.set("taxes", [])
+			from erpnext.controllers.accounts_controller import get_taxes_and_charges
+			taxes = get_taxes_and_charges("Sales Taxes and Charges Template", tax_template)
+			for tax in taxes:
+				sales_invoice.append("taxes", tax)
+		
+		# คำนวณภาษีและยอดรวมใหม่แล้วบันทึก
+		sales_invoice.run_method("calculate_taxes_and_totals")
+		sales_invoice.save()
 		
 		# Submit อัตโนมัติถ้ามีการตั้งค่า
 		if settings.auto_submit_sales_invoice:
