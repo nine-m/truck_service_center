@@ -135,9 +135,20 @@ class ServiceOrder(Document):
 				item.material_issue_status = None
 	
 	def on_submit(self):
-		"""เมื่อ submit ให้สร้าง Stock Entry และอัพเดทข้อมูลรถ"""
+		"""เมื่อ submit ให้สร้าง Stock Entry, อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
 		self.create_stock_entry()
 		self.update_vehicle_info()
+		self.complete_linked_service_appointment()
+
+	def complete_linked_service_appointment(self):
+		"""ค้นหา Service Appointment ที่ผูกกับ Service Order นี้ แล้วปรับสถานะเป็น Completed"""
+		appointments = frappe.get_all(
+			"Service Appointment",
+			filters={"service_order": self.name, "docstatus": 1},
+			pluck="name",
+		)
+		for appt_name in appointments:
+			frappe.db.set_value("Service Appointment", appt_name, "status", "Completed")
     
 	def before_submit(self):
 		"""ก่อน submit ให้ตรวจสอบเงื่อนไขและตั้งสถานะเป็น Completed"""
