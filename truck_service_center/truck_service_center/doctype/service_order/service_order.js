@@ -433,6 +433,83 @@ frappe.ui.form.on('Service Order', {
 				return false;
 			}
 		}
+	},
+	
+	before_submit: function(frm) {
+		// ตรวจสอบ Material Issues ก่อน Submit
+		// ถ้ามี flag ว่าตรวจสอบแล้ว (จากการสร้าง MI สำเร็จ) ให้ข้าม
+		if (frm.__mi_checked) {
+			frm.__mi_checked = false;
+			return;
+		}
+		
+		frappe.validated = false;
+		
+		frappe.call({
+			method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.check_material_issues_before_submit',
+			args: { service_order: frm.doc.name },
+			async: false,
+			callback: function(r) {
+				if (!r.message) return;
+				
+				let result = r.message;
+				
+				if (result.can_submit) {
+					// ผ่านการตรวจสอบ - อนุญาตให้ submit
+					frappe.validated = true;
+					return;
+				}
+				
+				// มี Material Issues ที่ยังไม่ได้ submit
+				if (Object.keys(result.unsubmitted_mis).length > 0) {
+					let mi_list = Object.entries(result.unsubmitted_mis)
+						.map(function(entry) { return '• ' + entry[0] + ' (สถานะ: ' + entry[1] + ')'; })
+						.join('<br>');
+					
+					frappe.msgprint({
+						title: __('ไม่สามารถ Submit ได้'),
+						indicator: 'red',
+						message: __('ใบเบิกอะไหล่ต่อไปนี้ยังไม่ได้ Submit:<br>{0}<br><br>กรุณา Submit ใบเบิกอะไหล่ทั้งหมดก่อน Submit Service Order', [mi_list])
+					});
+					return;
+				}
+				
+				// มี items ที่ยังไม่มี Material Issue - สอบถามว่าจะสร้างให้หรือไม่
+				if (result.items_without_mi.length > 0) {
+					let item_list = result.items_without_mi
+						.map(function(item) { return '• ' + item.item_name + ' (แถวที่ ' + item.idx + ')'; })
+						.join('<br>');
+					
+					frappe.confirm(
+						__('รายการอะไหล่ต่อไปนี้ยังไม่มีใบเบิกอะไหล่ (Material Issue):<br>{0}<br><br>ต้องการสร้างใบเบิกอะไหล่ให้อัตโนมัติหรือไม่?', [item_list]),
+						function() {
+							// ตอบตกลง - สร้าง Material Issue
+							frappe.call({
+								method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.create_material_issue',
+								args: { service_order: frm.doc.name },
+								callback: function(r) {
+									if (r.message) {
+										frappe.show_alert({
+											message: __('สร้าง Material Issue {0} เรียบร้อยแล้ว<br>กรุณา Submit ใบเบิกอะไหล่ก่อน แล้วจึง Submit Service Order อีกครั้ง', [r.message]),
+											indicator: 'green'
+										}, 7);
+										frm.reload_doc();
+									}
+								}
+							});
+						},
+						function() {
+							// ตอบยกเลิก - ไม่ทำอะไร
+							frappe.show_alert({
+								message: __('กรุณาสร้างใบเบิกอะไหล่ (Material Issue) สำหรับรายการอะไหล่ทั้งหมดก่อน Submit'),
+								indicator: 'orange'
+							}, 5);
+						}
+					);
+					return;
+				}
+			}
+		});
 	}
 });
 

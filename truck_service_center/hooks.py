@@ -254,7 +254,7 @@ fixtures = [
     {
         "dt": "Print Format",
         "filters": [
-            ["name", "in", ["Service Order"]]
+            ["name", "in", ["Service Order","Sale Invoice (Truck Service)"]]
         ]
     },
     {

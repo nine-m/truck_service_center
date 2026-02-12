@@ -161,8 +161,7 @@ class ServiceOrder(Document):
 				item.material_issue_status = None
 	
 	def on_submit(self):
-		"""เมื่อ submit ให้สร้าง Stock Entry, อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
-		self.create_stock_entry()
+		"""เมื่อ submit ให้อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
 		self.update_vehicle_info()
 		self.complete_linked_service_appointment()
 
@@ -190,7 +189,57 @@ class ServiceOrder(Document):
 		if flt(self.actual_time) <= 0:
 			frappe.throw("กรุณาระบุเวลาทำงานจริงที่มากกว่า 0")
 		
+		# 4. ตรวจสอบ Material Issue ของ stock items
+		self.validate_material_issues_for_submit()
+		
 		self.status = "Completed"
+	
+	def validate_material_issues_for_submit(self):
+		"""ตรวจสอบว่า stock items ทุกตัวมี Material Issue ที่ submitted แล้ว"""
+		items_without_mi = []
+		unsubmitted_mis = {}
+		
+		for item in self.service_items:
+			if not item.item_code:
+				continue
+			
+			# ตรวจสอบว่าเป็น stock item หรือไม่
+			is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+			if not is_stock_item:
+				continue
+			
+			if not item.material_issue:
+				# stock item ที่ยังไม่มี material issue
+				items_without_mi.append(f"{item.item_name or item.item_code} (แถวที่ {item.idx})")
+			else:
+				# ตรวจสอบสถานะ material issue
+				docstatus = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
+				if docstatus != 1:
+					status_text = "Draft" if docstatus == 0 else ("Cancelled" if docstatus == 2 else "Unknown")
+					if item.material_issue not in unsubmitted_mis:
+						unsubmitted_mis[item.material_issue] = status_text
+		
+		errors = []
+		
+		if items_without_mi:
+			errors.append(
+				"รายการอะไหล่ต่อไปนี้ยังไม่มีใบเบิกอะไหล่ (Material Issue):<br>"
+				+ "<br>".join(f"• {name}" for name in items_without_mi)
+			)
+		
+		if unsubmitted_mis:
+			mi_list = [f"• {mi} (สถานะ: {status})" for mi, status in unsubmitted_mis.items()]
+			errors.append(
+				"ใบเบิกอะไหล่ต่อไปนี้ยังไม่ได้ Submit:<br>"
+				+ "<br>".join(mi_list)
+				+ "<br><br>กรุณา Submit ใบเบิกอะไหล่ทั้งหมดก่อน Submit Service Order"
+			)
+		
+		if errors:
+			frappe.throw(
+				"<br><br>".join(errors),
+				title="ไม่สามารถ Submit ได้"
+			)
 	
 	def create_stock_entry(self):
 		"""สร้าง Stock Entry เพื่อตัดสต็อกอะไหล่"""
@@ -397,6 +446,52 @@ class ServiceOrder(Document):
 		frappe.msgprint(f"สร้าง Sales Invoice: {sales_invoice.name}")
 		
 		return sales_invoice.name
+
+
+@frappe.whitelist()
+def check_material_issues_before_submit(service_order):
+	"""ตรวจสอบสถานะ Material Issues ก่อน Submit - เรียกจาก client side
+	
+	Returns:
+		dict: {
+			"can_submit": bool,
+			"items_without_mi": list ของ items ที่ยังไม่มี Material Issue,
+			"unsubmitted_mis": dict ของ Material Issues ที่ยังไม่ได้ Submit
+		}
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	
+	items_without_mi = []
+	unsubmitted_mis = {}
+	
+	for item in doc.service_items:
+		if not item.item_code:
+			continue
+		
+		is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+		if not is_stock_item:
+			continue
+		
+		if not item.material_issue:
+			items_without_mi.append({
+				"idx": item.idx,
+				"item_code": item.item_code,
+				"item_name": item.item_name or item.item_code,
+			})
+		else:
+			docstatus = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
+			if docstatus != 1:
+				status_text = "Draft" if docstatus == 0 else ("Cancelled" if docstatus == 2 else "Unknown")
+				if item.material_issue not in unsubmitted_mis:
+					unsubmitted_mis[item.material_issue] = status_text
+	
+	can_submit = len(items_without_mi) == 0 and len(unsubmitted_mis) == 0
+	
+	return {
+		"can_submit": can_submit,
+		"items_without_mi": items_without_mi,
+		"unsubmitted_mis": unsubmitted_mis
+	}
 
 
 @frappe.whitelist()
