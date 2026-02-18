@@ -12,6 +12,8 @@
   "qty",
   "uom",
   "rate",
+  "discount_percentage",
+  "discount_amount",
   "amount",
   "section_break_1",
   "warehouse",
@@ -72,6 +74,17 @@
    "precision": 2
   },
   {
+   "fieldname": "discount_percentage",
+   "fieldtype": "Percent",
+   "label": "ส่วนลด (%)"
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "ส่วนลด (บาท)",
+   "precision": 2
+  },
+  {
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -122,7 +135,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-01-07 10:00:00.000000",
+ "modified": "2026-02-18 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Item",

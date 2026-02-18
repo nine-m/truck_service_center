@@ -93,7 +93,7 @@ class ServiceOrder(Document):
 
 	def calculate_totals(self):
 		"""คำนวณยอดรวมทั้งหมด"""
-		# คำนวณยอดรวมอะไหล่
+		# คำนวณยอดรวมอะไหล่ (พร้อมส่วนลดระดับบรรทัด)
 		self.total_parts_amount = 0
 		for item in self.service_items:
 			# ถ้าไม่มี rate ให้ดึงจาก Item
@@ -101,17 +101,20 @@ class ServiceOrder(Document):
 				rate = frappe.db.get_value("Item", item.item_code, "valuation_rate") or 0
 				item.rate = rate
 			
-			item.amount = flt(item.qty) * flt(item.rate)
-			self.total_parts_amount += item.amount
+			# คำนวณส่วนลดระดับบรรทัด
+			self._calculate_line_discount(item)
+			self.total_parts_amount += flt(item.amount)
 		
 		# คำนวณค่าแรงรวมและเวลารวมจากประเภทบริการทั้งหมด
 		self.labor_charges = 0
 		self.estimated_time = 0
 		for service_type in self.service_types:
-			self.labor_charges += flt(service_type.labor_charges)
+			# คำนวณส่วนลดระดับบรรทัดสำหรับค่าแรง
+			self._calculate_service_type_discount(service_type)
+			self.labor_charges += flt(service_type.amount)
 			self.estimated_time += flt(service_type.estimated_time)
 		
-		# คำนวณยอดก่อนภาษี (subtotal หลังหักส่วนลด)
+		# คำนวณยอดก่อนภาษี (subtotal หลังหักส่วนลดระดับเอกสาร)
 		subtotal = flt(self.total_parts_amount) + flt(self.labor_charges) - flt(self.discount_amount)
 		
 		# คำนวณภาษีตามประเภท
@@ -135,6 +138,54 @@ class ServiceOrder(Document):
 		
 		# คำนวณยอดคงค้าง
 		self.outstanding_amount = flt(self.total_amount) - flt(self.paid_amount)
+	
+	def _calculate_line_discount(self, item):
+		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item
+		
+		Logic (inspired by ERPNext Sales Order):
+		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก rate
+		- ถ้ากรอก discount_amount (โดยไม่มี discount_percentage) → คำนวณ discount_percentage จาก rate  
+		- amount = (rate - discount_per_unit) * qty
+		"""
+		rate = flt(item.rate)
+		qty = flt(item.qty)
+		
+		if flt(item.discount_percentage) > 0:
+			# คำนวณ discount_amount จาก percentage
+			item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2)
+		
+		if flt(item.discount_amount) > 0 and rate > 0 and not flt(item.discount_percentage):
+			# คำนวณ discount_percentage จาก amount (ถ้ายังไม่มี percentage)
+			item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2)
+		
+		# คำนวณ amount หลังส่วนลด
+		discount_per_unit = flt(item.discount_amount)
+		net_rate = flt(rate - discount_per_unit, 2)
+		if net_rate < 0:
+			net_rate = 0
+		item.amount = flt(net_rate * qty, 2)
+	
+	def _calculate_service_type_discount(self, service_type):
+		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type
+		
+		Logic:
+		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก labor_charges
+		- ถ้ากรอก discount_amount → คำนวณ discount_percentage จาก labor_charges
+		- amount = labor_charges - discount_amount
+		"""
+		labor = flt(service_type.labor_charges)
+		
+		if flt(service_type.discount_percentage) > 0:
+			service_type.discount_amount = flt(labor * flt(service_type.discount_percentage) / 100, 2)
+		
+		if flt(service_type.discount_amount) > 0 and labor > 0 and not flt(service_type.discount_percentage):
+			service_type.discount_percentage = flt(flt(service_type.discount_amount) / labor * 100, 2)
+		
+		discount = flt(service_type.discount_amount)
+		net_labor = flt(labor - discount, 2)
+		if net_labor < 0:
+			net_labor = 0
+		service_type.amount = flt(net_labor, 2)
 	
 	def update_payment_status(self):
 		"""อัพเดทสถานะการชำระเงิน"""
@@ -332,21 +383,36 @@ class ServiceOrder(Document):
 		if settings.payment_terms_template:
 			sales_invoice.payment_terms_template = settings.payment_terms_template
 		
-		# เพิ่มรายการบริการและอะไหล่
+		# เพิ่มรายการบริการและอะไหล่ (พร้อมส่วนลดระดับบรรทัด)
 		for item in self.service_items:
 			if item.item_code:
-				sales_invoice.append("items", {
+				original_rate = flt(item.rate)
+				has_discount = flt(item.discount_percentage) > 0 or flt(item.discount_amount) > 0
+				
+				si_item = {
 					"item_code": item.item_code,
 					"item_name": item.item_name or "",
 					"description": item.description or "",
 					"qty": flt(item.qty) or 1,
 					"uom": item.uom,
-					"rate": flt(item.rate) or 0,
 					"warehouse": item.warehouse or settings.default_warehouse,
 					"expense_account": item.expense_account or settings.default_expense_account,
 					"cost_center": item.cost_center or settings.default_cost_center,
 					"income_account": settings.default_income_account
-				})
+				}
+				
+				if has_discount and original_rate > 0:
+					# ตั้ง price_list_rate = ราคาเต็ม เพื่อให้ SI แสดงส่วนลดได้ถูกต้อง
+					# ERPNext คำนวณ: rate = price_list_rate * (1 - discount_percentage / 100)
+					si_item["price_list_rate"] = original_rate
+					si_item["discount_percentage"] = flt(item.discount_percentage)
+					si_item["discount_amount"] = flt(item.discount_amount)
+					# rate หลังส่วนลด
+					si_item["rate"] = flt(original_rate - flt(item.discount_amount), 2)
+				else:
+					si_item["rate"] = original_rate
+				
+				sales_invoice.append("items", si_item)
 		
 		# เพิ่มรายการ Service Types (ค่าแรงแยกตามประเภทบริการ)
 		if self.service_types:
@@ -379,15 +445,29 @@ class ServiceOrder(Document):
 					if service_type_row.remark:
 						description += f" ({service_type_row.remark})"
 					
-					sales_invoice.append("items", {
+					si_item = {
 						"item_code": item_code,
 						"description": description,
 						"qty": 1,
-						"rate": flt(service_type_row.labor_charges),
 						"expense_account": settings.labor_expense_account,
 						"cost_center": service_type_item.cost_center if service_type_item and service_type_item.cost_center else (settings.labor_cost_center or settings.default_cost_center),
 						"income_account": service_type_item.income_account if service_type_item and service_type_item.income_account else settings.default_income_account
-					})
+					}
+					
+					labor_rate = flt(service_type_row.labor_charges)
+					has_discount = flt(service_type_row.discount_percentage) > 0 or flt(service_type_row.discount_amount) > 0
+					
+					if has_discount and labor_rate > 0:
+						# ตั้ง price_list_rate = ค่าแรงเต็ม เพื่อให้ SI แสดงส่วนลดได้ถูกต้อง
+						si_item["price_list_rate"] = labor_rate
+						si_item["discount_percentage"] = flt(service_type_row.discount_percentage)
+						si_item["discount_amount"] = flt(service_type_row.discount_amount)
+						# rate หลังส่วนลด
+						si_item["rate"] = flt(labor_rate - flt(service_type_row.discount_amount), 2)
+					else:
+						si_item["rate"] = labor_rate
+					
+					sales_invoice.append("items", si_item)
 		
 		# ถ้าไม่มี service_types แต่มี labor_charges รวม ให้เพิ่มเป็นรายการเดียว (backward compatibility)
 		elif flt(self.labor_charges) > 0:

@@ -590,6 +590,37 @@ frappe.ui.form.on('Service Order Service Type', {
 	},
 	
 	labor_charges: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// เมื่อเปลี่ยน labor_charges → คำนวณส่วนลดใหม่
+		calculate_service_type_discount(row);
+		frappe.model.set_value(cdt, cdn, 'discount_amount', row.discount_amount);
+		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+		calculate_totals(frm);
+	},
+	
+	discount_percentage: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (flt(row.discount_percentage) > 0) {
+			let discount_amt = flt(flt(row.labor_charges) * flt(row.discount_percentage) / 100, 2);
+			frappe.model.set_value(cdt, cdn, 'discount_amount', discount_amt);
+		} else {
+			frappe.model.set_value(cdt, cdn, 'discount_amount', 0);
+		}
+		calculate_service_type_discount(row);
+		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+		calculate_totals(frm);
+	},
+	
+	discount_amount: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (flt(row.discount_amount) > 0 && flt(row.labor_charges) > 0) {
+			let pct = flt(flt(row.discount_amount) / flt(row.labor_charges) * 100, 2);
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', pct);
+		} else if (flt(row.discount_amount) === 0) {
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', 0);
+		}
+		calculate_service_type_discount(row);
+		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
 		calculate_totals(frm);
 	},
 	
@@ -777,6 +808,32 @@ frappe.ui.form.on('Service Order Item', {
 		calculate_totals(frm);
 	},
 	
+	discount_percentage: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// เมื่อเปลี่ยน discount_percentage → ล้าง discount_amount เพื่อให้คำนวณใหม่
+		if (flt(row.discount_percentage) > 0) {
+			let discount_amt = flt(flt(row.rate) * flt(row.discount_percentage) / 100, 2);
+			frappe.model.set_value(cdt, cdn, 'discount_amount', discount_amt);
+		} else {
+			frappe.model.set_value(cdt, cdn, 'discount_amount', 0);
+		}
+		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	
+	discount_amount: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// เมื่อเปลี่ยน discount_amount โดยตรง → คำนวณ discount_percentage
+		if (flt(row.discount_amount) > 0 && flt(row.rate) > 0) {
+			let pct = flt(flt(row.discount_amount) / flt(row.rate) * 100, 2);
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', pct);
+		} else if (flt(row.discount_amount) === 0) {
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', 0);
+		}
+		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	
 	service_items_add: function(frm) {
 		calculate_totals(frm);
 	},
@@ -813,8 +870,52 @@ frappe.ui.form.on('Service Order Item', {
 
 function calculate_item_amount(frm, cdt, cdn) {
 	let row = locals[cdt][cdn];
-	let amount = flt(row.qty) * flt(row.rate);
-	frappe.model.set_value(cdt, cdn, 'amount', amount);
+	calculate_item_discount(row);
+	frappe.model.set_value(cdt, cdn, 'discount_amount', row.discount_amount);
+	frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+}
+
+// คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item
+function calculate_item_discount(item) {
+	let rate = flt(item.rate);
+	let qty = flt(item.qty);
+	
+	// ถ้ามี discount_percentage → คำนวณ discount_amount
+	if (flt(item.discount_percentage) > 0) {
+		item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2);
+	}
+	
+	// ถ้ามี discount_amount แต่ไม่มี discount_percentage → คำนวณ percentage
+	if (flt(item.discount_amount) > 0 && rate > 0 && !flt(item.discount_percentage)) {
+		item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2);
+	}
+	
+	// คำนวณ amount หลังส่วนลด
+	let discount_per_unit = flt(item.discount_amount);
+	let net_rate = flt(rate - discount_per_unit, 2);
+	if (net_rate < 0) net_rate = 0;
+	item.amount = flt(net_rate * qty, 2);
+}
+
+// คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type
+function calculate_service_type_discount(row) {
+	let labor = flt(row.labor_charges);
+	
+	// ถ้ามี discount_percentage → คำนวณ discount_amount
+	if (flt(row.discount_percentage) > 0) {
+		row.discount_amount = flt(labor * flt(row.discount_percentage) / 100, 2);
+	}
+	
+	// ถ้ามี discount_amount แต่ไม่มี discount_percentage → คำนวณ percentage
+	if (flt(row.discount_amount) > 0 && labor > 0 && !flt(row.discount_percentage)) {
+		row.discount_percentage = flt(flt(row.discount_amount) / labor * 100, 2);
+	}
+	
+	// amount = labor_charges หลังส่วนลด
+	let discount = flt(row.discount_amount);
+	let net_labor = flt(labor - discount, 2);
+	if (net_labor < 0) net_labor = 0;
+	row.amount = flt(net_labor, 2);
 }
 
 // ฟังก์ชันตรวจสอบและเพิ่มรายการอะไหล่จาก Service Type
@@ -915,13 +1016,14 @@ function set_vehicle_filter(frm) {
 
 // คำนวณยอดรวมทั้งหมด
 function calculate_totals(frm) {
-	// คำนวณค่าแรงรวมและเวลาประมาณการรวม
+	// คำนวณค่าแรงรวมและเวลาประมาณการรวม (หลังส่วนลดระดับบรรทัด)
 	let total_labor = 0;
 	let total_time = 0;
 	
 	if (frm.doc.service_types) {
 		frm.doc.service_types.forEach(function(row) {
-			total_labor += flt(row.labor_charges);
+			calculate_service_type_discount(row);
+			total_labor += flt(row.amount);
 			total_time += flt(row.estimated_time);
 		});
 	}
@@ -930,11 +1032,12 @@ function calculate_totals(frm) {
 	frm.set_value('labor_charges', total_labor);
 	frm.set_value('estimated_time', total_time);
 	
-	// คำนวณยอดรวมอะไหล่
+	// คำนวณยอดรวมอะไหล่ (หลังส่วนลดระดับบรรทัด)
 	let total_parts = 0;
 	if (frm.doc.service_items) {
 		frm.doc.service_items.forEach(function(item) {
-			total_parts += flt(item.qty) * flt(item.rate);
+			calculate_item_discount(item);
+			total_parts += flt(item.amount);
 		});
 	}
 	frm.set_value('total_parts_amount', total_parts);
