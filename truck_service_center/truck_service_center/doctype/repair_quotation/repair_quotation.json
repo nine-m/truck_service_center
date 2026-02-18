@@ -1,0 +1,436 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-02-18 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "quotation_date",
+  "valid_until",
+  "status",
+  "column_break_1",
+  "customer",
+  "vehicle",
+  "address_section",
+  "customer_address",
+  "address_display",
+  "tax_id",
+  "column_break_address",
+  "shipping_address_name",
+  "shipping_address",
+  "vehicle_info_section",
+  "truck_number",
+  "vehicle_type",
+  "brand",
+  "model",
+  "vin_number",
+  "engine_number",
+  "current_mileage",
+  "column_break_2",
+  "contact_person",
+  "contact_number",
+  "email",
+  "service_details_section",
+  "service_package",
+  "scan_service_type_barcode",
+  "service_types",
+  "service_items_section",
+  "scan_item_barcode",
+  "service_items",
+  "pricing_section",
+  "total_parts_amount",
+  "labor_charges",
+  "column_break_4",
+  "tax_type",
+  "vat_rate",
+  "discount_amount",
+  "net_total",
+  "tax_amount",
+  "total_amount",
+  "time_section",
+  "estimated_time",
+  "notes_section",
+  "customer_complaints",
+  "column_break_6",
+  "recommendations",
+  "notes",
+  "references_section",
+  "service_order",
+  "column_break_7",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "RQ-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "quotation_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32",
+   "reqd": 1
+  },
+  {
+   "fieldname": "valid_until",
+   "fieldtype": "Date",
+   "label": "\u0e43\u0e0a\u0e49\u0e44\u0e14\u0e49\u0e16\u0e36\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30",
+   "options": "Draft\nOpen\nAccepted\nRejected\nExpired\nCancelled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "vehicle",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "\u0e23\u0e16",
+   "options": "Vehicle",
+   "reqd": 1
+  },
+  {
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e17\u0e35\u0e48\u0e2d\u0e22\u0e39\u0e48"
+  },
+  {
+   "fieldname": "customer_address",
+   "fieldtype": "Link",
+   "label": "Billing Address",
+   "options": "Address",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "address_display",
+   "fieldtype": "Text Editor",
+   "label": "Address Display",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "customer.tax_id",
+   "fieldname": "tax_id",
+   "fieldtype": "Data",
+   "label": "\u0e40\u0e25\u0e02\u0e1b\u0e23\u0e30\u0e08\u0e33\u0e15\u0e31\u0e27\u0e1c\u0e39\u0e49\u0e40\u0e2a\u0e35\u0e22\u0e20\u0e32\u0e29\u0e35",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_address",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipping_address_name",
+   "fieldtype": "Link",
+   "label": "Shipping Address",
+   "options": "Address",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "shipping_address",
+   "fieldtype": "Text Editor",
+   "label": "Shipping Address Display",
+   "read_only": 1
+  },
+  {
+   "fieldname": "vehicle_info_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e16/\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d"
+  },
+  {
+   "fetch_from": "vehicle.truck_number",
+   "fieldname": "truck_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e25\u0e02\u0e23\u0e16",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "vehicle.vehicle_type",
+   "fieldname": "vehicle_type",
+   "fieldtype": "Data",
+   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e23\u0e16",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "vehicle.brand",
+   "fieldname": "brand",
+   "fieldtype": "Data",
+   "label": "\u0e22\u0e35\u0e48\u0e2b\u0e49\u0e2d",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "vehicle.model",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "\u0e23\u0e38\u0e48\u0e19",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "vehicle.vin_number",
+   "fieldname": "vin_number",
+   "fieldtype": "Data",
+   "label": "\u0e40\u0e25\u0e02\u0e15\u0e31\u0e27\u0e16\u0e31\u0e07 (VIN)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "vehicle.engine_number",
+   "fieldname": "engine_number",
+   "fieldtype": "Data",
+   "label": "\u0e40\u0e25\u0e02\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e22\u0e19\u0e15\u0e4c",
+   "read_only": 1
+  },
+  {
+   "fieldname": "current_mileage",
+   "fieldtype": "Float",
+   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19 (\u0e01\u0e21.)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contact_person",
+   "fieldtype": "Data",
+   "label": "\u0e1c\u0e39\u0e49\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d"
+  },
+  {
+   "fieldname": "contact_number",
+   "fieldtype": "Data",
+   "label": "\u0e40\u0e1a\u0e2d\u0e23\u0e4c\u0e42\u0e17\u0e23\u0e28\u0e31\u0e1e\u0e17\u0e4c",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "\u0e2d\u0e35\u0e40\u0e21\u0e25",
+   "options": "Email"
+  },
+  {
+   "fieldname": "service_details_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+  },
+  {
+   "fieldname": "service_package",
+   "fieldtype": "Link",
+   "label": "\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "options": "Service Package"
+  },
+  {
+   "description": "\u0e2a\u0e41\u0e01\u0e19\u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "fieldname": "scan_service_type_barcode",
+   "fieldtype": "Data",
+   "label": "\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "options": "Barcode"
+  },
+  {
+   "fieldname": "service_types",
+   "fieldtype": "Table",
+   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "options": "Repair Quotation Service Type"
+  },
+  {
+   "fieldname": "service_items_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48"
+  },
+  {
+   "description": "\u0e2a\u0e41\u0e01\u0e19\u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "fieldname": "scan_item_barcode",
+   "fieldtype": "Data",
+   "label": "\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "options": "Barcode"
+  },
+  {
+   "fieldname": "service_items",
+   "fieldtype": "Table",
+   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23",
+   "options": "Repair Quotation Item"
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e23\u0e32\u0e04\u0e32"
+  },
+  {
+   "fieldname": "total_parts_amount",
+   "fieldtype": "Currency",
+   "label": "\u0e23\u0e27\u0e21\u0e04\u0e48\u0e32\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "labor_charges",
+   "fieldtype": "Currency",
+   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07\u0e23\u0e27\u0e21",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tax_type",
+   "fieldtype": "Select",
+   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e20\u0e32\u0e29\u0e35",
+   "options": "\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21 VAT\n\u0e23\u0e32\u0e04\u0e32\u0e41\u0e22\u0e01 VAT\n\u0e44\u0e21\u0e48\u0e04\u0e34\u0e14 VAT",
+   "reqd": 1
+  },
+  {
+   "description": "\u0e2d\u0e31\u0e15\u0e23\u0e32\u0e20\u0e32\u0e29\u0e35\u0e21\u0e39\u0e25\u0e04\u0e48\u0e32\u0e40\u0e1e\u0e34\u0e48\u0e21 (%)",
+   "fieldname": "vat_rate",
+   "fieldtype": "Float",
+   "label": "\u0e2d\u0e31\u0e15\u0e23\u0e32 VAT (%)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14",
+   "precision": "2"
+  },
+  {
+   "fieldname": "net_total",
+   "fieldtype": "Currency",
+   "label": "\u0e22\u0e2d\u0e14\u0e01\u0e48\u0e2d\u0e19 VAT",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "\u0e20\u0e32\u0e29\u0e35\u0e21\u0e39\u0e25\u0e04\u0e48\u0e32\u0e40\u0e1e\u0e34\u0e48\u0e21",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "time_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e01\u0e32\u0e23"
+  },
+  {
+   "fieldname": "estimated_time",
+   "fieldtype": "Float",
+   "label": "\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e01\u0e32\u0e23\u0e23\u0e27\u0e21 (\u0e0a\u0e21.)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38"
+  },
+  {
+   "fieldname": "customer_complaints",
+   "fieldtype": "Text Editor",
+   "label": "\u0e2d\u0e32\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48\u0e41\u0e08\u0e49\u0e07"
+  },
+  {
+   "fieldname": "column_break_6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "recommendations",
+   "fieldtype": "Text Editor",
+   "label": "\u0e04\u0e33\u0e41\u0e19\u0e30\u0e19\u0e33\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "references_section",
+   "fieldtype": "Section Break",
+   "label": "\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e2d\u0e49\u0e32\u0e07\u0e2d\u0e34\u0e07"
+  },
+  {
+   "fieldname": "service_order",
+   "fieldtype": "Link",
+   "label": "Service Order",
+   "options": "Service Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Repair Quotation",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-02-18 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Repair Quotation",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer",
+ "track_changes": 1
+}
