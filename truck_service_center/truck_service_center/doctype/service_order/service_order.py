@@ -3,12 +3,13 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, now_datetime
 from frappe.contacts.doctype.address.address import get_address_display
 
 
 class ServiceOrder(Document):
 	def validate(self):
+		self.validate_status_change()
 		self.set_tax_defaults()
 		self.set_address_display()
 		self.check_material_issue_items()
@@ -16,6 +17,18 @@ class ServiceOrder(Document):
 		self.calculate_totals()
 		self.update_payment_status()
 		self.update_material_issue_status()
+
+	def validate_status_change(self):
+		"""ป้องกันการย้อนสถานะจาก In Progress กลับเป็น Draft"""
+		if self.is_new():
+			return
+
+		old_status = self.get_doc_before_save()
+		if old_status and old_status.status == "In Progress" and self.status == "Draft":
+			frappe.throw(
+				"ไม่สามารถย้อนสถานะจาก In Progress กลับเป็น Draft ได้",
+				title="ไม่สามารถเปลี่ยนสถานะได้"
+			)
 
 	def set_address_display(self):
 		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
@@ -895,3 +908,25 @@ def get_party_shipping_address(doctype, name):
 	"""Wrapper for erpnext get_party_shipping_address"""
 	from erpnext.accounts.party import get_party_shipping_address as _get_party_shipping_address
 	return _get_party_shipping_address(doctype, name)
+
+
+@frappe.whitelist()
+def receive_vehicle(service_order):
+	"""รับรถ — stamp user, เวลา, เปลี่ยนสถานะเป็น In Progress"""
+	doc = frappe.get_doc("Service Order", service_order)
+
+	if doc.docstatus != 0:
+		frappe.throw("ไม่สามารถรับรถได้ เอกสารถูก submit หรือ cancel แล้ว")
+
+	if doc.status != "Draft":
+		frappe.throw("ไม่สามารถรับรถได้ สถานะปัจจุบันไม่ใช่ Draft")
+
+	if not doc.fuel_level_in:
+		frappe.throw("กรุณาบันทึกสถานะน้ำมันรับเข้าก่อนทำการรับรถ")
+
+	doc.received_by = frappe.session.user
+	doc.received_date = now_datetime()
+	doc.status = "In Progress"
+	doc.save()
+
+	return {"status": "ok"}

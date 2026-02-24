@@ -38,6 +38,7 @@
   "service_types",
   "technician_section",
   "received_by",
+  "received_date",
   "technician",
   "technician_2",
   "column_break_tech",
@@ -283,7 +284,14 @@
    "fieldname": "received_by",
    "fieldtype": "Link",
    "label": "พนักงานรับรถ",
-   "options": "User"
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_date",
+   "fieldtype": "Datetime",
+   "label": "วันที่รับรถ",
+   "read_only": 1
   },
   {
    "fieldname": "technician",
@@ -548,7 +556,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-18 10:00:00.000000",
+ "modified": "2026-02-24 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

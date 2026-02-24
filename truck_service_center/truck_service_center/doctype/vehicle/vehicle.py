@@ -100,6 +100,40 @@ def get_vehicle_service_history(vehicle):
 
 
 @frappe.whitelist()
+def get_customer_contact_info(customer):
+	"""ดึงข้อมูลติดต่อจาก Customer - สำหรับเรียกจาก client"""
+	result = {}
+
+	customer_doc = frappe.get_doc("Customer", customer)
+
+	# ดึงจาก primary contact ของ Customer
+	if customer_doc.customer_primary_contact:
+		contact = frappe.get_doc("Contact", customer_doc.customer_primary_contact)
+		result["contact_person"] = contact.full_name or ""
+		result["contact_number"] = contact.mobile_no or contact.phone or ""
+		result["email"] = contact.email_id or ""
+	else:
+		# ถ้าไม่มี primary contact ให้ลองหา Contact ที่ผูกกับ Customer ผ่าน Dynamic Link
+		contacts = frappe.get_all(
+			"Contact",
+			filters=[
+				["Dynamic Link", "link_doctype", "=", "Customer"],
+				["Dynamic Link", "link_name", "=", customer],
+			],
+			fields=["name", "full_name", "email_id", "mobile_no", "phone"],
+			order_by="is_primary_contact DESC",
+			limit=1,
+		)
+		if contacts:
+			c = contacts[0]
+			result["contact_person"] = c.full_name or ""
+			result["contact_number"] = c.mobile_no or c.phone or ""
+			result["email"] = c.email_id or ""
+
+	return result
+
+
+@frappe.whitelist()
 def get_vehicle_expirations(vehicle):
 	"""ดึงรายการเอกสารที่ใกล้หมดอายุ - สำหรับเรียกจาก client"""
 	doc = frappe.get_doc("Vehicle", vehicle)

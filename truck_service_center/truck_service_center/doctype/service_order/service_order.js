@@ -79,6 +79,40 @@ frappe.ui.form.on('Service Order', {
 		
 		// ตั้งค่า filter สำหรับ vehicle ตาม customer
 		set_vehicle_filter(frm);
+
+		// ปุ่มรับรถ — แสดงเฉพาะเมื่อสถานะเป็น Draft และยังไม่ submit
+		if (frm.doc.docstatus === 0 && frm.doc.status === 'Draft') {
+			frm.add_custom_button(__('รับรถ'), function() {
+				// ตรวจสอบว่ากรอกสถานะน้ำมันรับเข้าแล้วหรือยัง
+				if (!frm.doc.fuel_level_in) {
+					frappe.msgprint({
+						title: __('ไม่สามารถรับรถได้'),
+						indicator: 'red',
+						message: __('กรุณาบันทึกสถานะน้ำมันรับเข้าก่อนทำการรับรถ')
+					});
+					return;
+				}
+
+				frappe.confirm(
+					__('ยืนยันการรับรถ?'),
+					function() {
+						frappe.call({
+							method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.receive_vehicle',
+							args: { service_order: frm.doc.name },
+							callback: function(r) {
+								if (!r.exc) {
+									frm.reload_doc();
+									frappe.show_alert({
+										message: __('รับรถเรียบร้อยแล้ว'),
+										indicator: 'green'
+									});
+								}
+							}
+						});
+					}
+				);
+			}).addClass('btn-primary');
+		}
 	},
 	
 	customer: function(frm) {

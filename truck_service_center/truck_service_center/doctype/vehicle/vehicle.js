@@ -2,6 +2,32 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Vehicle', {
+	customer: function(frm) {
+		if (frm.doc.customer) {
+			frappe.call({
+				method: 'truck_service_center.truck_service_center.doctype.vehicle.vehicle.get_customer_contact_info',
+				args: { customer: frm.doc.customer },
+				callback: function(r) {
+					if (r.message) {
+						if (r.message.contact_person) {
+							frm.set_value('contact_person', r.message.contact_person);
+						}
+						if (r.message.contact_number) {
+							frm.set_value('contact_number', r.message.contact_number);
+						}
+						if (r.message.email) {
+							frm.set_value('email', r.message.email);
+						}
+					}
+				}
+			});
+		} else {
+			frm.set_value('contact_person', '');
+			frm.set_value('contact_number', '');
+			frm.set_value('email', '');
+		}
+	},
+
 	refresh: function(frm) {
 		// ปุ่มสร้าง Service Order
 		if (!frm.is_new()) {
