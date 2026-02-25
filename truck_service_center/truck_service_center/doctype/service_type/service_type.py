@@ -26,6 +26,9 @@ class ServiceType(Document):
 
 	def set_labor_rate_from_item(self):
 		"""ดึงราคาจาก Item และ Price List"""
+		if not self.item_code:
+			return
+
 		item = frappe.get_doc('Item', self.item_code)
 		
 		if not item:
