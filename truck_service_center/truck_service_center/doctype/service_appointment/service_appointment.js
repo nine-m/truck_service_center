@@ -76,11 +76,11 @@ frappe.ui.form.on('Service Appointment', {
 		// ตั้งค่า filter สำหรับ vehicle
 		set_vehicle_filter(frm);
 		
-		// ตั้งค่า filter สำหรับ service_type
-		set_service_type_filter(frm);
-		
 		// ตั้งค่า filter สำหรับ address ตาม customer
 		set_address_filters(frm);
+		
+		// ตั้งค่า filter สำหรับ service_package ในตาราง packages
+		setup_service_package_filter(frm);
 	},
 	
 	customer: function(frm) {
@@ -145,33 +145,6 @@ frappe.ui.form.on('Service Appointment', {
 		}
 	},
 	
-	service_type_group: function(frm) {
-		// ตั้งค่า filter สำหรับ service_type
-		set_service_type_filter(frm);
-		
-		// ล้างค่า service_type ถ้าเปลี่ยน group
-		if (frm.doc.service_type) {
-			frappe.db.get_value('Service Type', frm.doc.service_type, 'service_type_group', function(r) {
-				if (r && r.service_type_group !== frm.doc.service_type_group) {
-					frm.set_value('service_type', '');
-				}
-			});
-		}
-	},
-	
-	service_type: function(frm) {
-		// เติมกลุ่มบริการอัตโนมัติเมื่อเลือก service_type
-		if (frm.doc.service_type) {
-			frappe.db.get_value('Service Type', frm.doc.service_type, 'service_type_group', function(r) {
-				if (r && r.service_type_group) {
-					frm.set_value('service_type_group', r.service_type_group);
-				}
-			});
-		} else {
-			frm.set_value('service_type_group', '');
-		}
-	},
-	
 	vehicle: function(frm) {
 		// ดึงข้อมูลลูกค้าจากรถ
 		if (frm.doc.vehicle) {
@@ -225,27 +198,6 @@ function set_vehicle_filter(frm) {
 			return {
 				filters: {
 					'status': 'Active'
-				}
-			};
-		});
-	}
-}
-
-function set_service_type_filter(frm) {
-	if (frm.doc.service_type_group) {
-		frm.set_query('service_type', function() {
-			return {
-				filters: {
-					'service_type_group': frm.doc.service_type_group,
-					'is_active': 1
-				}
-			};
-		});
-	} else {
-		frm.set_query('service_type', function() {
-			return {
-				filters: {
-					'is_active': 1
 				}
 			};
 		});
@@ -328,6 +280,166 @@ function show_slot_info(frm) {
 				}, 5);
 			}
 		}
+	});
+}
+
+// Event handlers สำหรับ child table แพ็คเกจบริการ
+frappe.ui.form.on('Service Appointment Package', {
+	service_package: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.service_package) return;
+		
+		frappe.call({
+			method: "truck_service_center.truck_service_center.doctype.service_package.service_package.get_package_details",
+			args: { package_name: row.service_package },
+			callback: function(r) {
+				if (!r.message) return;
+				let pkg = r.message;
+				let pkg_name = row.service_package;
+				let discount_pct = flt(pkg.discount_percent);
+				
+				// เพิ่ม service types จาก package
+				(pkg.service_types || []).forEach(function(st) {
+					let st_row = frm.add_child('service_types');
+					st_row.service_type = st.service_type;
+					st_row.service_type_group = st.service_type_group;
+					st_row.maintenance_type = st.maintenance_type;
+					st_row.estimated_time = st.estimated_time;
+					st_row.labor_charges = st.labor_rate;
+					st_row.service_package = pkg_name;
+				});
+				
+				// เพิ่ม parts จาก package
+				(pkg.parts || []).forEach(function(part) {
+					let item_row = frm.add_child('service_items');
+					item_row.item_code = part.item_code;
+					item_row.item_name = part.item_name;
+					item_row.qty = part.qty;
+					item_row.uom = part.uom;
+					item_row.rate = part.rate;
+					item_row.amount = flt(part.qty) * flt(part.rate);
+					item_row.service_package = pkg_name;
+				});
+				
+				frm.refresh_field('service_types');
+				frm.refresh_field('service_items');
+				
+				calculate_estimated_duration(frm);
+				calculate_totals(frm);
+				
+				frappe.show_alert({
+					message: __('โหลดรายการจากแพ็คเกจ "{0}" เรียบร้อย', [pkg.package_name || pkg_name]),
+					indicator: 'green'
+				});
+			}
+		});
+	},
+	
+	service_packages_remove: function(frm) {
+		// Cascade delete
+		let current_packages = new Set();
+		(frm.doc.service_packages || []).forEach(function(pkg_row) {
+			if (pkg_row.service_package) {
+				current_packages.add(pkg_row.service_package);
+			}
+		});
+		
+		frm.doc.service_types = (frm.doc.service_types || []).filter(function(st) {
+			return !st.service_package || current_packages.has(st.service_package);
+		});
+		frm.doc.service_items = (frm.doc.service_items || []).filter(function(si) {
+			return !si.service_package || current_packages.has(si.service_package);
+		});
+		
+		frm.doc.service_types.forEach(function(row, idx) { row.idx = idx + 1; });
+		frm.doc.service_items.forEach(function(row, idx) { row.idx = idx + 1; });
+		
+		frm.refresh_field('service_types');
+		frm.refresh_field('service_items');
+		calculate_estimated_duration(frm);
+		calculate_totals(frm);
+	}
+});
+
+frappe.ui.form.on('Service Appointment Service Type', {
+	estimated_time: function(frm) {
+		calculate_estimated_duration(frm);
+	},
+	labor_charges: function(frm) {
+		calculate_totals(frm);
+	},
+	service_types_add: function(frm) {
+		calculate_estimated_duration(frm);
+		calculate_totals(frm);
+	},
+	service_types_remove: function(frm) {
+		calculate_estimated_duration(frm);
+		calculate_totals(frm);
+	}
+});
+
+frappe.ui.form.on('Service Appointment Item', {
+	item_code: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (row.item_code) {
+			frappe.db.get_value('Item', row.item_code, ['item_name', 'stock_uom', 'valuation_rate'], function(r) {
+				if (r) {
+					frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
+					frappe.model.set_value(cdt, cdn, 'uom', r.stock_uom);
+					frappe.model.set_value(cdt, cdn, 'rate', flt(r.valuation_rate));
+					frappe.model.set_value(cdt, cdn, 'amount', flt(row.qty) * flt(r.valuation_rate));
+					calculate_totals(frm);
+				}
+			});
+		}
+	},
+	qty: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		row.amount = flt(row.qty) * flt(row.rate);
+		frm.refresh_field('service_items');
+		calculate_totals(frm);
+	},
+	rate: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		row.amount = flt(row.qty) * flt(row.rate);
+		frm.refresh_field('service_items');
+		calculate_totals(frm);
+	},
+	service_items_add: function(frm) {
+		calculate_totals(frm);
+	},
+	service_items_remove: function(frm) {
+		calculate_totals(frm);
+	}
+});
+
+function calculate_estimated_duration(frm) {
+	let total = 0;
+	(frm.doc.service_types || []).forEach(function(row) {
+		total += flt(row.estimated_time);
+	});
+	frm.set_value('estimated_duration', total);
+}
+
+function calculate_totals(frm) {
+	let total_labor = 0;
+	let total_parts = 0;
+	(frm.doc.service_types || []).forEach(function(row) {
+		total_labor += flt(row.labor_charges);
+	});
+	(frm.doc.service_items || []).forEach(function(row) {
+		total_parts += flt(row.amount);
+	});
+	frm.set_value('total_labor_charges', total_labor);
+	frm.set_value('total_parts_amount', total_parts);
+	frm.set_value('total_amount', total_labor + total_parts);
+}
+
+function setup_service_package_filter(frm) {
+	frm.set_query('service_package', 'service_packages', function() {
+		return {
+			filters: { 'is_active': 1 }
+		};
 	});
 }
 

@@ -13,7 +13,7 @@ class ServiceOrder(Document):
 		self.set_tax_defaults()
 		self.set_address_display()
 		self.check_material_issue_items()
-		self.apply_service_package()
+		self.apply_service_packages()
 		self.calculate_totals()
 		self.update_payment_status()
 		self.update_material_issue_status()
@@ -75,26 +75,82 @@ class ServiceOrder(Document):
 							title="ไม่สามารถลบรายการได้"
 						)
 	
-	def apply_service_package(self):
-		"""นำรายการบริการจากแพ็คเกจมาใส่ใน service_items"""
-		if self.service_package and not self.service_items:
-			package_details = frappe.get_doc("Service Package", self.service_package)
+	def apply_service_packages(self):
+		"""นำรายการบริการและอะไหล่จากแพ็คเกจมาใส่อัตโนมัติ (รองรับหลาย package)
+		
+		Logic:
+		- ตรวจสอบว่ามี service_packages rows ที่ยังไม่ได้ดึงข้อมูล (ไม่มี service_type/item ที่ผูกกับ package นี้)
+		- สำหรับแต่ละ package → ดึง service types + parts → เพิ่มในตาราง service_types/service_items
+		- ใส่ discount จาก package ให้แต่ละ row
+		- เมื่อลบ package → ลบ service_types/service_items ที่ผูกกับ package นั้น (cascade delete)
+		"""
+		if not self.service_packages:
+			return
+		
+		# รวบรวม package names ที่ยังอยู่ในตาราง
+		current_package_names = set()
+		for pkg_row in self.service_packages:
+			if pkg_row.service_package:
+				current_package_names.add(pkg_row.service_package)
+		
+		# Cascade delete: ลบ service_types/service_items ที่ผูกกับ package ที่ถูกลบออก
+		self.service_types = [
+			st for st in self.service_types
+			if not st.service_package or st.service_package in current_package_names
+		]
+		self.service_items = [
+			si for si in self.service_items
+			if not si.service_package or si.service_package in current_package_names
+		]
+		
+		# สำหรับแต่ละ package ตรวจสอบว่าดึงข้อมูลแล้วหรือยัง
+		for pkg_row in self.service_packages:
+			if not pkg_row.service_package:
+				continue
 			
-			if not package_details.is_active:
-				frappe.throw(f"แพ็คเกจ {self.service_package} ถูกปิดการใช้งานแล้ว")
+			pkg_name = pkg_row.service_package
 			
-			# เพิ่มรายการจากแพ็คเกจ
-			for item in package_details.package_items:
-				self.append("service_items", {
-					"item_code": item.item_code,
-					"qty": item.qty,
-					"rate": item.rate,
-					"warehouse": frappe.db.get_single_value("Stock Settings", "default_warehouse")
+			# ตรวจสอบว่ามี service_types ที่ผูกกับ package นี้อยู่แล้วหรือไม่
+			has_service_types = any(
+				st.service_package == pkg_name for st in self.service_types
+			)
+			
+			if has_service_types:
+				continue  # ดึงข้อมูลแล้ว ข้ามไป
+			
+			# ดึงข้อมูลจาก package
+			package = frappe.get_doc("Service Package", pkg_name)
+			
+			if not package.is_active:
+				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
+			
+			discount_pct = flt(package.discount_percent)
+			
+			# เพิ่ม service types จาก package
+			for st in package.package_service_types:
+				self.append("service_types", {
+					"service_type": st.service_type,
+					"service_type_group": st.service_type_group,
+					"maintenance_type": st.maintenance_type,
+					"estimated_time": st.estimated_time,
+					"labor_charges": st.labor_rate,
+					"discount_percentage": discount_pct,
+					"service_package": pkg_name,
 				})
 			
-			# ใช้ราคาแพ็คเกจ
-			if package_details.discount_percent:
-				self.discount_amount = package_details.get_discount_amount()
+			# เพิ่ม parts จาก package
+			default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+			for part in package.package_parts:
+				self.append("service_items", {
+					"item_code": part.item_code,
+					"item_name": part.item_name,
+					"qty": part.qty,
+					"uom": part.uom,
+					"rate": part.rate,
+					"discount_percentage": discount_pct,
+					"warehouse": default_warehouse,
+					"service_package": pkg_name,
+				})
 	
 	def set_tax_defaults(self):
 		"""ตั้งค่าภาษีเริ่มต้นจาก Settings"""

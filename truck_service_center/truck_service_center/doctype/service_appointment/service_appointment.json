@@ -30,11 +30,20 @@
   "shipping_address_name",
   "shipping_address",
   "service_details_section",
-  "service_type_group",
-  "service_type",
   "column_break_2",
   "estimated_duration",
   "assigned_technician",
+  "service_packages_section",
+  "service_packages",
+  "service_types_section",
+  "service_types",
+  "service_items_section",
+  "service_items",
+  "pricing_section",
+  "total_labor_charges",
+  "total_parts_amount",
+  "column_break_pricing",
+  "total_amount",
   "repair_details_section",
   "repair_cause",
   "column_break_repair",
@@ -91,6 +100,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "default": "Scheduled",
    "fieldname": "status",
    "fieldtype": "Select",
@@ -203,25 +213,11 @@
    "label": "รายละเอียดบริการ"
   },
   {
-   "fetch_from": "service_type.service_type_group",
-   "fieldname": "service_type_group",
-   "fieldtype": "Link",
-   "label": "กลุ่มบริการ",
-   "options": "Service Type Group"
-  },
-  {
-   "fieldname": "service_type",
-   "fieldtype": "Link",
-   "label": "ประเภทบริการ",
-   "options": "Service Type",
-   "reqd": 1
-  },
-  {
-   "fetch_from": "service_type.default_duration",
    "fieldname": "estimated_duration",
    "fieldtype": "Float",
    "label": "ระยะเวลาโดยประมาณ (ชม.)",
-   "precision": 2
+   "precision": 2,
+   "read_only": 1
   },
   {
    "fieldname": "column_break_2",
@@ -232,6 +228,70 @@
    "fieldtype": "Link",
    "label": "ช่างที่มอบหมาย",
    "options": "User"
+  },
+  {
+   "fieldname": "service_packages_section",
+   "fieldtype": "Section Break",
+   "label": "แพ็คเกจบริการ"
+  },
+  {
+   "fieldname": "service_packages",
+   "fieldtype": "Table",
+   "label": "แพ็คเกจ",
+   "options": "Service Appointment Package"
+  },
+  {
+   "fieldname": "service_types_section",
+   "fieldtype": "Section Break",
+   "label": "รายการบริการ"
+  },
+  {
+   "fieldname": "service_types",
+   "fieldtype": "Table",
+   "label": "ประเภทบริการ",
+   "options": "Service Appointment Service Type"
+  },
+  {
+   "fieldname": "service_items_section",
+   "fieldtype": "Section Break",
+   "label": "รายการอะไหล่"
+  },
+  {
+   "fieldname": "service_items",
+   "fieldtype": "Table",
+   "label": "อะไหล่",
+   "options": "Service Appointment Item"
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "สรุปราคา"
+  },
+  {
+   "fieldname": "total_labor_charges",
+   "fieldtype": "Currency",
+   "label": "รวมค่าแรง",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_parts_amount",
+   "fieldtype": "Currency",
+   "label": "รวมค่าอะไหล่",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_pricing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "ยอดรวมทั้งหมด",
+   "precision": "2",
+   "read_only": 1
   },
   {
    "fieldname": "repair_details_section",
@@ -282,7 +342,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-11 10:00:00.000000",
+ "modified": "2026-02-28 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment",

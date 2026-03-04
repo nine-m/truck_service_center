@@ -24,6 +24,7 @@ frappe.ui.form.on('Repair Quotation', {
 	refresh: function(frm) {
 		// ตั้งค่า filter ต่างๆ
 		setup_service_type_filter(frm);
+		setup_service_package_filter(frm);
 		set_address_filters(frm);
 		set_vehicle_filter(frm);
 
@@ -187,44 +188,6 @@ frappe.ui.form.on('Repair Quotation', {
 		}
 	},
 
-	service_package: function(frm) {
-		if (frm.doc.service_package) {
-			frappe.call({
-				method: "truck_service_center.truck_service_center.doctype.service_package.service_package.get_package_details",
-				args: {
-					package_name: frm.doc.service_package
-				},
-				callback: function(r) {
-					if (r.message) {
-						frm.clear_table("service_items");
-
-						r.message.items.forEach(function(item) {
-							let row = frm.add_child("service_items");
-							row.item_code = item.item_code;
-							row.item_name = item.item_name;
-							row.qty = item.qty;
-							row.rate = item.rate;
-							row.amount = item.amount;
-							row.description = item.description;
-						});
-
-						if (r.message.discount_amount) {
-							frm.set_value("discount_amount", r.message.discount_amount);
-						}
-
-						frm.refresh_field("service_items");
-						frm.refresh_field("discount_amount");
-
-						frappe.show_alert({
-							message: __("โหลดรายการจากแพ็คเกจเรียบร้อย"),
-							indicator: "green"
-						});
-					}
-				}
-			});
-		}
-	},
-
 	// Handler สแกนบาร์โค้ดประเภทบริการ
 	scan_service_type_barcode: function(frm) {
 		let barcode = frm.doc.scan_service_type_barcode;
@@ -360,6 +323,82 @@ frappe.ui.form.on('Repair Quotation', {
 	}
 });
 
+
+// === Child Table: Repair Quotation Package ===
+frappe.ui.form.on('Repair Quotation Package', {
+	service_package: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.service_package) return;
+		
+		frappe.call({
+			method: "truck_service_center.truck_service_center.doctype.service_package.service_package.get_package_details",
+			args: { package_name: row.service_package },
+			callback: function(r) {
+				if (!r.message) return;
+				let pkg = r.message;
+				let pkg_name = row.service_package;
+				let discount_pct = flt(pkg.discount_percent);
+				
+				// เพิ่ม service types จาก package
+				(pkg.service_types || []).forEach(function(st) {
+					let st_row = frm.add_child('service_types');
+					st_row.service_type = st.service_type;
+					st_row.service_type_group = st.service_type_group;
+					st_row.maintenance_type = st.maintenance_type;
+					st_row.estimated_time = st.estimated_time;
+					st_row.labor_charges = st.labor_rate;
+					st_row.discount_percentage = discount_pct;
+					st_row.service_package = pkg_name;
+				});
+				
+				// เพิ่ม parts จาก package
+				(pkg.parts || []).forEach(function(part) {
+					let item_row = frm.add_child('service_items');
+					item_row.item_code = part.item_code;
+					item_row.item_name = part.item_name;
+					item_row.qty = part.qty;
+					item_row.uom = part.uom;
+					item_row.rate = part.rate;
+					item_row.discount_percentage = discount_pct;
+					item_row.service_package = pkg_name;
+				});
+				
+				frm.refresh_field('service_types');
+				frm.refresh_field('service_items');
+				calculate_totals(frm);
+				
+				frappe.show_alert({
+					message: __('โหลดรายการจากแพ็คเกจ "{0}" เรียบร้อย', [pkg.package_name || pkg_name]),
+					indicator: 'green'
+				});
+			}
+		});
+	},
+	
+	service_packages_remove: function(frm) {
+		// Cascade delete
+		let current_packages = new Set();
+		(frm.doc.service_packages || []).forEach(function(pkg_row) {
+			if (pkg_row.service_package) {
+				current_packages.add(pkg_row.service_package);
+			}
+		});
+		
+		frm.doc.service_types = (frm.doc.service_types || []).filter(function(st) {
+			return !st.service_package || current_packages.has(st.service_package);
+		});
+		frm.doc.service_items = (frm.doc.service_items || []).filter(function(si) {
+			return !si.service_package || current_packages.has(si.service_package);
+		});
+		
+		frm.doc.service_types.forEach(function(row, idx) { row.idx = idx + 1; });
+		frm.doc.service_items.forEach(function(row, idx) { row.idx = idx + 1; });
+		
+		frm.refresh_field('service_types');
+		frm.refresh_field('service_items');
+		calculate_totals(frm);
+	}
+});
 
 // === Child Table: Repair Quotation Service Type ===
 frappe.ui.form.on('Repair Quotation Service Type', {
@@ -624,6 +663,14 @@ function calculate_totals(frm) {
 	frm.set_value('net_total', net_total);
 	frm.set_value('tax_amount', tax_amount);
 	frm.set_value('total_amount', total);
+}
+
+function setup_service_package_filter(frm) {
+	frm.set_query('service_package', 'service_packages', function() {
+		return {
+			filters: { 'is_active': 1 }
+		};
+	});
 }
 
 function setup_service_type_filter(frm) {

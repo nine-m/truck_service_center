@@ -1,0 +1,73 @@
+{
+ "actions": [],
+ "creation": "2026-02-26 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "service_package",
+  "package_code",
+  "package_name",
+  "column_break_1",
+  "package_rate",
+  "discount_percent"
+ ],
+ "fields": [
+  {
+   "fieldname": "service_package",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "แพ็คเกจบริการ",
+   "options": "Service Package",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "service_package.package_code",
+   "fieldname": "package_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "รหัสแพ็คเกจ",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "service_package.package_name",
+   "fieldname": "package_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ชื่อแพ็คเกจ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "service_package.package_rate",
+   "fieldname": "package_rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "ราคาแพ็คเกจ",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "service_package.discount_percent",
+   "fieldname": "discount_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "ส่วนลด (%)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-02-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Appointment Package",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

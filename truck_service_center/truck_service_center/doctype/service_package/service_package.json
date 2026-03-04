@@ -1,20 +1,26 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "field:package_name",
+ "autoname": "field:package_code",
  "creation": "2026-01-09 10:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "package_code",
   "package_name",
   "is_active",
   "package_type",
   "column_break_1",
   "description",
-  "package_details_section",
-  "package_items",
+  "service_types_section",
+  "package_service_types",
+  "parts_section",
+  "package_parts",
   "pricing_section",
+  "total_labor_rate",
+  "total_parts_amount",
+  "column_break_pricing1",
   "total_standard_rate",
   "discount_percent",
   "column_break_2",
@@ -29,12 +35,19 @@
  ],
  "fields": [
   {
+   "fieldname": "package_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "รหัสแพ็คเกจ",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
    "fieldname": "package_name",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "ชื่อแพ็คเกจ",
-   "reqd": 1,
-   "unique": 1
+   "reqd": 1
   },
   {
    "default": "1",
@@ -62,21 +75,49 @@
    "label": "รายละเอียดแพ็คเกจ"
   },
   {
-   "fieldname": "package_details_section",
+   "fieldname": "service_types_section",
    "fieldtype": "Section Break",
-   "label": "รายการบริการในแพ็คเกจ"
+   "label": "ประเภทบริการในแพ็คเกจ"
   },
   {
-   "fieldname": "package_items",
+   "fieldname": "package_service_types",
    "fieldtype": "Table",
-   "label": "รายการบริการ",
-   "options": "Service Package Item",
+   "label": "ประเภทบริการ",
+   "options": "Service Package Service Type",
    "reqd": 1
+  },
+  {
+   "fieldname": "parts_section",
+   "fieldtype": "Section Break",
+   "label": "รายการอะไหล่ในแพ็คเกจ"
+  },
+  {
+   "description": "ดึงอัตโนมัติจากประเภทบริการด้านบน หรือเพิ่มเองได้",
+   "fieldname": "package_parts",
+   "fieldtype": "Table",
+   "label": "รายการอะไหล่",
+   "options": "Service Package Part"
   },
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
    "label": "ราคาและส่วนลด"
+  },
+  {
+   "fieldname": "total_labor_rate",
+   "fieldtype": "Currency",
+   "label": "ค่าแรงรวม",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_parts_amount",
+   "fieldtype": "Currency",
+   "label": "ค่าอะไหล่รวม",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_pricing1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "total_standard_rate",
@@ -101,15 +142,16 @@
    "reqd": 1
   },
   {
+   "fieldname": "estimated_duration",
+   "fieldtype": "Duration",
+   "label": "ระยะเวลาการทำงาน",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "validity_section",
    "fieldtype": "Section Break",
    "label": "เงื่อนไขการใช้งาน"
-  },
-  {
-   "fieldname": "estimated_duration",
-   "fieldtype": "Duration",
-   "label": "ระยะเวลาการทำงาน"
   },
   {
    "fieldname": "validity_days",
@@ -138,7 +180,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-20 08:21:23.520625",
+ "modified": "2026-02-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Package",
@@ -162,5 +204,6 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
+ "title_field": "package_name",
  "track_changes": 1
 }

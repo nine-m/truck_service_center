@@ -1,28 +1,33 @@
 {
  "actions": [],
- "creation": "2026-02-18 10:00:00.000000",
+ "creation": "2026-02-26 10:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "service_type",
   "item_code",
   "item_name",
-  "description",
   "column_break_1",
   "qty",
   "uom",
   "rate",
-  "discount_percentage",
-  "discount_amount",
-  "amount",
-  "service_package"
+  "amount"
  ],
  "fields": [
+  {
+   "fieldname": "service_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "จากประเภทบริการ",
+   "options": "Service Type",
+   "read_only": 1
+  },
   {
    "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "รหัสสินค้า",
    "options": "Item",
    "reqd": 1
   },
@@ -31,14 +36,8 @@
    "fieldname": "item_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "ชื่อสินค้า",
    "read_only": 1
-  },
-  {
-   "fetch_from": "item_code.description",
-   "fieldname": "description",
-   "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
   },
   {
    "fieldname": "column_break_1",
@@ -49,7 +48,7 @@
    "fieldname": "qty",
    "fieldtype": "Float",
    "in_list_view": 1,
-   "label": "\u0e08\u0e33\u0e19\u0e27\u0e19",
+   "label": "จำนวน",
    "precision": 2,
    "reqd": 1
   },
@@ -57,7 +56,7 @@
    "fetch_from": "item_code.stock_uom",
    "fieldname": "uom",
    "fieldtype": "Link",
-   "label": "\u0e2b\u0e19\u0e48\u0e27\u0e22",
+   "label": "หน่วย",
    "options": "UOM",
    "read_only": 1
   },
@@ -65,33 +64,15 @@
    "fieldname": "rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "\u0e23\u0e32\u0e04\u0e32",
-   "precision": 2
-  },
-  {
-   "fieldname": "discount_percentage",
-   "fieldtype": "Percent",
-   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14 (%)"
-  },
-  {
-   "fieldname": "discount_amount",
-   "fieldtype": "Currency",
-   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14 (\u0e1a\u0e32\u0e17)",
+   "label": "ราคา",
    "precision": 2
   },
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21",
+   "label": "ยอดรวม",
    "precision": 2,
-   "read_only": 1
-  },
-  {
-   "fieldname": "service_package",
-   "fieldtype": "Link",
-   "label": "\u0e08\u0e32\u0e01\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
-   "options": "Service Package",
    "read_only": 1
   }
  ],
@@ -101,7 +82,8 @@
  "modified": "2026-02-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
- "name": "Repair Quotation Item",
+ "name": "Service Package Part",
+ "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",

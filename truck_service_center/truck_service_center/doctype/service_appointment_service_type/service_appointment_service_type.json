@@ -1,6 +1,6 @@
 {
  "actions": [],
- "creation": "2026-01-23 10:30:00",
+ "creation": "2026-02-26 10:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -10,13 +10,9 @@
   "maintenance_type",
   "estimated_time",
   "labor_charges",
-  "discount_percentage",
-  "discount_amount",
-  "amount",
-  "repair_position",
-  "repair_cause",
-  "remark",
-  "service_package"
+  "column_break_1",
+  "service_package",
+  "remark"
  ],
  "fields": [
   {
@@ -60,42 +56,8 @@
    "precision": 2
   },
   {
-   "fieldname": "discount_percentage",
-   "fieldtype": "Percent",
-   "label": "ส่วนลด (%)"
-  },
-  {
-   "fieldname": "discount_amount",
-   "fieldtype": "Currency",
-   "label": "ส่วนลด (บาท)",
-   "precision": 2
-  },
-  {
-   "fieldname": "amount",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "ยอดหลังส่วนลด",
-   "precision": 2,
-   "read_only": 1
-  },
-  {
-   "fieldname": "repair_position",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "ตำแหน่งที่ซ่อม",
-   "options": "Repair Position"
-  },
-  {
-   "fieldname": "repair_cause",
-   "fieldtype": "Small Text",
-   "in_list_view": 1,
-   "label": "สาเหตุที่ซ่อม"
-  },
-  {
-   "fieldname": "remark",
-   "fieldtype": "Small Text",
-   "in_list_view": 1,
-   "label": "หมายเหตุ"
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "service_package",
@@ -103,6 +65,11 @@
    "label": "จากแพ็คเกจ",
    "options": "Service Package",
    "read_only": 1
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "หมายเหตุ"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -111,11 +78,11 @@
  "modified": "2026-02-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
- "name": "Service Order Service Type",
+ "name": "Service Appointment Service Type",
+ "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
- "track_changes": 1
+ "states": []
 }

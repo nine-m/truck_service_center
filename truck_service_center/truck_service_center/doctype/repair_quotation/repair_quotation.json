@@ -34,7 +34,7 @@
   "contact_number",
   "email",
   "service_details_section",
-  "service_package",
+  "service_packages",
   "scan_service_type_barcode",
   "service_types",
   "service_items_section",
@@ -240,10 +240,10 @@
    "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
   },
   {
-   "fieldname": "service_package",
-   "fieldtype": "Link",
+   "fieldname": "service_packages",
+   "fieldtype": "Table",
    "label": "\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
-   "options": "Service Package"
+   "options": "Repair Quotation Package"
   },
   {
    "description": "\u0e2a\u0e41\u0e01\u0e19\u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
@@ -408,7 +408,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 0,
  "links": [],
- "modified": "2026-02-18 10:00:00.000000",
+ "modified": "2026-02-27 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Repair Quotation",

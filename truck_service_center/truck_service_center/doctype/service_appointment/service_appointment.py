@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import get_datetime, add_to_date, now_datetime, format_datetime
+from frappe.utils import get_datetime, add_to_date, now_datetime, format_datetime, flt
 from frappe.contacts.doctype.address.address import get_address_display
 
 
@@ -14,7 +14,26 @@ class ServiceAppointment(Document):
 		self.check_slot_availability()
 		self.sync_vehicle_info()
 		self.set_slot_datetimes()
-		self.fill_service_group_from_service_type()
+		self.calculate_estimated_duration()
+		self.calculate_totals()
+
+	def calculate_estimated_duration(self):
+		"""คำนวณระยะเวลาโดยประมาณจาก service_types child table"""
+		total = sum(flt(row.estimated_time) for row in (self.service_types or []))
+		self.estimated_duration = total
+
+	def calculate_totals(self):
+		"""คำนวณยอดรวมราคาจาก service_types และ service_items"""
+		# รวมค่าแรง
+		self.total_labor_charges = sum(flt(row.labor_charges) for row in (self.service_types or []))
+
+		# รวมค่าอะไหล่ (คำนวณ amount ของแต่ละรายการด้วย)
+		for item in (self.service_items or []):
+			item.amount = flt(item.qty) * flt(item.rate)
+		self.total_parts_amount = sum(flt(row.amount) for row in (self.service_items or []))
+
+		# ยอดรวมทั้งหมด
+		self.total_amount = flt(self.total_labor_charges) + flt(self.total_parts_amount)
 
 	def set_address_display(self):
 		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
@@ -27,13 +46,6 @@ class ServiceAppointment(Document):
 			self.shipping_address = get_address_display(self.shipping_address_name)
 		else:
 			self.shipping_address = ""
-	
-	def fill_service_group_from_service_type(self):
-		"""เติมกลุ่มบริการอัตโนมัติจากประเภทบริการที่เลือก"""
-		if self.service_type:
-			service_type_group = frappe.db.get_value("Service Type", self.service_type, "service_type_group")
-			if service_type_group:
-				self.service_type_group = service_type_group
 	
 	def validate_appointment_datetime(self):
 		"""ตรวจสอบวันเวลานัดหมายต้องไม่อยู่ในอดีต"""
@@ -155,7 +167,6 @@ class ServiceAppointment(Document):
 			service_order.customer_complaints = "\n".join(complaints)
 
 		# ดึงข้อมูลไมล์จากรถปัจจุบัน
-		vehicle_data = {}
 		if self.vehicle:
 			vehicle_data = frappe.db.get_value(
 				"Vehicle", self.vehicle, ["current_mileage"], as_dict=1
@@ -163,25 +174,38 @@ class ServiceAppointment(Document):
 			if vehicle_data.get("current_mileage"):
 				service_order.current_mileage = vehicle_data.get("current_mileage")
 
-		# เพิ่ม Service Type ลงใน child table
-		if self.service_type:
-			service_type_data = frappe.db.get_value(
-				"Service Type",
-				self.service_type,
-				["labor_rate", "default_duration", "service_type_group"],
-				as_dict=1,
-			)
-			
-			if service_type_data:
-				# สร้าง row ใน service_types child table
+		# คัดลอกแพ็คเกจบริการ (หลาย package)
+		for pkg_row in (self.service_packages or []):
+			service_order.append("service_packages", {
+				"service_package": pkg_row.service_package,
+				"package_code": pkg_row.package_code,
+				"package_name": pkg_row.package_name,
+				"package_rate": pkg_row.package_rate,
+				"discount_percent": pkg_row.discount_percent,
+			})
+		
+		# คัดลอก service types จากตาราง (ถ้ามี)
+		if self.service_types:
+			for st_row in self.service_types:
 				service_order.append("service_types", {
-					"service_type": self.service_type,
-					"service_type_group": self.service_type_group or service_type_data.get("service_type_group"),
-					"estimated_time": self.estimated_duration or service_type_data.get("default_duration"),
-					"labor_charges": service_type_data.get("labor_rate"),
-					"repair_cause": self.repair_cause,
-					"remark": self.service_remark
+					"service_type": st_row.service_type,
+					"service_type_group": st_row.service_type_group,
+					"maintenance_type": st_row.maintenance_type,
+					"estimated_time": st_row.estimated_time,
+					"labor_charges": st_row.labor_charges,
+					"service_package": st_row.service_package,
+					"remark": st_row.remark,
 				})
+		# คัดลอก service items (อะไหล่)
+		for item_row in (self.service_items or []):
+			service_order.append("service_items", {
+				"item_code": item_row.item_code,
+				"item_name": item_row.item_name,
+				"qty": item_row.qty,
+				"uom": item_row.uom,
+				"rate": item_row.rate,
+				"service_package": item_row.service_package,
+			})
 		
 		service_order.insert()
 		

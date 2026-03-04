@@ -1,27 +1,17 @@
 {
  "actions": [],
- "creation": "2026-01-07 10:00:00.000000",
+ "creation": "2026-02-26 10:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "item_code",
   "item_name",
-  "description",
   "column_break_1",
   "qty",
   "uom",
   "rate",
-  "discount_percentage",
-  "discount_amount",
   "amount",
-  "section_break_1",
-  "warehouse",
-  "material_issue",
-  "material_issue_status",
-  "column_break_2",
-  "expense_account",
-  "cost_center",
   "service_package"
  ],
  "fields": [
@@ -42,22 +32,17 @@
    "read_only": 1
   },
   {
-   "fetch_from": "item_code.description",
-   "fieldname": "description",
-   "fieldtype": "Text Editor",
-   "label": "คำอธิบาย"
-  },
-  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
   },
   {
+   "default": "1",
    "fieldname": "qty",
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "จำนวน",
-   "reqd": 1,
-   "precision": 2
+   "precision": 2,
+   "reqd": 1
   },
   {
    "fetch_from": "item_code.stock_uom",
@@ -75,62 +60,12 @@
    "precision": 2
   },
   {
-   "fieldname": "discount_percentage",
-   "fieldtype": "Percent",
-   "label": "ส่วนลด (%)"
-  },
-  {
-   "fieldname": "discount_amount",
-   "fieldtype": "Currency",
-   "label": "ส่วนลด (บาท)",
-   "precision": 2
-  },
-  {
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "ยอดรวม",
-   "read_only": 1,
-   "precision": 2
-  },
-  {
-   "fieldname": "section_break_1",
-   "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "warehouse",
-   "fieldtype": "Link",
-   "label": "คลังสินค้า",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "material_issue",
-   "fieldtype": "Link",
-   "label": "ใบเบิกอะไหล่",
-   "options": "Stock Entry",
+   "precision": 2,
    "read_only": 1
-  },
-  {
-   "fieldname": "material_issue_status",
-   "fieldtype": "Data",
-   "label": "สถานะใบเปิก",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "expense_account",
-   "fieldtype": "Link",
-   "label": "บัญชีค่าใช้จ่าย",
-   "options": "Account"
-  },
-  {
-   "fieldname": "cost_center",
-   "fieldtype": "Link",
-   "label": "ศูนย์ต้นทุน",
-   "options": "Cost Center"
   },
   {
    "fieldname": "service_package",
@@ -146,7 +81,8 @@
  "modified": "2026-02-26 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
- "name": "Service Order Item",
+ "name": "Service Appointment Item",
+ "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",
