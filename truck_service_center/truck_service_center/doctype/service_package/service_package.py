@@ -80,12 +80,15 @@ class ServicePackage(Document):
 		self.total_standard_rate = total_standard
 
 		# คำนวณส่วนลดและราคาแพ็คเกจ
-		if self.package_rate and total_standard > 0:
-			discount_amount = total_standard - flt(self.package_rate)
-			self.discount_percent = (discount_amount / total_standard) * 100
-		elif self.discount_percent:
+		# ให้ discount_percent มีความสำคัญกว่า package_rate
+		# เพราะ package_rate เป็น reqd จึงมีค่าเสมอ ถ้าเช็ค package_rate ก่อน
+		# จะทำให้ branch ของ discount_percent ไม่มีทางถูกเรียก
+		if self.discount_percent and total_standard > 0:
 			discount_amount = total_standard * flt(self.discount_percent) / 100
 			self.package_rate = total_standard - discount_amount
+		elif self.package_rate and total_standard > 0:
+			discount_amount = total_standard - flt(self.package_rate)
+			self.discount_percent = (discount_amount / total_standard) * 100
 		elif not self.package_rate:
 			self.package_rate = total_standard
 			self.discount_percent = 0
