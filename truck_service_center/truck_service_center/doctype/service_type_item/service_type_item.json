@@ -60,12 +60,13 @@
    "read_only": 1
   },
   {
-   "fetch_from": "item_code.standard_rate",
    "fieldname": "rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "ราคา",
-   "precision": 2
+   "precision": 2,
+   "read_only": 1,
+   "description": "ราคาจะดึงมาจาก Price List -> Standard Rate -> Value Rate อัตโนมัติ"
   },
   {
    "fieldname": "amount",

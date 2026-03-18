@@ -39,10 +39,16 @@ frappe.ui.form.on('Service Type Item', {
 	item_code: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (row.item_code) {
-			// รอให้ fetch_from ดึงข้อมูลเสร็จก่อน
-			setTimeout(() => {
-				calculate_item_amount(frm, cdt, cdn);
-			}, 500);
+			frappe.call({
+				method: 'truck_service_center.truck_service_center.doctype.service_type.service_type.get_item_price',
+				args: { item_code: row.item_code },
+				callback: function(r) {
+					if (r.message && r.message.price) {
+						frappe.model.set_value(cdt, cdn, 'rate', r.message.price);
+					}
+					calculate_item_amount(frm, cdt, cdn);
+				}
+			});
 		}
 	},
 	

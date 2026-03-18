@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "service_type_name",
+  "service_code",
   "description",
   "identification_section",
   "barcode",
@@ -33,6 +34,12 @@
    "in_list_view": 1,
    "label": "ชื่อประเภทบริการ",
    "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "service_code",
+   "fieldtype": "Data",
+   "label": "รหัสบริการ",
    "unique": 1
   },
   {
@@ -142,7 +149,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-02-05 10:00:00.000000",
+ "modified": "2026-03-18 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",
