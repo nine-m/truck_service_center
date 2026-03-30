@@ -376,7 +376,7 @@ class ServiceOrder(Document):
 		stock_entry.stock_entry_type = "Material Issue"
 		stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
 		stock_entry.set_posting_time = 1
-		stock_entry.posting_date = self.service_date
+		stock_entry.posting_date = frappe.utils.today()
 
 		missing_warehouse_items = []
 
@@ -793,7 +793,7 @@ def create_material_issue(service_order, item_rows=None):
 	stock_entry.stock_entry_type = "Material Issue"
 	stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
 	stock_entry.set_posting_time = 1
-	stock_entry.posting_date = doc.service_date
+	stock_entry.posting_date = frappe.utils.today()
 	stock_entry.custom_service_order = service_order  # Link กลับไป Service Order
 	
 	items_added = []

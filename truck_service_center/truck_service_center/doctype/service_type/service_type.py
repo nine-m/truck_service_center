@@ -43,6 +43,46 @@ class ServiceType(Document):
 
 
 @frappe.whitelist()
+def bulk_update_item_prices(service_type_names):
+	"""อัปเดตราคาอะไหล่จาก Price List สำหรับ Service Type ที่เลือก"""
+	import json
+	from frappe.utils import flt
+
+	if isinstance(service_type_names, str):
+		service_type_names = json.loads(service_type_names)
+
+	result = {"success": 0, "failed": 0, "items_updated": 0}
+
+	for name in service_type_names:
+		try:
+			doc = frappe.get_doc("Service Type", name)
+			items_updated = 0
+
+			for item in doc.items:
+				if not item.item_code:
+					continue
+				price_data = get_item_price(item.item_code)
+				if price_data and price_data.get("price"):
+					new_rate = flt(price_data["price"])
+					if flt(item.rate) != new_rate:
+						item.rate = new_rate
+						item.amount = flt(item.qty) * new_rate
+						items_updated += 1
+
+			if items_updated > 0:
+				doc.save()
+
+			result["success"] += 1
+			result["items_updated"] += items_updated
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"Update item prices failed for {name}")
+			result["failed"] += 1
+
+	frappe.db.commit()
+	return result
+
+
+@frappe.whitelist()
 def get_item_price(item_code):
 	"""ดึงราคาสินค้า โดยเช็คจาก Price List ก่อน แล้ว fallback ไป standard_rate"""
 	from frappe.utils import flt
