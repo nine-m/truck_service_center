@@ -17,9 +17,11 @@
   "image_height": 0.0,
   "image_width": 0.0,
   "is_default": 1,
+  "letter_head_for": "DocType",
   "letter_head_name": "LINE-LETTER-HEAD",
   "modified": "2026-02-06 13:33:39.763176",
   "name": "LINE-LETTER-HEAD",
-  "source": "HTML"
+  "source": "HTML",
+  "standard": "No"
  }
 ]
