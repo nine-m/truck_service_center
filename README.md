@@ -1,6 +1,14 @@
 ### Truck Service Center
 
-Line Transport Service Center App
+Line Transport Service Center App — a Frappe app for running a truck service-center business: vehicles, service appointments, work orders, repair quotations, and service packages, with stock issue and VAT-aware invoicing.
+
+> **Requires ERPNext** (`required_apps = ["erpnext"]`). The app reuses ERPNext's Item, Warehouse, Customer, Stock Entry, and Sales Invoice.
+
+### Documentation
+
+- [DOCTYPES_README.md](DOCTYPES_README.md) — doctypes, document flow, and business model
+- [SETTINGS_README.md](SETTINGS_README.md) — the Truck Service Center Settings singleton
+- [CLAUDE.md](CLAUDE.md) — architecture overview + bench/dev commands
 
 ### Installation
 
