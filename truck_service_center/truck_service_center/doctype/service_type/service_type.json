@@ -7,20 +7,23 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "general_tab",
+  "identification_section",
   "service_type_name",
   "service_code",
-  "description",
-  "identification_section",
   "barcode",
-  "maintenance_type",
   "column_break_1",
   "service_type_group",
+  "maintenance_type",
   "is_active",
+  "description",
+  "details_tab",
   "service_details_section",
   "default_duration",
   "labor_rate",
   "spare_parts_section",
   "items",
+  "accounting_tab",
   "accounting_section",
   "item_code",
   "income_account",
@@ -32,40 +35,40 @@
    "fieldname": "service_type_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "ชื่อประเภทบริการ",
+   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
    "reqd": 1,
    "unique": 1
   },
   {
    "fieldname": "service_code",
    "fieldtype": "Data",
-   "label": "รหัสบริการ",
+   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
    "unique": 1
   },
   {
    "fieldname": "description",
    "fieldtype": "Text Editor",
-   "label": "คำอธิบาย"
+   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
   },
   {
    "fieldname": "identification_section",
    "fieldtype": "Section Break",
-   "label": "การระบุตัวตน"
+   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e32\u0e19"
   },
   {
+   "description": "\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e2a\u0e41\u0e01\u0e19\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
    "fieldname": "barcode",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "บาร์โค้ด",
-   "unique": 1,
-   "description": "บาร์โค้ดสำหรับสแกนเพิ่มประเภทบริการ"
+   "label": "\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14",
+   "unique": 1
   },
   {
    "fieldname": "maintenance_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "ประเภทการบำรุงรักษา",
+   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e01\u0e32\u0e23\u0e1a\u0e33\u0e23\u0e38\u0e07\u0e23\u0e31\u0e01\u0e29\u0e32",
    "options": "PM\nCM",
    "reqd": 1
   },
@@ -78,62 +81,62 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "กลุ่มบริการ",
+   "label": "\u0e01\u0e25\u0e38\u0e48\u0e21\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
    "options": "Service Type Group"
   },
   {
+   "default": "1",
    "fieldname": "is_active",
    "fieldtype": "Check",
-   "label": "ใช้งาน",
-   "default": "1"
+   "label": "\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19"
   },
   {
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
-   "label": "รายละเอียดการบริการ"
+   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e01\u0e32\u0e23\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
   },
   {
+   "description": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e43\u0e19\u0e01\u0e32\u0e23\u0e17\u0e33\u0e07\u0e32\u0e19",
    "fieldname": "default_duration",
    "fieldtype": "Float",
-   "label": "ระยะเวลาทำงาน (ชม.)",
-   "precision": 2,
-   "description": "ระยะเวลาโดยประมาณในการทำงาน"
+   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e17\u0e33\u0e07\u0e32\u0e19 (\u0e0a\u0e21.)",
+   "precision": 2
   },
   {
    "fieldname": "labor_rate",
    "fieldtype": "Currency",
-   "label": "ค่าแรง/ค่าบริการ",
+   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07/\u0e04\u0e48\u0e32\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
    "precision": 2,
    "reqd": 1
   },
   {
    "fieldname": "spare_parts_section",
    "fieldtype": "Section Break",
-   "label": "รายการอะไหล่มาตรฐาน"
+   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e21\u0e32\u0e15\u0e23\u0e10\u0e32\u0e19"
   },
   {
+   "description": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e17\u0e35\u0e48\u0e43\u0e0a\u0e49\u0e40\u0e1b\u0e47\u0e19\u0e1b\u0e23\u0e30\u0e08\u0e33\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e19\u0e35\u0e49",
    "fieldname": "items",
    "fieldtype": "Table",
-   "label": "รายการอะไหล่",
-   "options": "Service Type Item",
-   "description": "รายการอะไหล่ที่ใช้เป็นประจำสำหรับประเภทบริการนี้"
+   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "options": "Service Type Item"
   },
   {
    "fieldname": "accounting_section",
    "fieldtype": "Section Break",
-   "label": "เชื่อมโยงบัญชี"
+   "label": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
   },
   {
+   "description": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e01\u0e31\u0e1a Item \u0e43\u0e19 ERPNext",
    "fieldname": "item_code",
    "fieldtype": "Link",
-   "label": "รหัสสินค้า",
-   "options": "Item",
-   "description": "เชื่อมโยงกับ Item ใน ERPNext"
+   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "options": "Item"
   },
   {
    "fieldname": "income_account",
    "fieldtype": "Link",
-   "label": "บัญชีรายได้",
+   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49",
    "options": "Account"
   },
   {
@@ -143,13 +146,28 @@
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "label": "ศูนย์ต้นทุน",
+   "label": "\u0e28\u0e39\u0e19\u0e22\u0e4c\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19",
    "options": "Cost Center"
+  },
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e31\u0e48\u0e27\u0e44\u0e1b"
+  },
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+  },
+  {
+   "fieldname": "accounting_tab",
+   "fieldtype": "Tab Break",
+   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-18 10:00:00.000000",
+ "modified": "2026-06-23 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",

@@ -2,323 +2,146 @@
 
 ## ภาพรวม
 
-Truck Service Center เป็นแอปพลิเคชันสำหรับจัดการธุรกิจศูนย์บริการรถบรรทุก รองรับการบริการต่างๆ เช่น:
-- เปลี่ยนถ่ายน้ำมันเครื่อง
-- เช็คระยะ
-- เปลี่ยนยาง
-- ซ่อมบำรุงทั่วไป
+Truck Service Center เป็นแอป Frappe (ต้องติดตั้ง **ERPNext** ด้วย) สำหรับจัดการธุรกิจศูนย์บริการรถบรรทุก
+ครอบคลุมตั้งแต่การ **นัดหมาย → เปิดใบสั่งงาน → ตัดสต็อก/ออกใบแจ้งหนี้** และการ **เสนอราคาซ่อม**
+ตัวเลขเงินรองรับภาษีมูลค่าเพิ่ม (VAT รวม/แยก/ไม่คิด) และอะไหล่/บริการอ้างอิงกับ Item ของ ERPNext
 
-## DocTypes ที่สร้าง
+> เอกสารที่เกี่ยวข้อง: [SETTINGS_README.md](SETTINGS_README.md) (การตั้งค่า singleton) และ [CLAUDE.md](CLAUDE.md) (สถาปัตยกรรม + คำสั่งสำหรับ dev)
 
-### 1. Vehicle (รถ)
-**Path:** `truck_service_center/doctype/vehicle/`
+## โครงสร้างเอกสารหลัก (Document Flow)
 
-**คุณสมบัติ:**
-- จัดเก็บข้อมูลรถบรรทุกของลูกค้า
-- ติดตามเลขไมล์และกำหนดการบริการ
-- แจ้งเตือนเอกสารหมดอายุ (ประกัน, ทะเบียน, ภาษี, ตรวจสภาพ)
-- บันทึกข้อมูลทางเทคนิค (เครื่องยนต์, เชื้อเพลิง, ยาง)
+เอกสารธุรกรรม 3 ตัวต่อกันเป็น pipeline และใช้โครงสร้าง child table ชุดเดียวกัน:
 
-**ฟิลด์สำคัญ:**
-- `license_plate` - ทะเบียนรถ (Primary Key)
-- `customer` - ลูกค้าเจ้าของรถ (Link to Customer)
-- `current_mileage` - เลขไมล์ปัจจุบัน
-- `next_service_due` - วันที่ครบกำหนดบริการ
-- `next_service_mileage` - เลขไมล์ที่ควรเข้าบริการ
+```
+Service Appointment (APT-.YYYY.-)   ── on_submit ──▶  Service Order (SO-.YYYY.-)  ◀── สร้างจาก ──  Repair Quotation (RQ-.YYYY.-)
+   (นัดหมาย, ผูก slot)                                  (เอกสารหลัก, ตัดสต็อก/ออกบิล)              (ใบเสนอราคา)
+```
 
-**Methods:**
-- `validate_mileage()` - ตรวจสอบเลขไมล์ไม่ย้อนหลัง
-- `calculate_next_service()` - คำนวณกำหนดบริการครั้งถัดไป
-- `update_service_info()` - อัพเดทข้อมูลหลังการบริการ
-- `is_service_due()` - ตรวจสอบว่าถึงกำหนดบริการหรือไม่
-- `get_upcoming_expirations()` - ดึงรายการเอกสารที่ใกล้หมดอายุ
+child table ที่ทุกเอกสารใช้เหมือนกัน:
+| บทบาท | Service Appointment | Service Order | Repair Quotation |
+|---|---|---|---|
+| ค่าแรง (labor) | `service_types` → Service Appointment Service Type | `service_types` → Service Order Service Type | `service_types` → Repair Quotation Service Type |
+| อะไหล่ (parts) | `service_items` → Service Appointment Item | `service_items` → Service Order Item | `service_items` → Repair Quotation Item |
+| แพ็คเกจ | `service_packages` → Service Appointment Package | `service_packages` → Service Order Package | `service_packages` → Repair Quotation Package |
+
+**สถานะ submittable:** Service Appointment และ Service Order เป็น submittable; **Repair Quotation ไม่ submittable** (เป็น doctype ปกติ มี amended_from + naming series และจัดการสถานะเองผ่าน `update_status_on_save`)
 
 ---
 
-### 2. Service Type Group (กลุ่มบริการ)
-**Path:** `truck_service_center/doctype/service_type_group/`
+## Master Data
 
-**คุณสมบัติ:**
-- จัดกลุ่มประเภทบริการตามหมวดหมู่
-- ช่วยในการค้นหาและจัดระบบประเภทบริการ
-- รองรับการเปิด/ปิดใช้งาน
+### Vehicle (รถ)
+`autoname = field:license_plate` — ทะเบียนรถเป็น Primary Key
 
-**ฟิลด์สำคัญ:**
-- `group_code` - รหัสกลุ่ม (Primary Key)
-- `group_name` - ชื่อกลุ่ม
-- `is_active` - เปิด/ปิดใช้งาน
-- `remark` - หมายเหตุ
+เก็บข้อมูลรถบรรทุกของลูกค้า + ข้อมูลเทคนิค (เครื่องยนต์/เชื้อเพลิง/เกียร์/ยาง/ความจุน้ำมัน-น้ำยา/ไส้กรอง) + กำหนดบริการ (ระยะ กม./เดือน, เลขไมล์ครั้งถัดไป) + วันหมดอายุเอกสาร (ประกัน, ทะเบียน, ภาษี, ตรวจสภาพ)
 
-**กลุ่มบริการมาตรฐาน:**
-- SU100 - เครื่องล่าง
-- EL100 - ไฟฟ้า
-- TY100 - ยาง
-- OT100 - อื่นๆ
-- RM100 - ระบบการทำงานของรถ
-- TR100 - ส่งกำลัง
-- WE100 - เชื่อม
-- CH100 - ตัวถัง
+**ฟิลด์สำคัญ:** `license_plate`, `truck_number`, `vehicle_type`, `customer`, `current_mileage`, `service_interval_km`, `service_interval_months`, `next_service_due`, `next_service_mileage`
 
----
+**Methods:** `validate_mileage()` (กันเลขไมล์ย้อนหลัง), `calculate_next_service()`, `update_service_info()`, `get_service_history()`, `is_service_due()`, `get_upcoming_expirations()`
+**Whitelisted:** `check_service_due`, `get_vehicle_service_history`, `get_customer_contact_info`, `get_vehicle_expirations`
 
-### 3. Repair Position (ตำแหน่งที่ซ่อม)
-**Path:** `truck_service_center/doctype/repair_position/`
+### Service Type Group (กลุ่มบริการ)
+`autoname = field:group_code`. ฟิลด์: `group_code`, `group_name`, `is_active`, `remark`
+กลุ่มมาตรฐาน (seed จาก [fixtures/create_service_type_groups.py](truck_service_center/fixtures/create_service_type_groups.py)): SU100 เครื่องล่าง, EL100 ไฟฟ้า, TY100 ยาง, OT100 อื่นๆ, RM100 ระบบการทำงาน, TR100 ส่งกำลัง, WE100 เชื่อม, CH100 ตัวถัง
 
-**คุณสมบัติ:**
-- กำหนดตำแหน่งส่วนต่างๆ ของรถที่สามารถซ่อมได้
-- ใช้เป็น Master Data สำหรับระบุตำแหน่งการซ่อม
-- จัดกลุ่มตามระบบของรถ (ไฟฟ้า, เครื่องยนต์, ช่วงล่าง, ยาง ฯลฯ)
+### Service Type (ประเภทบริการ)
+`autoname = field:service_type_name`. กำหนดบริการ + ค่าแรง + อะไหล่มาตรฐานของบริการนั้น
 
-**ฟิลด์สำคัญ:**
-- `position_code` - รหัสตำแหน่ง (Primary Key) เช่น EL01, EN00, SU01
-- `position_name` - ชื่อตำแหน่ง
-- `remark` - หมายเหตุรายละเอียด
-- `is_active` - เปิด/ปิดใช้งาน
+**ฟิลด์สำคัญ:** `service_type_name`, `service_code`, `barcode` (รองรับสแกน), `maintenance_type` (PM/CM), `service_type_group`, `labor_rate`, `default_duration`, `item_code` (ผูก Item ของ ERPNext), `income_account`, `cost_center`, `items` (child → Service Type Item: อะไหล่มาตรฐาน)
 
-**รหัสกลุ่มตำแหน่ง:**
-- **EL** - ระบบไฟฟ้า (Electrical System)
-- **EN** - เครื่องยนต์ (Engine)
-- **SU** - ช่วงล่าง (Suspension)
-- **TY** - ยาง (Tires)
+**Methods:** `calculate_item_amounts()`, `set_labor_rate_from_item()`
+**Whitelisted:** `bulk_update_item_prices(service_type_names)` (อัปเดตราคาอะไหล่หลายบริการพร้อมกันจาก Item Price), `get_item_price(item_code)`
 
-**ตัวอย่างตำแหน่ง:**
-- EL00: ระบบไฟฟ้า
-- EL01: ไฟตรงเซ็นไฟ (ไฟตรงเซ็นไฟจากภายนอก)
-- EL02: ไฟตรงเซ็นไฟจากเคลื่อน (ไฟเลี้ยวซ้ายขวาและไฟถอยหลัง)
-- EN00: เครื่องยนต์
-- EN01: มาติวจากเครื่องยนต์
-- SU00: ช่วงล่าง
-- SU01: ใบยเนอเรทรองล่าง
-- TY00: ยาง
-- TY01: ขายตาของยางล่าง
+### Repair Position (ตำแหน่งที่ซ่อม)
+`autoname = field:position_code`. Master data ระบุตำแหน่งบนรถที่ซ่อม ใช้ใน child table service_types ของ Order/Quotation
+ฟิลด์: `position_code` (เช่น EL01, EN00, SU01), `position_name`, `remark`, `is_active`
+seed จาก [fixtures/repair_position_data.py](truck_service_center/fixtures/repair_position_data.py). กลุ่มรหัส: EL ไฟฟ้า, EN เครื่องยนต์, SU ช่วงล่าง, TY ยาง
+
+### Service Appointment Slot (ช่วงเวลานัดหมาย)
+`autoname = field:slot_name`. ฟิลด์: `slot_name`, `start_time`, `end_time`, `capacity` (จำนวนคันต่อ slot), `is_active`, `description`
+seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointment_slots.py). ใช้คุมความจุการนัดผ่าน `Service Appointment.check_slot_availability()`
 
 ---
 
-### 4. Service Type (ประเภทบริการ)
-**Path:** `truck_service_center/doctype/service_type/`
+## เอกสารธุรกรรม
 
-**คุณสมบัติ:**
-- กำหนดประเภทบริการต่างๆ
-- ตั้งราคามาตรฐานและค่าแรง
-- เชื่อมโยงกับ Item ใน ERPNext
-- จัดกลุ่มตามประเภทการบำรุงรักษา (PM/CM)
+### Service Appointment (ใบนัดหมาย) — submittable, `APT-.YYYY.-`
+จองคิวบริการ ผูกกับ slot และดึงข้อมูลรถ/ลูกค้าอัตโนมัติ
 
-**ฟิลด์สำคัญ:**
-- `service_type_name` - ชื่อประเภทบริการ (Primary Key)
-- `maintenance_type` - ประเภทการบำรุงรักษา (PM = Preventive Maintenance, CM = Corrective Maintenance)
-- `service_type_group` - กลุ่มบริการ (Link to Service Type Group)
-- `default_rate` - ราคามาตรฐาน
-- `labor_rate` - ค่าแรง
-- `default_duration` - ระยะเวลาทำงานโดยประมาณ
-- `item_code` - เชื่อมโยงกับ Item (Link to Item)
+**ฟิลด์สำคัญ:** `appointment_date`, `appointment_slot`, `appointment_start/end`, `status` (Scheduled/Confirmed/In Progress/Completed/Cancelled/No Show), `customer`, `vehicle`, `assigned_technician`, child tables (service_types/service_items/service_packages), ยอดรวม (`total_labor_charges`, `total_parts_amount`, `total_amount`), `service_order` (ลิงก์ย้อนกลับ)
 
-**ประเภทการบำรุงรักษา:**
-- **PM (Preventive Maintenance)** - การบำรุงรักษาเชิงป้องกัน เช่น เปลี่ยนถ่ายน้ำมัน, เช็คระยะ
-- **CM (Corrective Maintenance)** - การซ่อมบำรุงแก้ไข เช่น ซ่อมเครื่องยนต์, ซ่อมระบบเบรก
+**Methods:** `calculate_estimated_duration()`, `calculate_totals()`, `validate_appointment_datetime()`, `check_slot_availability()`, `sync_vehicle_info()`, `set_slot_datetimes()`, **`on_submit` → `create_service_order()`** (สร้าง Service Order จากใบนัด)
+**Whitelisted:** `create_service_order_from_appointment`, `get_available_slots(date)`
 
-**ตัวอย่างประเภทบริการ:**
-- เปลี่ยนถ่ายน้ำมันเครื่อง (PM - กลุ่ม RM100)
-- เช็คระยะ 10,000 กม. (PM - กลุ่ม RM100)
-- เปลี่ยนยาง (PM - กลุ่ม TY100)
-- ตรวจเช็คระบบเบรก (PM - กลุ่ม SU100)
-- ซ่อมระบบไฟฟ้า (CM - กลุ่ม EL100)
+### Service Order (ใบสั่งงานบริการ) — submittable, `SO-.YYYY.-` ⭐ เอกสารหลัก
+หัวใจของระบบ จัดการงานซ่อม ตัดสต็อกอะไหล่ และออกใบแจ้งหนี้
 
----
+**กลุ่มฟิลด์:**
+- ข้อมูลรถ/ลูกค้า: `service_date`, `customer`, `vehicle`, `current_mileage` + ฟิลด์รถที่ดึงมา (`truck_number`, `brand`, `model`, `vin_number`, ฯลฯ) + ที่อยู่ (billing/shipping, `tax_id`)
+- งานซ่อม: `service_packages`, `service_types`, `service_items`, `received_by`, `received_date`, `technician` ถึง `technician_4` (ช่าง 4 คน), `fuel_level_in/out`, `priority` (Low/Medium/High/Urgent), `estimated_time`, `actual_time`
+- บาร์โค้ด: `scan_service_type_barcode`, `scan_item_barcode` (ยิงบาร์โค้ดเพื่อเพิ่มแถว)
+- เงิน/ภาษี: `total_parts_amount`, `labor_charges`, `tax_type` (ราคารวม VAT/ราคาแยก VAT/ไม่คิด VAT), `vat_rate`, `discount_amount`, `net_total`, `tax_amount`, `total_amount`
+- การชำระเงิน: `payment_status` (Unpaid/Partially Paid/Paid), `payment_method`, `paid_amount`, `outstanding_amount`
+- ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
+- สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 
-### 5. Service Order (ใบสั่งงานบริการ)
-**Path:** `truck_service_center/doctype/service_order/`
+**Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type), `update_payment_status()`, `create_stock_entry()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
 
-**คุณสมบัติ:**
-- ใบสั่งงานหลักสำหรับการบริการ
-- รองรับการ Submit/Cancel
-- สร้าง Stock Entry อัตโนมัติเมื่อ submit
-- อัพเดทข้อมูลรถอัตโนมัติ
-- สามารถสร้าง Sales Invoice
-- รองรับหลายประเภทบริการในใบสั่งงานเดียว
-
-**ฟิลด์สำคัญ:**
-- `naming_series` - รหัสใบสั่งงาน (SO-.YYYY.-)
-- `service_date` - วันเวลาที่เข้าบริการ
-- `customer` - ลูกค้า (Link to Customer)
-- `vehicle` - รถ (Link to Vehicle)
-- `current_mileage` - เลขไมล์ปัจจุบัน
-- `service_package` - แพ็คเกจบริการ (Link to Service Package)
-- `service_types` - ประเภทบริการ (Child Table - Service Order Service Type)
-- `service_items` - รายการบริการและอะไหล่ (Child Table)
-- `total_amount` - ยอดรวมทั้งหมด
-- `status` - สถานะ (Draft, In Progress, Completed, Cancelled, On Hold)
-
-**Methods:**
-- `calculate_totals()` - คำนวณยอดรวม (รวมค่าแรงจากทุกประเภทบริการ)
-- `update_payment_status()` - อัพเดทสถานะการชำระเงิน
-- `create_stock_entry()` - สร้าง Stock Entry ตัดสต็อก
-- `update_vehicle_info()` - อัพเดทข้อมูลรถ
-- `create_sales_invoice()` - สร้างใบแจ้งหนี้
+**Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue`, `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบ)
+**Whitelisted อื่น:** `get_item_rate`, `get_item_by_barcode`, `receive_vehicle`, `get_service_type_items`, `create_sales_invoice_from_service_order`
 
 **Workflow:**
-1. สร้าง Service Order (Draft)
-2. เลือกรถ → ระบบจะดึงข้อมูลลูกค้าและข้อมูลติดต่ออัตโนมัติ
-3. เลือกแพ็คเกจบริการ (ถ้ามี) หรือเพิ่มประเภทบริการด้วยตัวเอง
-4. เพิ่มรายการบริการและอะไหล่
-5. Submit → สร้าง Stock Entry และอัพเดทข้อมูลรถ
-6. สร้าง Sales Invoice (ถ้าต้องการ)
+1. สร้าง Service Order (เลือกรถ → ดึงข้อมูลลูกค้า/รถ/ที่อยู่อัตโนมัติ) หรือถูกสร้างจาก Appointment/Quotation
+2. เลือกแพ็คเกจ (auto-load บริการ+อะไหล่) หรือเพิ่ม service_types / service_items เอง (พิมพ์หรือยิงบาร์โค้ด)
+3. เบิกอะไหล่ (สร้าง Stock Entry / Material Issue) — ตาม Settings อาจสร้างอัตโนมัติเมื่อ submit
+4. Submit → ปิดใบนัดที่ผูกอยู่ + อัปเดตข้อมูลรถ
+5. สร้าง Sales Invoice (auto-submit ได้ตาม Settings)
+
+### Repair Quotation (ใบเสนอราคาซ่อม) — `RQ-.YYYY.-` (ไม่ submittable)
+เสนอราคางานซ่อมก่อนเปิดใบสั่งงาน
+
+**ฟิลด์สำคัญ:** `quotation_date`, `valid_until`, `status` (Draft/Open/Accepted/Rejected/Expired/Cancelled), `customer`, `vehicle` + ข้อมูลรถ/ที่อยู่, child tables (service_types/service_items/service_packages), เงิน/ภาษีชุดเดียวกับ Service Order, `customer_complaints` (อาการที่แจ้ง), `recommendations`, `service_order` (ลิงก์เมื่อแปลงเป็นใบสั่งงาน)
+
+**Methods:** `set_tax_defaults()`, `apply_service_packages()`, `calculate_totals()`, `validate_valid_until()`, `update_status_on_save()`
+**Whitelisted:** `create_service_order_from_quotation`, `get_item_rate`, `get_item_by_barcode`
 
 ---
 
-### 6. Service Order Service Type (ประเภทบริการในใบสั่งงาน - Child Table)
-**Path:** `truck_service_center/doctype/service_order_service_type/`
+## Service Package (แพ็คเกจบริการ)
+`autoname = field:package_code`. รวมหลายบริการ + อะไหล่ เป็นแพ็คเกจราคาพิเศษ เลือกใน Order/Appointment/Quotation แล้ว auto-load รายการ
 
-**คุณสมบัติ:**
-- Child table สำหรับเก็บประเภทบริการหลายรายการใน Service Order
-- รองรับการ filter ตามกลุ่มบริการ
-- ดึงข้อมูลค่าแรงและเวลาอัตโนมัติจาก Service Type
+**ฟิลด์สำคัญ:** `package_code`, `package_name`, `package_type` (Standard/Premium/Basic/Custom), `is_active`, `package_service_types` (child → Service Package Service Type: บริการ+ค่าแรง), `package_parts` (child → Service Package Part: อะไหล่), ราคา (`total_labor_rate`, `total_parts_amount`, `total_standard_rate`, `discount_percent`, `package_rate`), เงื่อนไข (`validity_days`, `service_interval_km`, `max_services`)
 
-**ฟิลด์สำคัญ:**
-- `service_type_group` - กลุ่มบริการ (Link to Service Type Group) - ใช้สำหรับ filter
-- `service_type` - ประเภทบริการ (Link to Service Type)
-- `maintenance_type` - ประเภทการบำรุงรักษา (PM/CM) - ดึงอัตโนมัติ
-- `estimated_time` - เวลาประมาณการ (ชม.) - ดึงอัตโนมัติ
-- `labor_charges` - ค่าแรง - ดึงอัตโนมัติ
-
-**การใช้งาน:**
-1. เลือกกลุ่มบริการ (ถ้าต้องการ filter)
-2. เลือกประเภทบริการ → ระบบจะดึงข้อมูลค่าแรง เวลา และประเภทการบำรุงรักษาอัตโนมัติ
-3. สามารถแก้ไขค่าแรงและเวลาได้ตามต้องการ
+**Methods:** `validate_package_service_types()`, `populate_parts_from_service_types()` (ดึงอะไหล่มาตรฐานจาก Service Type มาเป็น package_parts ให้อัตโนมัติ), `calculate_totals()`, `validate_pricing()`, `get_discount_amount()`
+**Whitelisted:** `get_package_details(package_name)`, `get_active_packages()`
 
 ---
 
-### 7. Service Order Item (รายการบริการ - Child Table)
-**Path:** `truck_service_center/doctype/service_order_item/`
-
-**คุณสมบัติ:**
-- Child table สำหรับเก็บรายการบริการและอะไหล่
-- เชื่อมโยงกับ Item ใน ERPNext
-- รองรับการตัดสต็อกจาก Warehouse
-
-**ฟิลด์สำคัญ:**
-- `item_code` - รหัสสินค้า (Link to Item)
-- `qty` - จำนวน
-- `rate` - ราคาต่อหน่วย
-- `amount` - ยอดรวม (คำนวณอัตโนมัติ)
-- `warehouse` - คลังสินค้า (Link to Warehouse)
-- `expense_account` - บัญชีค่าใช้จ่าย
+## Truck Service Center Settings (singleton)
+ควบคุมพฤติกรรมการตัดสต็อก/ออกบิล/ภาษีทั้งระบบ — ดูรายละเอียดที่ [SETTINGS_README.md](SETTINGS_README.md)
+ประเด็นสำคัญ: ต้องตั้ง **Labor Item** ก่อนจึงจะออก Sales Invoice ที่มีค่าแรงได้ (มีปุ่ม "Create Labor Item" / whitelisted `create_labor_item`); toggle `auto_create_stock_entry` และ `auto_submit_sales_invoice`; เทมเพลตภาษี (`vat_inclusive_template` / `vat_exclusive_template`) จับคู่กับ `tax_type` ของเอกสารผ่าน `get_tax_template_for_type()`
 
 ---
-
-### 8. Service Package (แพ็คเกจบริการ)
-**Path:** `truck_service_center/doctype/service_package/`
-
-**คุณสมบัติ:**
-- สร้างแพ็คเกจบริการที่รวมบริการหลายรายการ
-- กำหนดราคาพิเศษและส่วนลด
-- ตั้งค่าเงื่อนไขการใช้งาน (ระยะเวลา, ระยะทาง, จำนวนครั้ง)
-- เชื่อมโยงกับ Service Order โดยอัตโนมัติ
-
-**ฟิลด์สำคัญ:**
-- `package_name` - ชื่อแพ็คเกจ (Primary Key)
-- `package_type` - ประเภทแพ็คเกจ (Standard, Premium, Basic, Custom)
-- `is_active` - เปิด/ปิดใช้งาน
-- `package_items` - รายการบริการในแพ็คเกจ (Child Table)
-- `total_standard_rate` - ราคามาตรฐานรวม (คำนวณอัตโนมัติ)
-- `discount_percent` - ส่วนลด (%)
-- `package_rate` - ราคาแพ็คเกจ (หลังหักส่วนลด)
-- `validity_days` - ระยะเวลาใช้งาน (วัน)
-- `service_interval_km` - ระยะทางระหว่างบริการ (กม.)
-- `max_services` - จำนวนครั้งบริการสูงสุด
-
-**Methods:**
-- `calculate_totals()` - คำนวณยอดรวมและส่วนลด
-- `get_package_items_for_service_order()` - ดึงรายการบริการสำหรับ Service Order
-- `get_discount_amount()` - คำนวณจำนวนเงินส่วนลด
-
-**ตัวอย่างแพ็คเกจ:**
-- แพ็คเกจบำรุงรักษาพื้นฐาน (เปลี่ยนถ่ายน้ำมัน + ไส้กรอง)
-- แพ็คเกจตรวจเช็คประจำปี (ตรวจสอบระบบทั้งหมด + เปลี่ยนถ่ายน้ำมัน)
-- แพ็คเกจพรีเมียม (บริการครบวงจร พร้อมของแถม)
-
-**Integration กับ Service Order:**
-- เลือกแพ็คเกจใน Service Order จะโหลดรายการบริการอัตโนมัติ
-- ราคาจะถูกคำนวณตามส่วนลดที่กำหนดในแพ็คเกจ
-
----
-
-## การใช้งาน
-
-### 1. เพิ่มรถใหม่
-```
-Desk → Truck Service Center → Vehicle → New
-- กรอกทะเบียนรถ
-- เลือกลูกค้า
-- กรอกข้อมูลรถ
-- ตั้งค่าระยะบริการ
-```
-
-### 2. สร้างใบสั่งงานบริการ
-```
-Desk → Truck Service Center → Service Order → New
-- เลือกรถ (จะดึงข้อมูลลูกค้าและข้อมูลติดต่ออัตโนมัติ)
-- กรอกเลขไมล์ปัจจุบัน
-- เลือกแพ็คเกจบริการ (ถ้ามี) หรือเพิ่มประเภทบริการด้วยตัวเอง:
-  * เลือกกลุ่มบริการ (เพื่อ filter ประเภทบริการ)
-  * เลือกประเภทบริการ (ระบบจะดึงค่าแรงและเวลาอัตโนมัติ)
-  * สามารถเพิ่มหลายประเภทบริการได้
-- เพิ่มรายการบริการและอะไหล่
-- Submit เมื่อทำงานเสร็จ
-```
-
-### 3. สร้างแพ็คเกจบริการ
-```
-Desk → Truck Service Center → Service Package → New
-- ตั้งชื่อแพ็คเกจ
-- เลือกประเภทแพ็คเกจ
-- เพิ่มรายการบริการและอะไหล่
-- กำหนดส่วนลดและราคา
-- ตั้งค่าเงื่อนไขการใช้งาน (ถ้าต้องการ)
-```
-
-### 4. ตรวจสอบรถที่ถึงกำหนดบริการ
-```
-Report → Truck Service Center → Service Due Report
-```
 
 ## Integration กับ ERPNext
 
-### Stock Management
-- ใช้ **Item** จาก ERPNext เพื่อจัดการอะไหล่
-- ใช้ **Warehouse** เพื่อจัดการคลังสินค้า
-- สร้าง **Stock Entry** อัตโนมัติเมื่อทำงานเสร็จ
+- **Stock:** อะไหล่อ้างอิง `Item`/`Warehouse`/`UOM`; เบิกอะไหล่ผ่าน `Stock Entry` (Material Issue)
+- **Sales:** ใช้ `Customer`/`Address`; ออก `Sales Invoice` (ค่าแรงลงผ่าน Labor Item, อะไหล่ลงตามรายการ)
+- **Accounting:** `Account` / `Cost Center` / `Sales Taxes and Charges Template` / `Payment Terms Template`
+- **ราคา:** ดึงจาก `Item Price` / Price List ของลูกค้า (`get_item_rate`)
 
-### Customer & Sales
-- ใช้ **Customer** จาก ERPNext
-- สร้าง **Sales Invoice** สำหรับเก็บเงิน
+---
 
-### Accounting
-- ใช้ **Account** และ **Cost Center** จาก ERPNext
-- บันทึกบัญชีอัตโนมัติผ่าน Sales Invoice
+## การใช้งาน (เมนูใน Desk)
 
-## ฟีเจอร์ที่ควรเพิ่มในอนาคต
+Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น Service Operations / Master Data / Admin & Settings
+(โครงสร้างเมนูแก้ที่ doctype *Workspace Sidebar* — ดู [CLAUDE.md](CLAUDE.md) หัวข้อ Workspace & Sidebar)
 
-- [ ] Service Reminder (ส่งอีเมลแจ้งเตือนเมื่อถึงกำหนดบริการ)
-- [ ] Technician Management (จัดการช่างและตารางงาน)
-- [x] Service Package (แพ็คเกจบริการ) - ✅ พัฒนาเสร็จแล้ว
-- [ ] Warranty Management (จัดการการรับประกัน)
-- [ ] Parts Recommendation (แนะนำอะไหล่ตามระยะทาง)
-- [ ] Dashboard & Analytics (สถิติและกราฟ)
-- [ ] Customer Portal (ลูกค้าดูประวัติรถออนไลน์)
-- [ ] Mobile App Integration
-
-## ติดตั้ง
-
-App นี้ติดตั้งและพร้อมใช้งานแล้ว:
-
-```bash
-# ตรวจสอบ app ที่ติดตั้ง
-bench --site [site-name] list-apps
-
-# Migrate database (ถ้าต้องการ)
-bench --site [site-name] migrate
-```
+- **เพิ่มรถ:** Vehicle → New
+- **นัดหมาย:** Service Appointment → New (เลือก slot + รถ) → Submit จะสร้าง Service Order ให้
+- **เปิดใบสั่งงาน:** Service Order → New หรือสร้างจาก Appointment/Quotation
+- **เสนอราคา:** Repair Quotation → New → เมื่อรับงานกด สร้าง Service Order
+- **แพ็คเกจ:** Service Package → New
 
 ## License
-
 MIT

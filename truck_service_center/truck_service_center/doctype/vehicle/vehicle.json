@@ -7,6 +7,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "general_tab",
   "vehicle_info_section",
   "license_plate",
   "truck_number",
@@ -23,6 +24,7 @@
   "contact_number",
   "email",
   "status",
+  "specification_tab",
   "specification_section",
   "engine_type",
   "fuel_type",
@@ -45,6 +47,7 @@
   "battery_specifications",
   "air_filter_type",
   "fuel_filter_type",
+  "insurance_tab",
   "insurance_section",
   "insurance_company",
   "insurance_policy_number",
@@ -53,12 +56,18 @@
   "registration_expiry",
   "road_tax_expiry",
   "inspection_expiry",
+  "notes_tab",
   "notes_section",
   "notes",
   "attachments_section",
   "vehicle_images"
  ],
  "fields": [
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "ข้อมูลทั่วไป"
+  },
   {
    "fieldname": "vehicle_info_section",
    "fieldtype": "Section Break",
@@ -162,6 +171,11 @@
    "default": "Active"
   },
   {
+   "fieldname": "specification_tab",
+   "fieldtype": "Tab Break",
+   "label": "ข้อมูลทางเทคนิค"
+  },
+  {
    "fieldname": "specification_section",
    "fieldtype": "Section Break",
    "label": "ข้อมูลทางเทคนิค"
@@ -207,7 +221,7 @@
   {
    "fieldname": "last_service_date",
    "fieldtype": "Date",
-   "label": "วันที่เข้าบริการล่าุด",
+   "label": "วันที่เข้าบริการล่าสุด",
    "read_only": 1
   },
   {
@@ -279,12 +293,17 @@
   {
    "fieldname": "air_filter_type",
    "fieldtype": "Data",
-   "label": "ชนิดไกรองอากาศ"
+   "label": "ชนิดไส้กรองอากาศ"
   },
   {
    "fieldname": "fuel_filter_type",
    "fieldtype": "Data",
-   "label": "ชนิดไกรองน้ำมัน"
+   "label": "ชนิดไส้กรองน้ำมัน"
+  },
+  {
+   "fieldname": "insurance_tab",
+   "fieldtype": "Tab Break",
+   "label": "ประกันและเอกสาร"
   },
   {
    "fieldname": "insurance_section",
@@ -326,6 +345,11 @@
    "label": "วันหมดอายุตรวจสภาพ"
   },
   {
+   "fieldname": "notes_tab",
+   "fieldtype": "Tab Break",
+   "label": "หมายเหตุและเอกสารแนบ"
+  },
+  {
    "fieldname": "notes_section",
    "fieldtype": "Section Break",
    "label": "หมายเหตุ"
@@ -348,7 +372,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-02-11 10:00:00.000000",
+ "modified": "2026-06-23 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Vehicle",

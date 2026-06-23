@@ -65,6 +65,26 @@
 
 ---
 
+### การตั้งค่าภาษีมูลค่าเพิ่ม (VAT / Tax Settings)
+
+เอกสาร (Service Order / Repair Quotation) มีฟิลด์ `tax_type` ให้เลือก 3 แบบ ค่าตั้งต้นและเทมเพลตภาษีกำหนดที่นี่
+
+#### ประเภทภาษีเริ่มต้น (Default Tax Type)
+- `ราคารวม VAT` (VAT inclusive) — ราคาที่กรอกรวม VAT แล้ว
+- `ราคาแยก VAT` (VAT exclusive) — บวก VAT เพิ่มจากยอด
+- `ไม่คิด VAT` — ไม่มีภาษี
+
+#### อัตรา VAT (VAT Rate %)
+- อัตราภาษีมาตรฐาน (เช่น 7)
+
+#### เทมเพลตภาษี (Tax Templates) ⚠️ จำเป็นถ้าจะออก Sales Invoice ที่มี VAT
+- **เทมเพลต ราคาแยก VAT** (`vat_exclusive_template`) → Sales Taxes and Charges Template สำหรับ VAT exclusive
+- **เทมเพลต ราคารวม VAT** (`vat_inclusive_template`) → Template สำหรับ VAT inclusive
+- ระบบจับคู่ `tax_type` ของเอกสารกับเทมเพลตที่ถูกต้องอัตโนมัติเมื่อสร้าง Sales Invoice (ผ่าน `get_tax_template_for_type()`)
+- `validate_tax_templates()` จะตรวจความถูกต้องของเทมเพลตตอนบันทึก Settings
+
+---
+
 ## วิธีตั้งค่าครั้งแรก
 
 ### 1. สร้าง Labor Item (ค่าแรง)
@@ -92,6 +112,13 @@
 ```
 1. กำหนด Default Cost Center
 2. กำหนด Labor Cost Center (ถ้าต้องการแยก)
+```
+
+### 5. ตั้งค่าภาษี (VAT) — ถ้าต้องออกบิลมี VAT
+```
+1. เลือก Default Tax Type และ VAT Rate
+2. กำหนด เทมเพลต ราคาแยก VAT และ/หรือ ราคารวม VAT
+   (Sales Taxes and Charges Template ของ ERPNext)
 ```
 
 ---
@@ -124,6 +151,7 @@
 - Default Cost Center
 - Payment Terms Template
 - Auto Submit Sales Invoice
+- VAT Templates (จำเป็นเฉพาะเมื่อต้องออกบิลมี VAT)
 
 ---
 
