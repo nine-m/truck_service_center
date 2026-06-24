@@ -91,27 +91,37 @@ frappe.ui.form.on('Service Order', {
 					frappe.msgprint({
 						title: __('ไม่สามารถรับรถได้'),
 						indicator: 'red',
-						message: __('กรุณาบันทึกสถานะน้ำมันรับเข้าก่อนทำการรับรถ')
+						message: __('กรุณากรอกสถานะน้ำมันรับเข้าก่อนทำการรับรถ')
 					});
 					return;
 				}
 
+				// เรียก receive_vehicle หลังจากแน่ใจว่าเอกสารถูกบันทึกแล้ว
+				const do_receive = function() {
+					frappe.call({
+						method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.receive_vehicle',
+						args: { service_order: frm.doc.name },
+						callback: function(r) {
+							if (!r.exc) {
+								frm.reload_doc();
+								frappe.show_alert({
+									message: __('รับรถเรียบร้อยแล้ว'),
+									indicator: 'green'
+								});
+							}
+						}
+					});
+				};
+
 				frappe.confirm(
 					__('ยืนยันการรับรถ?'),
 					function() {
-						frappe.call({
-							method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.receive_vehicle',
-							args: { service_order: frm.doc.name },
-							callback: function(r) {
-								if (!r.exc) {
-									frm.reload_doc();
-									frappe.show_alert({
-										message: __('รับรถเรียบร้อยแล้ว'),
-										indicator: 'green'
-									});
-								}
-							}
-						});
+						// ถ้ามีการแก้ไขที่ยังไม่บันทึก (เช่น แก้น้ำมัน) ให้ save ให้อัตโนมัติก่อนรับรถ
+						if (frm.is_dirty()) {
+							frm.save().then(do_receive);
+						} else {
+							do_receive();
+						}
 					}
 				);
 			}).addClass('btn-primary');
