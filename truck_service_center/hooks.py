@@ -86,7 +86,7 @@ required_apps = ["erpnext"]
 # ------------
 
 # before_install = "truck_service_center.install.before_install"
-# after_install = "truck_service_center.install.after_install"
+after_install = "truck_service_center.install.after_install"
 
 # Uninstallation
 # ------------

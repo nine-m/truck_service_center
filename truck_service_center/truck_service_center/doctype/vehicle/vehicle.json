@@ -101,9 +101,10 @@
   },
   {
    "fieldname": "brand",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "ยี่ห้อ"
+   "label": "ยี่ห้อ",
+   "options": "Vehicle Brand"
   },
   {
    "fieldname": "model",
@@ -372,7 +373,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-23 11:00:00.000000",
+ "modified": "2026-06-24 02:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Vehicle",

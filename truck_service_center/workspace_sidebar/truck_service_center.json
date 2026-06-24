@@ -135,6 +135,19 @@
    "type": "Link"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "icon": "factory",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Vehicle Brand",
+   "link_to": "Vehicle Brand",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "settings",
@@ -173,7 +186,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-06-23 09:47:53.904197",
+ "modified": "2026-06-24 03:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",
