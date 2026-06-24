@@ -29,6 +29,13 @@ frappe.ui.form.on('Vehicle', {
 	},
 
 	refresh: function(frm) {
+		// Frappe ซ่อน field ที่ใช้เป็น autoname (field:license_plate) หลังบันทึก
+		// บังคับให้แสดงทะเบียนรถในข้อมูลรถ (read-only เพราะการเปลี่ยนทะเบียนต้องใช้ Rename)
+		if (!frm.is_new()) {
+			frm.toggle_display('license_plate', true);
+			frm.set_df_property('license_plate', 'read_only', 1);
+		}
+
 		// ปุ่มสร้าง Service Order
 		if (!frm.is_new()) {
 			frm.add_custom_button(__('Create Service Order'), function() {
