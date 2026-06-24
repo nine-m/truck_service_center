@@ -1,7 +1,20 @@
 {
  "app": "truck_service_center",
- "charts": [],
- "content": "[{\"id\":\"hdr_shortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Service Operations</b></span>\",\"col\":12}},{\"id\":\"sc_vehicle\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Vehicle\",\"col\":4}},{\"id\":\"sc_appointment\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment\",\"col\":4}},{\"id\":\"sc_service_order\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Order\",\"col\":4}},{\"id\":\"sc_repair_quotation\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Repair Quotation\",\"col\":4}},{\"id\":\"spacer1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"KExoBj2aYE\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Master Data</b></span>\",\"col\":12}},{\"id\":\"I53F07N0HQ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type\",\"col\":4}},{\"id\":\"EF06wiZrln\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Type Group\",\"col\":4}},{\"id\":\"YQSbUNA9j0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Package\",\"col\":4}},{\"id\":\"hdr_admin\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Admin &amp; Settings</b></span>\",\"col\":12}},{\"id\":\"sc_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Truck Service Center Settings\",\"col\":4}},{\"id\":\"sc_slot\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Service Appointment Slot\",\"col\":4}}]",
+ "charts": [
+  {
+   "chart_name": "TSC Service Orders by Status",
+   "label": "สถานะงานซ่อม"
+  },
+  {
+   "chart_name": "TSC Appointments by Status",
+   "label": "สถานะนัดหมาย"
+  },
+  {
+   "chart_name": "TSC Monthly Service Revenue",
+   "label": "รายได้รายเดือน"
+  }
+ ],
+ "content": "[{\"id\": \"hdr_dashboard\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>ภาพรวม (Dashboard)</b></span>\", \"col\": 12}}, {\"id\": \"nc_0\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"งานซ่อมที่กำลังดำเนินการ\", \"col\": 4}}, {\"id\": \"nc_1\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"งานซ่อมที่เสร็จแล้ว\", \"col\": 4}}, {\"id\": \"nc_2\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"นัดหมายที่กำลังจะมาถึง\", \"col\": 4}}, {\"id\": \"nc_3\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"ยอดค้างชำระ\", \"col\": 4}}, {\"id\": \"nc_4\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"รายได้ (งานที่เสร็จแล้ว)\", \"col\": 4}}, {\"id\": \"nc_5\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"รถที่ใช้งานอยู่\", \"col\": 4}}, {\"id\": \"sp_dash1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"ch_sostatus\", \"type\": \"chart\", \"data\": {\"chart_name\": \"TSC Service Orders by Status\", \"col\": 6}}, {\"id\": \"ch_aptstatus\", \"type\": \"chart\", \"data\": {\"chart_name\": \"TSC Appointments by Status\", \"col\": 6}}, {\"id\": \"ch_revenue\", \"type\": \"chart\", \"data\": {\"chart_name\": \"TSC Monthly Service Revenue\", \"col\": 12}}, {\"id\": \"sp_dash2\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"hdr_shortcuts\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Service Operations</b></span>\", \"col\": 12}}, {\"id\": \"sc_vehicle\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Vehicle\", \"col\": 4}}, {\"id\": \"sc_appointment\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Appointment\", \"col\": 4}}, {\"id\": \"sc_service_order\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Order\", \"col\": 4}}, {\"id\": \"sc_repair_quotation\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Repair Quotation\", \"col\": 4}}, {\"id\": \"spacer1\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"KExoBj2aYE\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Master Data</b></span>\", \"col\": 12}}, {\"id\": \"I53F07N0HQ\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Type\", \"col\": 4}}, {\"id\": \"EF06wiZrln\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Type Group\", \"col\": 4}}, {\"id\": \"YQSbUNA9j0\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Package\", \"col\": 4}}, {\"id\": \"hdr_admin\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Admin &amp; Settings</b></span>\", \"col\": 12}}, {\"id\": \"sc_settings\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Truck Service Center Settings\", \"col\": 4}}, {\"id\": \"sc_slot\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Service Appointment Slot\", \"col\": 4}}]",
  "creation": "2026-01-09 10:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -91,11 +104,30 @@
    "type": "Link"
   }
  ],
- "modified": "2026-06-23 11:00:00.000000",
+ "modified": "2026-06-23 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",
- "number_cards": [],
+ "number_cards": [
+  {
+   "number_card_name": "งานซ่อมที่กำลังดำเนินการ"
+  },
+  {
+   "number_card_name": "งานซ่อมที่เสร็จแล้ว"
+  },
+  {
+   "number_card_name": "นัดหมายที่กำลังจะมาถึง"
+  },
+  {
+   "number_card_name": "ยอดค้างชำระ"
+  },
+  {
+   "number_card_name": "รายได้ (งานที่เสร็จแล้ว)"
+  },
+  {
+   "number_card_name": "รถที่ใช้งานอยู่"
+  }
+ ],
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
