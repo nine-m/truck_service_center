@@ -483,6 +483,8 @@ class ServiceOrder(Document):
 		)
 
 		sales_invoice = frappe.new_doc("Sales Invoice")
+		# ใบกำกับภาษีไทยต้องแสดงยอดตามจริง (รวมสตางค์) ห้ามปัดเศษ
+		sales_invoice.disable_rounded_total = 1
 		sales_invoice.customer = self.customer
 		sales_invoice.company = company
 		sales_invoice.posting_date = self.service_date
@@ -1064,7 +1066,11 @@ def create_payment_entry(service_order):
 	# ภาษีหัก ณ ที่จ่าย: ลูกค้าจ่ายน้อยลงตามยอดที่หัก แต่ปิดหนี้ใบแจ้งหนี้เต็มจำนวน
 	# โดยส่วนต่างลงบัญชีสินทรัพย์ "ภาษีถูกหัก ณ ที่จ่าย" ผ่าน deductions
 	if doc.apply_wht and flt(doc.wht_amount) > 0:
-		si_grand_total = flt(frappe.db.get_value("Sales Invoice", doc.sales_invoice, "grand_total"))
+		si_totals = frappe.db.get_value(
+			"Sales Invoice", doc.sales_invoice, ["grand_total", "rounded_total"], as_dict=1
+		)
+		# เทียบกับฐานเดียวกับที่ ERPNext ใช้คิดยอดค้าง (rounded_total ถ้ามีการปัดเศษ)
+		si_grand_total = flt(si_totals.rounded_total) or flt(si_totals.grand_total)
 
 		if flt(si_outstanding) < si_grand_total:
 			# มีการชำระบางส่วนไปก่อนแล้ว — เดายอดหักที่เหลือไม่ได้ ให้ผู้ใช้ใส่ deduction เอง
@@ -1122,16 +1128,23 @@ def sync_payment_from_sales_invoice(sales_invoice):
 		return
 
 	si = frappe.db.get_value(
-		"Sales Invoice", sales_invoice, ["grand_total", "outstanding_amount", "docstatus"], as_dict=1
+		"Sales Invoice",
+		sales_invoice,
+		["grand_total", "rounded_total", "outstanding_amount", "docstatus"],
+		as_dict=1,
 	)
 	if not si:
 		return
+
+	# ERPNext คิดยอดค้างจาก rounded_total (ถ้าเปิดการปัดเศษ) — ต้องใช้ฐานเดียวกัน
+	# ไม่งั้นเศษปัด (เช่น 3370.50 → 3370) จะกลายเป็น "ชำระแล้ว 0.50" ทั้งที่ยังไม่จ่าย
+	invoice_total = flt(si.rounded_total) or flt(si.grand_total)
 
 	for so_name in so_names:
 		total_amount = flt(frappe.db.get_value("Service Order", so_name, "total_amount"))
 
 		# ใบแจ้งหนี้ถูกยกเลิก/ยัง draft → ถือว่ายังไม่มีการชำระ
-		paid = flt(si.grand_total) - flt(si.outstanding_amount) if si.docstatus == 1 else 0
+		paid = invoice_total - flt(si.outstanding_amount) if si.docstatus == 1 else 0
 
 		if paid <= 0:
 			payment_status, paid = "Unpaid", 0

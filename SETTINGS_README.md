@@ -120,6 +120,15 @@
 
 ## วิธีตั้งค่าครั้งแรก
 
+### 0. ปิดการปัดเศษยอดใบแจ้งหนี้ (สำคัญสำหรับบัญชีไทย)
+ใบกำกับภาษีไทยต้องแสดงยอดตามจริงรวมสตางค์ ห้ามปัดเศษ:
+```
+Global Defaults → ติ๊ก "Disable Rounded Total" → Save
+```
+- มีผลซ่อนช่อง Rounded Total และตั้งค่าเริ่มต้นให้เอกสารขายทุกประเภท (รวมที่สร้างมือ)
+- Sales Invoice ที่สร้างจาก Service Order ถูกบังคับ `disable_rounded_total = 1` ในโค้ดอยู่แล้ว แต่ควรตั้ง Global Defaults ด้วยเพื่อให้เอกสารที่ออกเองตรงกัน
+- ถ้าไม่ปิด: ERPNext จะคิดยอดค้างจากยอดปัด (rounded_total) และมี GL "Round Off" เศษสตางค์เกิดขึ้น
+
 ### 1. สร้าง Labor Item (ค่าแรง)
 ```
 1. ไปที่ Setup → Truck Service Center Settings
