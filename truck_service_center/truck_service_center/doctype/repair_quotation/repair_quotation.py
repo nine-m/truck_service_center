@@ -115,9 +115,13 @@ class RepairQuotation(Document):
 		# คำนวณยอดรวมอะไหล่ (พร้อมส่วนลดระดับบรรทัด)
 		self.total_parts_amount = 0
 		for item in self.service_items:
+			# ถ้าไม่มี rate ให้ดึงราคาขาย (Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย)
 			if not item.rate:
-				rate = frappe.db.get_value("Item", item.item_code, "valuation_rate") or 0
-				item.rate = rate
+				from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+					get_default_selling_rate,
+				)
+
+				item.rate = get_default_selling_rate(item.item_code)
 			self._calculate_line_discount(item)
 			self.total_parts_amount += flt(item.amount)
 

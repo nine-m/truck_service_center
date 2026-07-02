@@ -7,6 +7,30 @@ from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 
 
+def get_default_selling_rate(item_code):
+	"""ราคาขายเริ่มต้นของสินค้า: Item Price (selling) → standard_rate → valuation_rate
+
+	ใช้เป็น fallback ตอนคำนวณยอดเมื่อแถวอะไหล่ไม่มีราคา — ราคาทุน (valuation_rate)
+	เป็นทางเลือกสุดท้ายเท่านั้น เพื่อไม่ให้เผลอขายเท่าทุนทั้งที่ตั้งราคาขายไว้แล้ว
+	"""
+	if not item_code:
+		return 0
+
+	price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	price = frappe.db.get_value(
+		"Item Price",
+		{"item_code": item_code, "price_list": price_list, "selling": 1},
+		"price_list_rate",
+	)
+	if price:
+		return flt(price)
+
+	item = frappe.db.get_value("Item", item_code, ["standard_rate", "valuation_rate"], as_dict=1)
+	if not item:
+		return 0
+	return flt(item.standard_rate) or flt(item.valuation_rate)
+
+
 class ServiceOrder(Document):
 	def validate(self):
 		self.validate_status_change()
@@ -167,10 +191,9 @@ class ServiceOrder(Document):
 		# คำนวณยอดรวมอะไหล่ (พร้อมส่วนลดระดับบรรทัด)
 		self.total_parts_amount = 0
 		for item in self.service_items:
-			# ถ้าไม่มี rate ให้ดึงจาก Item
+			# ถ้าไม่มี rate ให้ดึงราคาขาย (Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย)
 			if not item.rate:
-				rate = frappe.db.get_value("Item", item.item_code, "valuation_rate") or 0
-				item.rate = rate
+				item.rate = get_default_selling_rate(item.item_code)
 
 			# คำนวณส่วนลดระดับบรรทัด
 			self._calculate_line_discount(item)
@@ -319,6 +342,49 @@ class ServiceOrder(Document):
 		"""เมื่อ submit ให้อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
 		self.update_vehicle_info()
 		self.complete_linked_service_appointment()
+
+	def on_cancel(self):
+		"""เมื่อยกเลิก ให้คืนข้อมูลบริการของรถจากใบงานที่เหลืออยู่"""
+		self.revert_vehicle_info()
+
+	def revert_vehicle_info(self):
+		"""คำนวณข้อมูลบริการล่าสุดของรถใหม่จากใบสั่งงานที่ยัง submit อยู่
+
+		ตอน submit เราเขียน last_service_date/mileage + current_mileage ทับลงรถ
+		(update_vehicle_info) — เมื่อใบนั้นถูกยกเลิก เลขจากใบที่ยกเลิกต้องไม่ค้าง
+		อยู่บนรถ จึงย้อนไปใช้ค่าจากใบงานล่าสุดที่เหลือ หรือล้างถ้าไม่มีแล้ว
+		"""
+		if not self.vehicle or not frappe.db.exists("Vehicle", self.vehicle):
+			return
+
+		last = frappe.get_all(
+			"Service Order",
+			filters={"vehicle": self.vehicle, "docstatus": 1, "name": ["!=", self.name]},
+			fields=["service_date", "current_mileage"],
+			order_by="service_date desc, modified desc",
+			limit=1,
+		)
+
+		vehicle = frappe.get_doc("Vehicle", self.vehicle)
+
+		if last:
+			vehicle.last_service_date = last[0].service_date
+			vehicle.last_service_mileage = last[0].current_mileage
+		else:
+			vehicle.last_service_date = None
+			vehicle.last_service_mileage = None
+			# calculate_next_service ไม่ล้างค่าให้เมื่อไม่มีประวัติ — ล้างเอง
+			vehicle.next_service_due = None
+			vehicle.next_service_mileage = None
+
+		# คืนเลขไมล์ปัจจุบันเฉพาะกรณีที่ค่าบนรถมาจากใบที่ถูกยกเลิกนี้
+		# (ถ้ามีคนอัพเดทเลขไมล์ทีหลัง อย่าไปทับ)
+		if self.current_mileage and flt(vehicle.current_mileage) == flt(self.current_mileage):
+			vehicle.current_mileage = last[0].current_mileage if last else None
+
+		vehicle.calculate_next_service()
+		vehicle.save()
+		frappe.msgprint(f"คืนข้อมูลบริการของรถ {self.vehicle} จากใบงานที่เหลืออยู่แล้ว")
 
 	def complete_linked_service_appointment(self):
 		"""ค้นหา Service Appointment ที่ผูกกับ Service Order นี้ แล้วปรับสถานะเป็น Completed"""

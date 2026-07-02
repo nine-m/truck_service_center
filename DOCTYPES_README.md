@@ -87,7 +87,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 - ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
 - สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 
-**Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type), `update_payment_status()`, `create_stock_entry()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
+**Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type; แถวอะไหล่ที่ไม่มีราคาใช้ `get_default_selling_rate()`: Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย), `calculate_wht()`, `update_payment_status()`, `create_stock_entry()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `revert_vehicle_info()` (**on_cancel** — คืนข้อมูลบริการของรถจากใบงานที่เหลือ หรือล้างถ้าไม่มี), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
 
 **Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue`, `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบ)
 **Whitelisted อื่น:** `get_item_rate`, `get_item_by_barcode`, `receive_vehicle`, `get_service_type_items`, `create_sales_invoice_from_service_order`
