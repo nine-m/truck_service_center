@@ -134,9 +134,24 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 
 ---
 
+## รายงาน (Script Reports)
+
+อยู่ใน [truck_service_center/report/](truck_service_center/truck_service_center/report/) — เข้าจาก section "รายงาน" ใน workspace/sidebar หรือ awesomebar
+
+| Report | เนื้อหา | สิทธิ์เพิ่มเติม |
+|---|---|---|
+| **Vehicle Service History** (ประวัติการซ่อมรายคัน) | Service Order ทุกใบของรถ/ลูกค้า พร้อมงานที่ทำ ยอดเงิน สถานะชำระ | Technician |
+| **Revenue by Service Group** (รายได้ตามกลุ่มบริการ) | ค่าแรงแยกตาม Service Type Group + แถวรวมอะไหล่ พร้อม % และ bar chart (จากใบงาน submit แล้ว, ยอดหลังส่วนลดรายการ ก่อนส่วนลดท้ายบิล/VAT) | Accounts User |
+| **Customer Outstanding Summary** (ยอดค้างชำระรายลูกค้า) | ใบงานค้างชำระ group ตามลูกค้า: ยอดรวม/ชำระแล้ว/ค้าง, ยังไม่ออกบิลกี่ใบ, ค้างนานกี่วัน | Accounts User |
+| **Technician Performance** (ประสิทธิภาพช่าง) | จำนวนใบงาน เวลาประเมิน vs เวลาจริง ประสิทธิภาพ (%) ยอดงานที่มีส่วนร่วม — ใบงานที่ทำร่วมกันนับให้ช่างทุกคนเต็มใบ | Technician |
+
+ทุกรายงานมี Service Manager / Service User / System Manager เป็นฐาน
+
+---
+
 ## การใช้งาน (เมนูใน Desk)
 
-Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น Service Operations / Master Data / Admin & Settings
+Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น Service Operations / Master Data / รายงาน / Admin & Settings
 (โครงสร้างเมนูแก้ที่ doctype *Workspace Sidebar* — ดู [CLAUDE.md](CLAUDE.md) หัวข้อ Workspace & Sidebar)
 
 - **เพิ่มรถ:** Vehicle → New
