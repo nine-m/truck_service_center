@@ -76,13 +76,13 @@
    "fieldtype": "Date",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\u0e40\u0e2a\u0e19\u0e2d\u0e23\u0e32\u0e04\u0e32",
+   "label": "วันที่เสนอราคา",
    "reqd": 1
   },
   {
    "fieldname": "valid_until",
    "fieldtype": "Date",
-   "label": "\u0e43\u0e0a\u0e49\u0e44\u0e14\u0e49\u0e16\u0e36\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48"
+   "label": "ใช้ได้ถึงวันที่"
   },
   {
    "default": "Draft",
@@ -90,7 +90,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e2a\u0e16\u0e32\u0e19\u0e30",
+   "label": "สถานะ",
    "options": "Draft\nOpen\nAccepted\nRejected\nExpired\nCancelled",
    "reqd": 1
   },
@@ -103,7 +103,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32",
+   "label": "ลูกค้า",
    "options": "Customer",
    "reqd": 1
   },
@@ -112,14 +112,14 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e23\u0e16",
+   "label": "รถ",
    "options": "Vehicle",
    "reqd": 1
   },
   {
    "fieldname": "address_section",
    "fieldtype": "Section Break",
-   "label": "\u0e17\u0e35\u0e48\u0e2d\u0e22\u0e39\u0e48"
+   "label": "ที่อยู่"
   },
   {
    "fieldname": "customer_address",
@@ -138,7 +138,7 @@
    "fetch_from": "customer.tax_id",
    "fieldname": "tax_id",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e1b\u0e23\u0e30\u0e08\u0e33\u0e15\u0e31\u0e27\u0e1c\u0e39\u0e49\u0e40\u0e2a\u0e35\u0e22\u0e20\u0e32\u0e29\u0e35",
+   "label": "เลขประจำตัวผู้เสียภาษี",
    "read_only": 1
   },
   {
@@ -161,7 +161,7 @@
   {
    "fieldname": "vehicle_info_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e16/\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d"
+   "label": "ข้อมูลรถ/ติดต่อ"
   },
   {
    "fetch_from": "vehicle.truck_number",
@@ -169,48 +169,48 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e25\u0e02\u0e23\u0e16",
+   "label": "หมายเลขรถ",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.vehicle_type",
    "fieldname": "vehicle_type",
    "fieldtype": "Data",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e23\u0e16",
+   "label": "ประเภทรถ",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.brand",
    "fieldname": "brand",
    "fieldtype": "Data",
-   "label": "\u0e22\u0e35\u0e48\u0e2b\u0e49\u0e2d",
+   "label": "ยี่ห้อ",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.model",
    "fieldname": "model",
    "fieldtype": "Data",
-   "label": "\u0e23\u0e38\u0e48\u0e19",
+   "label": "รุ่น",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.vin_number",
    "fieldname": "vin_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e15\u0e31\u0e27\u0e16\u0e31\u0e07 (VIN)",
+   "label": "เลขตัวถัง (VIN)",
    "read_only": 1
   },
   {
    "fetch_from": "vehicle.engine_number",
    "fieldname": "engine_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e25\u0e02\u0e40\u0e04\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e22\u0e19\u0e15\u0e4c",
+   "label": "เลขเครื่องยนต์",
    "read_only": 1
   },
   {
    "fieldname": "current_mileage",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e25\u0e02\u0e44\u0e21\u0e25\u0e4c\u0e1b\u0e31\u0e08\u0e08\u0e38\u0e1a\u0e31\u0e19 (\u0e01\u0e21.)",
+   "label": "เลขไมล์ปัจจุบัน (กม.)",
    "precision": "2"
   },
   {
@@ -220,78 +220,78 @@
   {
    "fieldname": "contact_person",
    "fieldtype": "Data",
-   "label": "\u0e1c\u0e39\u0e49\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d"
+   "label": "ผู้ติดต่อ"
   },
   {
    "fieldname": "contact_number",
    "fieldtype": "Data",
-   "label": "\u0e40\u0e1a\u0e2d\u0e23\u0e4c\u0e42\u0e17\u0e23\u0e28\u0e31\u0e1e\u0e17\u0e4c",
+   "label": "เบอร์โทรศัพท์",
    "options": "Phone"
   },
   {
    "fieldname": "email",
    "fieldtype": "Data",
-   "label": "\u0e2d\u0e35\u0e40\u0e21\u0e25",
+   "label": "อีเมล",
    "options": "Email"
   },
   {
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "label": "รายละเอียดบริการ"
   },
   {
    "fieldname": "service_packages",
    "fieldtype": "Table",
-   "label": "\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "แพ็คเกจบริการ",
    "options": "Repair Quotation Package"
   },
   {
-   "description": "\u0e2a\u0e41\u0e01\u0e19\u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "description": "สแกนหรือพิมพ์บาร์โค้ดเพื่อเพิ่มประเภทบริการ",
    "fieldname": "scan_service_type_barcode",
    "fieldtype": "Data",
-   "label": "\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "สแกนบาร์โค้ดประเภทบริการ",
    "options": "Barcode"
   },
   {
    "fieldname": "service_types",
    "fieldtype": "Table",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "ประเภทบริการ",
    "options": "Repair Quotation Service Type"
   },
   {
    "fieldname": "service_items_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48"
+   "label": "รายการอะไหล่"
   },
   {
-   "description": "\u0e2a\u0e41\u0e01\u0e19\u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "description": "สแกนหรือพิมพ์บาร์โค้ดเพื่อเพิ่มอะไหล่",
    "fieldname": "scan_item_barcode",
    "fieldtype": "Data",
-   "label": "\u0e2a\u0e41\u0e01\u0e19\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "label": "สแกนบาร์โค้ดอะไหล่",
    "options": "Barcode"
   },
   {
    "fieldname": "service_items",
    "fieldtype": "Table",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23",
+   "label": "รายการ",
    "options": "Repair Quotation Item"
   },
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e04\u0e32"
+   "label": "ราคา"
   },
   {
    "fieldname": "total_parts_amount",
    "fieldtype": "Currency",
-   "label": "\u0e23\u0e27\u0e21\u0e04\u0e48\u0e32\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "label": "รวมค่าอะไหล่",
    "precision": "2",
    "read_only": 1
   },
   {
    "fieldname": "labor_charges",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07\u0e23\u0e27\u0e21",
+   "label": "ค่าแรงรวม",
    "precision": "2",
    "read_only": 1
   },
@@ -302,34 +302,34 @@
   {
    "fieldname": "tax_type",
    "fieldtype": "Select",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e20\u0e32\u0e29\u0e35",
-   "options": "\u0e23\u0e32\u0e04\u0e32\u0e23\u0e27\u0e21 VAT\n\u0e23\u0e32\u0e04\u0e32\u0e41\u0e22\u0e01 VAT\n\u0e44\u0e21\u0e48\u0e04\u0e34\u0e14 VAT",
+   "label": "ประเภทภาษี",
+   "options": "ราคารวม VAT\nราคาแยก VAT\nไม่คิด VAT",
    "reqd": 1
   },
   {
-   "description": "\u0e2d\u0e31\u0e15\u0e23\u0e32\u0e20\u0e32\u0e29\u0e35\u0e21\u0e39\u0e25\u0e04\u0e48\u0e32\u0e40\u0e1e\u0e34\u0e48\u0e21 (%)",
+   "description": "อัตราภาษีมูลค่าเพิ่ม (%)",
    "fieldname": "vat_rate",
    "fieldtype": "Float",
-   "label": "\u0e2d\u0e31\u0e15\u0e23\u0e32 VAT (%)",
+   "label": "อัตรา VAT (%)",
    "precision": "2"
   },
   {
    "fieldname": "discount_amount",
    "fieldtype": "Currency",
-   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14",
+   "label": "ส่วนลด",
    "precision": "2"
   },
   {
    "fieldname": "net_total",
    "fieldtype": "Currency",
-   "label": "\u0e22\u0e2d\u0e14\u0e01\u0e48\u0e2d\u0e19 VAT",
+   "label": "ยอดก่อน VAT",
    "precision": "2",
    "read_only": 1
   },
   {
    "fieldname": "tax_amount",
    "fieldtype": "Currency",
-   "label": "\u0e20\u0e32\u0e29\u0e35\u0e21\u0e39\u0e25\u0e04\u0e48\u0e32\u0e40\u0e1e\u0e34\u0e48\u0e21",
+   "label": "ภาษีมูลค่าเพิ่ม",
    "precision": "2",
    "read_only": 1
   },
@@ -337,7 +337,7 @@
    "bold": 1,
    "fieldname": "total_amount",
    "fieldtype": "Currency",
-   "label": "\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14",
+   "label": "ยอดรวมทั้งหมด",
    "precision": "2",
    "read_only": 1
   },
@@ -345,24 +345,24 @@
    "collapsible": 1,
    "fieldname": "time_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e01\u0e32\u0e23"
+   "label": "เวลาประมาณการ"
   },
   {
    "fieldname": "estimated_time",
    "fieldtype": "Float",
-   "label": "\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e01\u0e32\u0e23\u0e23\u0e27\u0e21 (\u0e0a\u0e21.)",
+   "label": "เวลาประมาณการรวม (ชม.)",
    "precision": "2",
    "read_only": 1
   },
   {
    "fieldname": "notes_section",
    "fieldtype": "Section Break",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38"
+   "label": "หมายเหตุ"
   },
   {
    "fieldname": "customer_complaints",
    "fieldtype": "Text Editor",
-   "label": "\u0e2d\u0e32\u0e01\u0e32\u0e23\u0e17\u0e35\u0e48\u0e41\u0e08\u0e49\u0e07"
+   "label": "อาการที่แจ้ง"
   },
   {
    "fieldname": "column_break_6",
@@ -371,18 +371,18 @@
   {
    "fieldname": "recommendations",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e41\u0e19\u0e30\u0e19\u0e33\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+   "label": "คำแนะนำเพิ่มเติม"
   },
   {
    "fieldname": "notes",
    "fieldtype": "Text Editor",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e15\u0e34\u0e21"
+   "label": "หมายเหตุเพิ่มเติม"
   },
   {
    "collapsible": 1,
    "fieldname": "references_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e2d\u0e49\u0e32\u0e07\u0e2d\u0e34\u0e07"
+   "label": "เอกสารอ้างอิง"
   },
   {
    "fieldname": "service_order",
@@ -408,7 +408,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 0,
  "links": [],
- "modified": "2026-02-27 10:00:00.000000",
+ "modified": "2026-07-02 02:21:57.118763",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Repair Quotation",
@@ -426,6 +426,36 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
   }
  ],
  "sort_field": "modified",

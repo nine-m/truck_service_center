@@ -200,7 +200,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-02-11 10:00:00.000000",
+ "modified": "2026-07-02 02:21:57.118763",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",
@@ -212,6 +212,15 @@
    "print": 1,
    "read": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Service Manager",
    "share": 1,
    "write": 1
   }

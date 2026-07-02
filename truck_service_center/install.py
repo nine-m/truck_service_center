@@ -26,8 +26,40 @@ DEFAULT_VEHICLE_BRANDS = [
 ]
 
 
+# บทบาทผู้ใช้ของศูนย์บริการ (ดู permission matrix ใน DOCTYPES_README.md)
+DEFAULT_ROLES = [
+	"Service Manager",  # ผู้จัดการศูนย์ — สิทธิ์เต็มทุก doctype ของแอป
+	"Service User",  # ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิดใบสั่งงาน
+	"Technician",  # ช่าง — ดูงานและอัพเดทงานซ่อม
+]
+
+
 def after_install():
+	create_default_roles()
 	create_default_vehicle_brands()
+
+
+def create_default_roles():
+	"""สร้างบทบาทผู้ใช้เริ่มต้นของศูนย์บริการ (idempotent)"""
+	created = 0
+	for role_name in DEFAULT_ROLES:
+		if frappe.db.exists("Role", role_name):
+			continue
+
+		doc = frappe.get_doc(
+			{
+				"doctype": "Role",
+				"role_name": role_name,
+				"desk_access": 1,
+			}
+		)
+		doc.insert(ignore_permissions=True)
+		created += 1
+
+	if created:
+		frappe.db.commit()
+
+	print(f"✓ สร้างบทบาทผู้ใช้เริ่มต้นเรียบร้อย ({created} รายการ)")
 
 
 def create_default_vehicle_brands():

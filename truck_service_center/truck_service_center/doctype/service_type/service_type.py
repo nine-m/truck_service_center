@@ -14,9 +14,9 @@ class ServiceType(Document):
 		"""ตรวจสอบข้อมูลและดึงราคาจาก item หากมี"""
 		# คำนวณยอดรวมสำหรับรายการอะไหล่
 		self.calculate_item_amounts()
-		
+
 		# ดึงราคาเฉพาะเมื่อ item_code ถูกเปลี่ยนแปลง
-		if self.has_value_changed('item_code'):
+		if self.has_value_changed("item_code"):
 			self.set_labor_rate_from_item()
 
 	def calculate_item_amounts(self):
@@ -46,7 +46,10 @@ class ServiceType(Document):
 def bulk_update_item_prices(service_type_names):
 	"""อัปเดตราคาอะไหล่จาก Price List สำหรับ Service Type ที่เลือก"""
 	import json
+
 	from frappe.utils import flt
+
+	frappe.has_permission("Service Type", "write", throw=True)
 
 	if isinstance(service_type_names, str):
 		service_type_names = json.loads(service_type_names)
@@ -105,11 +108,8 @@ def get_item_price(item_code):
 		price = flt(item_price)
 	else:
 		# 2. Fallback ไป standard_rate / valuation_rate
-		item_data = frappe.db.get_value(
-			"Item", item_code, ["standard_rate", "valuation_rate"], as_dict=True
-		)
+		item_data = frappe.db.get_value("Item", item_code, ["standard_rate", "valuation_rate"], as_dict=True)
 		if item_data:
 			price = flt(item_data.standard_rate) or flt(item_data.valuation_rate)
 
 	return {"price": price or None}
-

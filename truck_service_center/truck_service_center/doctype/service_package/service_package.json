@@ -43,7 +43,7 @@
    "fieldname": "package_code",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
+   "label": "รหัสแพ็คเกจ",
    "reqd": 1,
    "unique": 1
   },
@@ -51,7 +51,7 @@
    "fieldname": "package_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
+   "label": "ชื่อแพ็คเกจ",
    "reqd": 1
   },
   {
@@ -59,14 +59,14 @@
    "fieldname": "is_active",
    "fieldtype": "Check",
    "in_list_view": 1,
-   "label": "\u0e40\u0e1b\u0e34\u0e14\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19"
+   "label": "เปิดใช้งาน"
   },
   {
    "fieldname": "package_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
+   "label": "ประเภทแพ็คเกจ",
    "options": "Standard\nPremium\nBasic\nCustom",
    "reqd": 1
   },
@@ -77,47 +77,47 @@
   {
    "fieldname": "description",
    "fieldtype": "Text Editor",
-   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08"
+   "label": "รายละเอียดแพ็คเกจ"
   },
   {
    "fieldname": "service_types_section",
    "fieldtype": "Section Break",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e43\u0e19\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08"
+   "label": "ประเภทบริการในแพ็คเกจ"
   },
   {
    "fieldname": "package_service_types",
    "fieldtype": "Table",
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "ประเภทบริการ",
    "options": "Service Package Service Type",
    "reqd": 1
   },
   {
    "fieldname": "parts_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e43\u0e19\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08"
+   "label": "รายการอะไหล่ในแพ็คเกจ"
   },
   {
-   "description": "\u0e14\u0e36\u0e07\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e08\u0e32\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e14\u0e49\u0e32\u0e19\u0e1a\u0e19 \u0e2b\u0e23\u0e37\u0e2d\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e40\u0e2d\u0e07\u0e44\u0e14\u0e49",
+   "description": "ดึงอัตโนมัติจากประเภทบริการด้านบน หรือเพิ่มเองได้",
    "fieldname": "package_parts",
    "fieldtype": "Table",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "label": "รายการอะไหล่",
    "options": "Service Package Part"
   },
   {
    "fieldname": "pricing_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e04\u0e32\u0e41\u0e25\u0e30\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14"
+   "label": "ราคาและส่วนลด"
   },
   {
    "fieldname": "total_labor_rate",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07\u0e23\u0e27\u0e21",
+   "label": "ค่าแรงรวม",
    "read_only": 1
   },
   {
    "fieldname": "total_parts_amount",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e23\u0e27\u0e21",
+   "label": "ค่าอะไหล่รวม",
    "read_only": 1
   },
   {
@@ -127,13 +127,13 @@
   {
    "fieldname": "total_standard_rate",
    "fieldtype": "Currency",
-   "label": "\u0e23\u0e32\u0e04\u0e32\u0e21\u0e32\u0e15\u0e23\u0e10\u0e32\u0e19\u0e23\u0e27\u0e21",
+   "label": "ราคามาตรฐานรวม",
    "read_only": 1
   },
   {
    "fieldname": "discount_percent",
    "fieldtype": "Percent",
-   "label": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14 (%)"
+   "label": "ส่วนลด (%)"
   },
   {
    "fieldname": "column_break_2",
@@ -143,29 +143,29 @@
    "fieldname": "package_rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "\u0e23\u0e32\u0e04\u0e32\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
+   "label": "ราคาแพ็คเกจ",
    "reqd": 1
   },
   {
    "fieldname": "estimated_duration",
    "fieldtype": "Duration",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e01\u0e32\u0e23\u0e17\u0e33\u0e07\u0e32\u0e19",
+   "label": "ระยะเวลาการทำงาน",
    "read_only": 1
   },
   {
    "fieldname": "validity_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e07\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e02\u0e01\u0e32\u0e23\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19"
+   "label": "เงื่อนไขการใช้งาน"
   },
   {
    "fieldname": "validity_days",
    "fieldtype": "Int",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19 (\u0e27\u0e31\u0e19)"
+   "label": "ระยะเวลาใช้งาน (วัน)"
   },
   {
    "fieldname": "service_interval_km",
    "fieldtype": "Int",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e17\u0e32\u0e07\u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23 (\u0e01\u0e21.)"
+   "label": "ระยะทางระหว่างบริการ (กม.)"
   },
   {
    "fieldname": "column_break_3",
@@ -174,42 +174,42 @@
   {
    "fieldname": "max_services",
    "fieldtype": "Int",
-   "label": "\u0e08\u0e33\u0e19\u0e27\u0e19\u0e04\u0e23\u0e31\u0e49\u0e07\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e2a\u0e39\u0e07\u0e2a\u0e38\u0e14"
+   "label": "จำนวนครั้งบริการสูงสุด"
   },
   {
    "fieldname": "notes",
    "fieldtype": "Small Text",
-   "label": "\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38"
+   "label": "หมายเหตุ"
   },
   {
    "fieldname": "general_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08"
+   "label": "ข้อมูลแพ็คเกจ"
   },
   {
    "fieldname": "basic_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e32\u0e19"
+   "label": "ข้อมูลพื้นฐาน"
   },
   {
    "fieldname": "items_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23 & \u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48"
+   "label": "บริการ & อะไหล่"
   },
   {
    "fieldname": "pricing_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e23\u0e32\u0e04\u0e32 & \u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14"
+   "label": "ราคา & ส่วนลด"
   },
   {
    "fieldname": "conditions_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e40\u0e07\u0e37\u0e48\u0e2d\u0e19\u0e44\u0e02\u0e01\u0e32\u0e23\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19"
+   "label": "เงื่อนไขการใช้งาน"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-23 10:00:00.000000",
+ "modified": "2026-07-02 02:21:57.118763",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Package",
@@ -227,6 +227,32 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
   }
  ],
  "row_format": "Dynamic",

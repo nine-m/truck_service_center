@@ -35,32 +35,32 @@
    "fieldname": "service_type_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e0a\u0e37\u0e48\u0e2d\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "ชื่อประเภทบริการ",
    "reqd": 1,
    "unique": 1
   },
   {
    "fieldname": "service_code",
    "fieldtype": "Data",
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "รหัสบริการ",
    "unique": 1
   },
   {
    "fieldname": "description",
    "fieldtype": "Text Editor",
-   "label": "\u0e04\u0e33\u0e2d\u0e18\u0e34\u0e1a\u0e32\u0e22"
+   "label": "คำอธิบาย"
   },
   {
    "fieldname": "identification_section",
    "fieldtype": "Section Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e32\u0e19"
+   "label": "ข้อมูลพื้นฐาน"
   },
   {
-   "description": "\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e2a\u0e41\u0e01\u0e19\u0e40\u0e1e\u0e34\u0e48\u0e21\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "description": "บาร์โค้ดสำหรับสแกนเพิ่มประเภทบริการ",
    "fieldname": "barcode",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "\u0e1a\u0e32\u0e23\u0e4c\u0e42\u0e04\u0e49\u0e14",
+   "label": "บาร์โค้ด",
    "unique": 1
   },
   {
@@ -68,7 +68,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e01\u0e32\u0e23\u0e1a\u0e33\u0e23\u0e38\u0e07\u0e23\u0e31\u0e01\u0e29\u0e32",
+   "label": "ประเภทการบำรุงรักษา",
    "options": "PM\nCM",
    "reqd": 1
   },
@@ -81,62 +81,62 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "\u0e01\u0e25\u0e38\u0e48\u0e21\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "กลุ่มบริการ",
    "options": "Service Type Group"
   },
   {
    "default": "1",
    "fieldname": "is_active",
    "fieldtype": "Check",
-   "label": "\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19"
+   "label": "ใช้งาน"
   },
   {
    "fieldname": "service_details_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e01\u0e32\u0e23\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "label": "รายละเอียดการบริการ"
   },
   {
-   "description": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e42\u0e14\u0e22\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13\u0e43\u0e19\u0e01\u0e32\u0e23\u0e17\u0e33\u0e07\u0e32\u0e19",
+   "description": "ระยะเวลาโดยประมาณในการทำงาน",
    "fieldname": "default_duration",
    "fieldtype": "Float",
-   "label": "\u0e23\u0e30\u0e22\u0e30\u0e40\u0e27\u0e25\u0e32\u0e17\u0e33\u0e07\u0e32\u0e19 (\u0e0a\u0e21.)",
+   "label": "ระยะเวลาทำงาน (ชม.)",
    "precision": 2
   },
   {
    "fieldname": "labor_rate",
    "fieldtype": "Currency",
-   "label": "\u0e04\u0e48\u0e32\u0e41\u0e23\u0e07/\u0e04\u0e48\u0e32\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "label": "ค่าแรง/ค่าบริการ",
    "precision": 2,
    "reqd": 1
   },
   {
    "fieldname": "spare_parts_section",
    "fieldtype": "Section Break",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e21\u0e32\u0e15\u0e23\u0e10\u0e32\u0e19"
+   "label": "รายการอะไหล่มาตรฐาน"
   },
   {
-   "description": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e17\u0e35\u0e48\u0e43\u0e0a\u0e49\u0e40\u0e1b\u0e47\u0e19\u0e1b\u0e23\u0e30\u0e08\u0e33\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e19\u0e35\u0e49",
+   "description": "รายการอะไหล่ที่ใช้เป็นประจำสำหรับประเภทบริการนี้",
    "fieldname": "items",
    "fieldtype": "Table",
-   "label": "\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48",
+   "label": "รายการอะไหล่",
    "options": "Service Type Item"
   },
   {
    "fieldname": "accounting_section",
    "fieldtype": "Section Break",
-   "label": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
+   "label": "เชื่อมโยงบัญชี"
   },
   {
-   "description": "\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e42\u0e22\u0e07\u0e01\u0e31\u0e1a Item \u0e43\u0e19 ERPNext",
+   "description": "เชื่อมโยงกับ Item ใน ERPNext",
    "fieldname": "item_code",
    "fieldtype": "Link",
-   "label": "\u0e23\u0e2b\u0e31\u0e2a\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32",
+   "label": "รหัสสินค้า",
    "options": "Item"
   },
   {
    "fieldname": "income_account",
    "fieldtype": "Link",
-   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49",
+   "label": "บัญชีรายได้",
    "options": "Account"
   },
   {
@@ -146,28 +146,28 @@
   {
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "label": "\u0e28\u0e39\u0e19\u0e22\u0e4c\u0e15\u0e49\u0e19\u0e17\u0e38\u0e19",
+   "label": "ศูนย์ต้นทุน",
    "options": "Cost Center"
   },
   {
    "fieldname": "general_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e17\u0e31\u0e48\u0e27\u0e44\u0e1b"
+   "label": "ข้อมูลทั่วไป"
   },
   {
    "fieldname": "details_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23"
+   "label": "รายละเอียดบริการ"
   },
   {
    "fieldname": "accounting_tab",
    "fieldtype": "Tab Break",
-   "label": "\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
+   "label": "บัญชี"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-23 10:00:00.000000",
+ "modified": "2026-07-02 02:21:57.118763",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",
@@ -185,6 +185,32 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
   }
  ],
  "quick_entry": 1,

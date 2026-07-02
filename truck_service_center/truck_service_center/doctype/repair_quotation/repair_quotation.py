@@ -2,9 +2,9 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import flt, getdate, nowdate
-from frappe.contacts.doctype.address.address import get_address_display
 
 
 class RepairQuotation(Document):
@@ -40,69 +40,75 @@ class RepairQuotation(Document):
 		"""นำรายการบริการและอะไหล่จากแพ็คเกจมาใส่อัตโนมัติ (รองรับหลาย package)"""
 		if not self.service_packages:
 			return
-		
+
 		# รวบรวม package names ที่ยังอยู่ในตาราง
 		current_package_names = set()
 		for pkg_row in self.service_packages:
 			if pkg_row.service_package:
 				current_package_names.add(pkg_row.service_package)
-		
+
 		# Cascade delete: ลบ service_types/service_items ที่ผูกกับ package ที่ถูกลบออก
 		self.service_types = [
-			st for st in self.service_types
+			st
+			for st in self.service_types
 			if not st.service_package or st.service_package in current_package_names
 		]
 		self.service_items = [
-			si for si in self.service_items
+			si
+			for si in self.service_items
 			if not si.service_package or si.service_package in current_package_names
 		]
-		
+
 		# สำหรับแต่ละ package ตรวจสอบว่าดึงข้อมูลแล้วหรือยัง
 		for pkg_row in self.service_packages:
 			if not pkg_row.service_package:
 				continue
-			
+
 			pkg_name = pkg_row.service_package
-			
+
 			# ตรวจสอบว่ามี service_types ที่ผูกกับ package นี้อยู่แล้วหรือไม่
-			has_service_types = any(
-				st.service_package == pkg_name for st in self.service_types
-			)
-			
+			has_service_types = any(st.service_package == pkg_name for st in self.service_types)
+
 			if has_service_types:
 				continue
-			
+
 			# ดึงข้อมูลจาก package
 			package = frappe.get_doc("Service Package", pkg_name)
-			
+
 			if not package.is_active:
 				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
-			
+
 			discount_pct = flt(package.discount_percent)
-			
+
 			# เพิ่ม service types จาก package
 			for st in package.package_service_types:
-				self.append("service_types", {
-					"service_type": st.service_type,
-					"service_type_group": st.service_type_group,
-					"maintenance_type": st.maintenance_type,
-					"estimated_time": st.estimated_time,
-					"labor_charges": st.labor_rate,
-					"discount_percentage": discount_pct,
-					"service_package": pkg_name,
-				})
-			
+				self.append(
+					"service_types",
+					{
+						"service_type": st.service_type,
+						"service_type_group": st.service_type_group,
+						"maintenance_type": st.maintenance_type,
+						"estimated_time": st.estimated_time,
+						"labor_charges": st.labor_rate,
+						"discount_percentage": discount_pct,
+						"service_package": pkg_name,
+					},
+				)
+
 			# เพิ่ม parts จาก package
 			for part in package.package_parts:
-				self.append("service_items", {
-					"item_code": part.item_code,
-					"item_name": part.item_name,
-					"qty": part.qty,
-					"uom": part.uom,
-					"rate": part.rate,
-					"discount_percentage": discount_pct,
-					"service_package": pkg_name,
-				})
+				self.append(
+					"service_items",
+					{
+						"item_code": part.item_code,
+						"item_name": part.item_name,
+						"qty": part.qty,
+						"uom": part.uom,
+						"rate": part.rate,
+						"discount_percentage": discount_pct,
+						"service_package": pkg_name,
+					},
+				)
 
 	def calculate_totals(self):
 		"""คำนวณยอดรวมทั้งหมด (เหมือน Service Order)"""
@@ -186,9 +192,7 @@ class RepairQuotation(Document):
 			return
 
 		# ตรวจสอบว่าหมดอายุหรือยัง
-		if (self.status == "Open"
-			and self.valid_until
-			and getdate(self.valid_until) < getdate(nowdate())):
+		if self.status == "Open" and self.valid_until and getdate(self.valid_until) < getdate(nowdate()):
 			self.status = "Expired"
 
 
@@ -196,6 +200,7 @@ class RepairQuotation(Document):
 def create_service_order_from_quotation(repair_quotation):
 	"""สร้าง Service Order จากใบเสนอราคาซ่อม"""
 	rq = frappe.get_doc("Repair Quotation", repair_quotation)
+	rq.check_permission("write")
 
 	if rq.service_order:
 		frappe.throw(f"ใบเสนอราคานี้มี Service Order {rq.service_order} อยู่แล้ว")
@@ -224,47 +229,56 @@ def create_service_order_from_quotation(repair_quotation):
 
 	# แพ็คเกจบริการ (หลาย package)
 	for pkg_row in rq.service_packages:
-		so.append("service_packages", {
-			"service_package": pkg_row.service_package,
-			"package_code": pkg_row.package_code,
-			"package_name": pkg_row.package_name,
-			"package_rate": pkg_row.package_rate,
-			"discount_percent": pkg_row.discount_percent,
-		})
+		so.append(
+			"service_packages",
+			{
+				"service_package": pkg_row.service_package,
+				"package_code": pkg_row.package_code,
+				"package_name": pkg_row.package_name,
+				"package_rate": pkg_row.package_rate,
+				"discount_percent": pkg_row.discount_percent,
+			},
+		)
 
 	# ประเภทบริการ
 	for st in rq.service_types:
-		so.append("service_types", {
-			"service_type_group": st.service_type_group,
-			"service_type": st.service_type,
-			"maintenance_type": st.maintenance_type,
-			"estimated_time": st.estimated_time,
-			"labor_charges": st.labor_charges,
-			"discount_percentage": st.discount_percentage,
-			"discount_amount": st.discount_amount,
-			"amount": st.amount,
-			"repair_position": st.repair_position,
-			"repair_cause": st.repair_cause,
-			"remark": st.remark,
-			"service_package": st.service_package,
-		})
+		so.append(
+			"service_types",
+			{
+				"service_type_group": st.service_type_group,
+				"service_type": st.service_type,
+				"maintenance_type": st.maintenance_type,
+				"estimated_time": st.estimated_time,
+				"labor_charges": st.labor_charges,
+				"discount_percentage": st.discount_percentage,
+				"discount_amount": st.discount_amount,
+				"amount": st.amount,
+				"repair_position": st.repair_position,
+				"repair_cause": st.repair_cause,
+				"remark": st.remark,
+				"service_package": st.service_package,
+			},
+		)
 
 	# รายการอะไหล่
 	default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
 	for item in rq.service_items:
-		so.append("service_items", {
-			"item_code": item.item_code,
-			"item_name": item.item_name,
-			"description": item.description,
-			"qty": item.qty,
-			"uom": item.uom,
-			"rate": item.rate,
-			"discount_percentage": item.discount_percentage,
-			"discount_amount": item.discount_amount,
-			"amount": item.amount,
-			"warehouse": default_warehouse,
-			"service_package": item.service_package,
-		})
+		so.append(
+			"service_items",
+			{
+				"item_code": item.item_code,
+				"item_name": item.item_name,
+				"description": item.description,
+				"qty": item.qty,
+				"uom": item.uom,
+				"rate": item.rate,
+				"discount_percentage": item.discount_percentage,
+				"discount_amount": item.discount_amount,
+				"amount": item.amount,
+				"warehouse": default_warehouse,
+				"service_package": item.service_package,
+			},
+		)
 
 	# ราคา
 	so.tax_type = rq.tax_type
@@ -294,21 +308,19 @@ def get_item_rate(item_code, customer=None):
 
 	# ลองดึงจาก Item Price (Selling)
 	if customer:
-		item_price = frappe.db.get_value("Item Price", {
-			"item_code": item_code,
-			"selling": 1,
-			"customer": customer
-		}, "price_list_rate")
+		item_price = frappe.db.get_value(
+			"Item Price", {"item_code": item_code, "selling": 1, "customer": customer}, "price_list_rate"
+		)
 		if item_price:
 			rate = item_price
 
 	if not rate:
 		# ดึงจาก Item Price (Selling) ทั่วไป
-		item_price = frappe.db.get_value("Item Price", {
-			"item_code": item_code,
-			"selling": 1,
-			"customer": ["is", "not set"]
-		}, "price_list_rate")
+		item_price = frappe.db.get_value(
+			"Item Price",
+			{"item_code": item_code, "selling": 1, "customer": ["is", "not set"]},
+			"price_list_rate",
+		)
 		if item_price:
 			rate = item_price
 
@@ -320,7 +332,7 @@ def get_item_rate(item_code, customer=None):
 		"item_name": item.item_name,
 		"description": item.description,
 		"uom": item.stock_uom,
-		"rate": rate
+		"rate": rate,
 	}
 
 

@@ -13,7 +13,7 @@ class TruckServiceCenterSettings(Document):
 			frappe.msgprint(
 				"แนะนำให้ตั้งค่า 'รายการสินค้าสำหรับค่าแรง' เพื่อให้สามารถสร้าง Sales Invoice ที่มีค่าแรงได้",
 				indicator="orange",
-				title="คำแนะนำ"
+				title="คำแนะนำ",
 			)
 
 		# ตรวจสอบความสอดคล้องของเทมเพลตภาษี
@@ -23,16 +23,12 @@ class TruckServiceCenterSettings(Document):
 		"""ตรวจสอบว่าเทมเพลตภาษีตั้งค่าถูกต้องตามประเภท"""
 		if self.vat_exclusive_template:
 			self._validate_template_type(
-				self.vat_exclusive_template,
-				expected_inclusive=False,
-				label="ราคาแยก VAT"
+				self.vat_exclusive_template, expected_inclusive=False, label="ราคาแยก VAT"
 			)
 
 		if self.vat_inclusive_template:
 			self._validate_template_type(
-				self.vat_inclusive_template,
-				expected_inclusive=True,
-				label="ราคารวม VAT"
+				self.vat_inclusive_template, expected_inclusive=True, label="ราคารวม VAT"
 			)
 
 		# แจ้งเตือนถ้ายังไม่ได้ตั้งค่าเทมเพลต
@@ -40,13 +36,13 @@ class TruckServiceCenterSettings(Document):
 			frappe.msgprint(
 				"แนะนำให้ตั้งค่า 'เทมเพลต ราคาแยก VAT' เพื่อให้ Sales Invoice ใช้เทมเพลตภาษีอัตโนมัติ",
 				indicator="orange",
-				title="คำแนะนำ"
+				title="คำแนะนำ",
 			)
 		elif self.default_tax_type == "ราคารวม VAT" and not self.vat_inclusive_template:
 			frappe.msgprint(
 				"แนะนำให้ตั้งค่า 'เทมเพลต ราคารวม VAT' เพื่อให้ Sales Invoice ใช้เทมเพลตภาษีอัตโนมัติ",
 				indicator="orange",
-				title="คำแนะนำ"
+				title="คำแนะนำ",
 			)
 
 	def _validate_template_type(self, template_name, expected_inclusive, label):
@@ -55,25 +51,28 @@ class TruckServiceCenterSettings(Document):
 			"Sales Taxes and Charges",
 			filters={"parent": template_name, "parenttype": "Sales Taxes and Charges Template"},
 			fields=["included_in_print_rate", "rate", "charge_type"],
-			order_by="idx"
+			order_by="idx",
 		)
 
 		if not taxes:
 			frappe.msgprint(
 				f"เทมเพลต '{template_name}' สำหรับ {label} ไม่มีรายการภาษี กรุณาตรวจสอบ",
 				indicator="orange",
-				title="ตรวจสอบเทมเพลตภาษี"
+				title="ตรวจสอบเทมเพลตภาษี",
 			)
 			return
 
 		for tax in taxes:
 			if tax.included_in_print_rate != expected_inclusive:
-				expected_text = "รวมในราคา (included_in_print_rate = Yes)" if expected_inclusive else "ไม่รวมในราคา (included_in_print_rate = No)"
+				expected_text = (
+					"รวมในราคา (included_in_print_rate = Yes)"
+					if expected_inclusive
+					else "ไม่รวมในราคา (included_in_print_rate = No)"
+				)
 				frappe.msgprint(
-					f"เทมเพลต '{template_name}' สำหรับ {label}: "
-					f"ควรตั้งค่าภาษีเป็น {expected_text}",
+					f"เทมเพลต '{template_name}' สำหรับ {label}: ควรตั้งค่าภาษีเป็น {expected_text}",
 					indicator="orange",
-					title="ตรวจสอบเทมเพลตภาษี"
+					title="ตรวจสอบเทมเพลตภาษี",
 				)
 				break
 
@@ -89,11 +88,12 @@ class TruckServiceCenterSettings(Document):
 @frappe.whitelist()
 def create_labor_item():
 	"""สร้าง Labor Item อัตโนมัติ"""
+	frappe.has_permission("Truck Service Center Settings", "write", throw=True)
 	# ตรวจสอบว่ามีอยู่แล้วหรือไม่
 	existing = frappe.db.exists("Item", {"item_name": "Labor Charge"})
 	if existing:
 		return existing
-	
+
 	# สร้าง Item ใหม่
 	item = frappe.new_doc("Item")
 	item.item_code = "LABOR-001"
@@ -104,11 +104,11 @@ def create_labor_item():
 	item.is_sales_item = 1
 	item.is_service_item = 1
 	item.description = "Labor charges for vehicle service"
-	
+
 	try:
 		item.insert()
 		frappe.db.commit()
 		return item.name
 	except Exception as e:
-		frappe.log_error(f"Error creating labor item: {str(e)}")
-		frappe.throw(f"ไม่สามารถสร้าง Labor Item ได้: {str(e)}")
+		frappe.log_error(f"Error creating labor item: {e!s}")
+		frappe.throw(f"ไม่สามารถสร้าง Labor Item ได้: {e!s}")
