@@ -15,6 +15,7 @@ class ServiceOrder(Document):
 		self.check_material_issue_items()
 		self.apply_service_packages()
 		self.calculate_totals()
+		self.calculate_wht()
 		self.update_payment_status()
 		self.update_material_issue_status()
 
@@ -256,6 +257,39 @@ class ServiceOrder(Document):
 		if net_labor < 0:
 			net_labor = 0
 		service_type.amount = flt(net_labor, 2)
+
+	def calculate_wht(self):
+		"""คำนวณภาษีหัก ณ ที่จ่าย (ลูกค้านิติบุคคลหักจากค่าบริการ ปกติ 3%)
+
+		ฐานคำนวณคือยอดก่อน VAT:
+		- "ค่าแรงเท่านั้น" (แยกค่าแรง/อะไหล่ในบิล) — สัดส่วนค่าแรงของ subtotal
+		- "ทั้งใบ" (งานจ้างเหมา) — subtotal ทั้งหมด
+		ส่วนลดท้ายบิลถูกเฉลี่ยตามสัดส่วน และถ้าราคารวม VAT จะถอด VAT ออกก่อน
+		"""
+		if not self.apply_wht:
+			self.wht_amount = 0
+			self.net_payment_amount = flt(self.total_amount)
+			return
+
+		if not flt(self.wht_rate):
+			settings = frappe.get_single("Truck Service Center Settings")
+			self.wht_rate = flt(settings.default_wht_rate) or 3
+
+		labor = flt(self.labor_charges)
+		parts = flt(self.total_parts_amount)
+		gross = labor + parts
+		subtotal = gross - flt(self.discount_amount)
+
+		if self.wht_base == "ทั้งใบ (ค่าแรง+อะไหล่)":
+			base = subtotal
+		else:
+			base = subtotal * labor / gross if gross else 0
+
+		if self.tax_type == "ราคารวม VAT" and flt(self.vat_rate):
+			base = base * 100 / (100 + flt(self.vat_rate))
+
+		self.wht_amount = flt(base * flt(self.wht_rate) / 100, 2)
+		self.net_payment_amount = flt(flt(self.total_amount) - self.wht_amount, 2)
 
 	def update_payment_status(self):
 		"""อัพเดทสถานะการชำระเงิน"""
@@ -1026,6 +1060,49 @@ def create_payment_entry(service_order):
 	mode = mode_alias.get(doc.payment_method, doc.payment_method)
 	if mode and frappe.db.exists("Mode of Payment", mode):
 		payment_entry.mode_of_payment = mode
+
+	# ภาษีหัก ณ ที่จ่าย: ลูกค้าจ่ายน้อยลงตามยอดที่หัก แต่ปิดหนี้ใบแจ้งหนี้เต็มจำนวน
+	# โดยส่วนต่างลงบัญชีสินทรัพย์ "ภาษีถูกหัก ณ ที่จ่าย" ผ่าน deductions
+	if doc.apply_wht and flt(doc.wht_amount) > 0:
+		si_grand_total = flt(frappe.db.get_value("Sales Invoice", doc.sales_invoice, "grand_total"))
+
+		if flt(si_outstanding) < si_grand_total:
+			# มีการชำระบางส่วนไปก่อนแล้ว — เดายอดหักที่เหลือไม่ได้ ให้ผู้ใช้ใส่ deduction เอง
+			frappe.msgprint(
+				"ใบแจ้งหนี้นี้มีการชำระบางส่วนแล้ว ระบบไม่ใส่รายการภาษีหัก ณ ที่จ่ายให้อัตโนมัติ "
+				"กรุณาตรวจสอบและเพิ่มรายการหัก (Deductions) ใน Payment Entry เอง",
+				indicator="orange",
+				title="ภาษีหัก ณ ที่จ่าย",
+			)
+		else:
+			settings = frappe.get_single("Truck Service Center Settings")
+			if not settings.wht_account:
+				frappe.throw(
+					"กรุณาตั้งค่า 'บัญชีภาษีถูกหัก ณ ที่จ่าย' ใน Truck Service Center Settings "
+					"ก่อนรับชำระเงินที่มีภาษีหัก ณ ที่จ่าย",
+					title="ยังไม่ได้ตั้งค่า",
+				)
+
+			cost_center = settings.default_cost_center or settings.labor_cost_center
+			if not cost_center:
+				frappe.throw(
+					"กรุณาตั้งค่า 'ศูนย์ต้นทุนเริ่มต้น' ใน Truck Service Center Settings "
+					"(จำเป็นสำหรับรายการหักภาษี ณ ที่จ่ายใน Payment Entry)",
+					title="ยังไม่ได้ตั้งค่า",
+				)
+
+			received = flt(flt(si_outstanding) - flt(doc.wht_amount), 2)
+			payment_entry.paid_amount = received
+			payment_entry.received_amount = received
+			payment_entry.append(
+				"deductions",
+				{
+					"account": settings.wht_account,
+					"cost_center": cost_center,
+					"amount": flt(doc.wht_amount),
+					"description": f"ภาษีหัก ณ ที่จ่าย {flt(doc.wht_rate)}% ({doc.name})",
+				},
+			)
 
 	payment_entry.insert()
 

@@ -66,6 +66,15 @@
   "net_total",
   "tax_amount",
   "total_amount",
+  "wht_section",
+  "apply_wht",
+  "wht_rate",
+  "wht_base",
+  "column_break_wht",
+  "wht_amount",
+  "net_payment_amount",
+  "wht_certificate_no",
+  "wht_certificate_date",
   "payment_section",
   "payment_status",
   "payment_method",
@@ -556,12 +565,78 @@
    "options": "Service Order",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "apply_wht",
+   "fieldname": "wht_section",
+   "fieldtype": "Section Break",
+   "label": "ภาษีหัก ณ ที่จ่าย (WHT)"
+  },
+  {
+   "default": "0",
+   "description": "ลูกค้านิติบุคคลหักภาษี ณ ที่จ่ายจากค่าบริการ (ปกติ 3%)",
+   "fieldname": "apply_wht",
+   "fieldtype": "Check",
+   "label": "หักภาษี ณ ที่จ่าย"
+  },
+  {
+   "default": "3",
+   "depends_on": "eval:doc.apply_wht",
+   "fieldname": "wht_rate",
+   "fieldtype": "Float",
+   "label": "อัตราหัก ณ ที่จ่าย (%)",
+   "precision": "2"
+  },
+  {
+   "default": "ค่าแรงเท่านั้น",
+   "depends_on": "eval:doc.apply_wht",
+   "description": "แยกค่าแรง/อะไหล่ในบิล → หักเฉพาะค่าแรง; งานจ้างเหมา → หักทั้งใบ",
+   "fieldname": "wht_base",
+   "fieldtype": "Select",
+   "label": "ฐานคำนวณ",
+   "options": "ค่าแรงเท่านั้น\nทั้งใบ (ค่าแรง+อะไหล่)"
+  },
+  {
+   "fieldname": "column_break_wht",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.apply_wht",
+   "fieldname": "wht_amount",
+   "fieldtype": "Currency",
+   "label": "ยอดภาษีหัก ณ ที่จ่าย",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "depends_on": "eval:doc.apply_wht",
+   "fieldname": "net_payment_amount",
+   "fieldtype": "Currency",
+   "label": "ยอดรับชำระสุทธิ (หลังหัก ณ ที่จ่าย)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval:doc.apply_wht",
+   "fieldname": "wht_certificate_no",
+   "fieldtype": "Data",
+   "label": "เลขที่หนังสือรับรอง 50 ทวิ"
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval:doc.apply_wht",
+   "fieldname": "wht_certificate_date",
+   "fieldtype": "Date",
+   "label": "วันที่หนังสือรับรอง"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-02 02:44:20.439634",
+ "modified": "2026-07-02 03:38:03.258218",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

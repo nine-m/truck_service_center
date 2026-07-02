@@ -85,6 +85,22 @@
 
 ---
 
+### ภาษีหัก ณ ที่จ่าย (WHT Settings)
+
+สำหรับลูกค้านิติบุคคลที่หักภาษี ณ ที่จ่ายจากค่าบริการ (ปกติ 3%)
+
+#### บัญชีภาษีถูกหัก ณ ที่จ่าย (`wht_account`) ⚠️ จำเป็นถ้าใช้ WHT
+- บัญชี**สินทรัพย์** เช่น "ภาษีถูกหัก ณ ที่จ่าย" ใต้ Current Assets
+- ใช้เป็นรายการหัก (Deductions) ใน Payment Entry — ลูกค้าจ่ายเงินน้อยลงตามยอดหัก แต่ปิดหนี้ใบแจ้งหนี้เต็มจำนวน
+- ต้องตั้ง **ศูนย์ต้นทุนเริ่มต้น** (`default_cost_center`) ด้วย (จำเป็นสำหรับแถว deduction)
+
+#### อัตราหัก ณ ที่จ่ายเริ่มต้น (`default_wht_rate`)
+- ค่าเริ่มต้น 3 (%)
+
+> การใช้งานดูหัวข้อ WHT ของ Service Order ใน [DOCTYPES_README.md](DOCTYPES_README.md)
+
+---
+
 ### การแจ้งเตือนอัตโนมัติ (Notification Settings)
 
 ควบคุม scheduled task รายวัน (ดู `scheduler_events` ใน hooks.py และ [tasks.py](truck_service_center/tasks.py)) — แจ้งเตือนเป็น Notification Log (กระดิ่งใน Desk) ถึงผู้ใช้ role **Service Manager** และ **Service User** เหตุการณ์เดียวกันแจ้งครั้งเดียวจนกว่าวันครบกำหนดจะเปลี่ยน (เช่น ต่อประกันแล้ว)

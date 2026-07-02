@@ -83,6 +83,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 - บาร์โค้ด: `scan_service_type_barcode`, `scan_item_barcode` (ยิงบาร์โค้ดเพื่อเพิ่มแถว)
 - เงิน/ภาษี: `total_parts_amount`, `labor_charges`, `tax_type` (ราคารวม VAT/ราคาแยก VAT/ไม่คิด VAT), `vat_rate`, `discount_amount`, `net_total`, `tax_amount`, `total_amount`
 - การชำระเงิน: `payment_status` (Unpaid/Partially Paid/Paid), `payment_method`, `paid_amount`, `outstanding_amount` — สามฟิลด์สถานะ/ยอดเป็น **read-only ระบบคุมเอง**: รับชำระผ่านปุ่ม "รับชำระเงิน" (สร้าง Payment Entry จาก Sales Invoice) แล้ว doc_events ใน hooks.py ซิงค์ยอดจากใบแจ้งหนี้กลับมาอัตโนมัติเมื่อ Payment Entry / Journal Entry / Sales Invoice ถูก submit หรือ cancel (`sync_payment_from_sales_invoice`)
+- ภาษีหัก ณ ที่จ่าย (WHT): `apply_wht` (ติ๊กอัตโนมัติเมื่อลูกค้าเป็นนิติบุคคล/Company), `wht_rate` (default 3%), `wht_base` (ค่าแรงเท่านั้น = แยกบิล / ทั้งใบ = จ้างเหมา), `wht_amount`, `net_payment_amount` (ยอดรับชำระสุทธิ), `wht_certificate_no/date` (บันทึกใบ 50 ทวิ ได้หลัง submit) — คำนวณจาก**ยอดก่อน VAT** ใน `calculate_wht()` (เฉลี่ยส่วนลดท้ายบิลตามสัดส่วน, ถอด VAT ถ้าราคารวม VAT) และตอนกด "รับชำระเงิน" ระบบใส่แถวหัก (Deductions → `wht_account` จาก Settings) ใน Payment Entry ให้: รับเงินจริงน้อยลงแต่ปิดหนี้เต็มจำนวน (ถ้ามีการชำระบางส่วนก่อนแล้วต้องใส่ deduction เอง)
 - ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
 - สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 

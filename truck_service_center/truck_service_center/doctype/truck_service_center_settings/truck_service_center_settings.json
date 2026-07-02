@@ -33,6 +33,10 @@
   "vat_exclusive_template",
   "column_break_tax_template",
   "vat_inclusive_template",
+  "wht_settings_section",
+  "wht_account",
+  "column_break_wht_settings",
+  "default_wht_rate",
   "notification_settings_section",
   "enable_expiry_notifications",
   "expiry_notice_days",
@@ -238,12 +242,35 @@
    "fieldname": "service_due_notice_days",
    "fieldtype": "Int",
    "label": "แจ้งล่วงหน้า (วัน) — กำหนดบริการ"
+  },
+  {
+   "fieldname": "wht_settings_section",
+   "fieldtype": "Section Break",
+   "label": "ภาษีหัก ณ ที่จ่าย (WHT)"
+  },
+  {
+   "description": "บัญชีสินทรัพย์ \"ภาษีถูกหัก ณ ที่จ่าย\" — ใช้เป็นรายการหัก (deduction) ใน Payment Entry เมื่อลูกค้าหักภาษี ณ ที่จ่าย",
+   "fieldname": "wht_account",
+   "fieldtype": "Link",
+   "label": "บัญชีภาษีถูกหัก ณ ที่จ่าย",
+   "options": "Account"
+  },
+  {
+   "fieldname": "column_break_wht_settings",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "fieldname": "default_wht_rate",
+   "fieldtype": "Float",
+   "label": "อัตราหัก ณ ที่จ่ายเริ่มต้น (%)",
+   "precision": "2"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-02 03:06:20.915799",
+ "modified": "2026-07-02 03:38:03.258218",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",

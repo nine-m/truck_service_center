@@ -167,6 +167,15 @@ frappe.ui.form.on("Service Order", {
 		// ดึง default billing/shipping address ของลูกค้า
 		if (frm.doc.customer) {
 			fetch_customer_addresses(frm);
+
+			// ลูกค้านิติบุคคล → ติ๊กหักภาษี ณ ที่จ่ายให้อัตโนมัติ (ผู้ใช้เอาออกได้)
+			if (frm.doc.docstatus === 0 && !frm.doc.apply_wht) {
+				frappe.db.get_value("Customer", frm.doc.customer, "customer_type", function (r) {
+					if (r && r.customer_type === "Company") {
+						frm.set_value("apply_wht", 1);
+					}
+				});
+			}
 		} else {
 			// ล้างค่า address ถ้าไม่มีลูกค้า
 			frm.set_value("customer_address", "");
@@ -437,6 +446,18 @@ frappe.ui.form.on("Service Order", {
 	},
 
 	tax_type: function (frm) {
+		calculate_totals(frm);
+	},
+
+	apply_wht: function (frm) {
+		calculate_totals(frm);
+	},
+
+	wht_rate: function (frm) {
+		calculate_totals(frm);
+	},
+
+	wht_base: function (frm) {
 		calculate_totals(frm);
 	},
 
@@ -1318,6 +1339,36 @@ function calculate_totals(frm) {
 	// คำนวณยอดคงค้าง
 	let outstanding = total - flt(frm.doc.paid_amount);
 	frm.set_value("outstanding_amount", outstanding);
+
+	// คำนวณภาษีหัก ณ ที่จ่าย (mirror ของ calculate_wht ฝั่ง server)
+	calculate_wht(frm, total_labor, total_parts, total);
+}
+
+function calculate_wht(frm, total_labor, total_parts, total) {
+	if (!frm.doc.apply_wht) {
+		frm.set_value("wht_amount", 0);
+		frm.set_value("net_payment_amount", total);
+		return;
+	}
+
+	let gross = total_labor + total_parts;
+	let subtotal = gross - flt(frm.doc.discount_amount);
+	let base;
+
+	if (frm.doc.wht_base === "ทั้งใบ (ค่าแรง+อะไหล่)") {
+		base = subtotal;
+	} else {
+		base = gross ? (subtotal * total_labor) / gross : 0;
+	}
+
+	if (frm.doc.tax_type === "ราคารวม VAT" && flt(frm.doc.vat_rate)) {
+		base = (base * 100) / (100 + flt(frm.doc.vat_rate));
+	}
+
+	let wht_rate = flt(frm.doc.wht_rate) || 3;
+	let wht_amount = flt((base * wht_rate) / 100, 2);
+	frm.set_value("wht_amount", wht_amount);
+	frm.set_value("net_payment_amount", flt(total - wht_amount, 2));
 }
 
 function setup_service_package_filter(frm) {
