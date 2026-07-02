@@ -465,7 +465,9 @@
    "fieldname": "payment_status",
    "fieldtype": "Select",
    "label": "สถานะการชำระเงิน",
-   "options": "Unpaid\nPartially Paid\nPaid"
+   "options": "Unpaid\nPartially Paid\nPaid",
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "payment_method",
@@ -481,14 +483,17 @@
    "fieldname": "paid_amount",
    "fieldtype": "Currency",
    "label": "ยอดชำระแล้ว",
-   "precision": "2"
+   "precision": "2",
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "outstanding_amount",
    "fieldtype": "Currency",
    "label": "ยอดค้าง",
    "precision": "2",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "notes_section",
@@ -556,7 +561,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-27 10:00:00.000000",
+ "modified": "2026-07-02 02:44:20.439634",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",
@@ -577,6 +582,55 @@
    "share": 1,
    "submit": 1,
    "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician",
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
   }
  ],
  "row_format": "Dynamic",

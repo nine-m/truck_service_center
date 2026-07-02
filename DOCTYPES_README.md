@@ -81,7 +81,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 - งานซ่อม: `service_packages`, `service_types`, `service_items`, `received_by`, `received_date`, `technician` ถึง `technician_4` (ช่าง 4 คน), `fuel_level_in/out`, `priority` (Low/Medium/High/Urgent), `estimated_time`, `actual_time`
 - บาร์โค้ด: `scan_service_type_barcode`, `scan_item_barcode` (ยิงบาร์โค้ดเพื่อเพิ่มแถว)
 - เงิน/ภาษี: `total_parts_amount`, `labor_charges`, `tax_type` (ราคารวม VAT/ราคาแยก VAT/ไม่คิด VAT), `vat_rate`, `discount_amount`, `net_total`, `tax_amount`, `total_amount`
-- การชำระเงิน: `payment_status` (Unpaid/Partially Paid/Paid), `payment_method`, `paid_amount`, `outstanding_amount`
+- การชำระเงิน: `payment_status` (Unpaid/Partially Paid/Paid), `payment_method`, `paid_amount`, `outstanding_amount` — สามฟิลด์สถานะ/ยอดเป็น **read-only ระบบคุมเอง**: รับชำระผ่านปุ่ม "รับชำระเงิน" (สร้าง Payment Entry จาก Sales Invoice) แล้ว doc_events ใน hooks.py ซิงค์ยอดจากใบแจ้งหนี้กลับมาอัตโนมัติเมื่อ Payment Entry / Journal Entry / Sales Invoice ถูก submit หรือ cancel (`sync_payment_from_sales_invoice`)
 - ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
 - สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 
@@ -96,6 +96,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 3. เบิกอะไหล่ (สร้าง Stock Entry / Material Issue) — ตาม Settings อาจสร้างอัตโนมัติเมื่อ submit
 4. Submit → ปิดใบนัดที่ผูกอยู่ + อัปเดตข้อมูลรถ
 5. สร้าง Sales Invoice (auto-submit ได้ตาม Settings)
+6. กด "รับชำระเงิน" → สร้าง Payment Entry (draft) จากใบแจ้งหนี้ → ตรวจสอบ/Submit ที่หน้า Payment Entry → สถานะชำระเงินบน Service Order อัปเดตเอง (จะกดซ้ำได้จนกว่าจะ Paid — รองรับชำระบางส่วน)
 
 ### Repair Quotation (ใบเสนอราคาซ่อม) — `RQ-.YYYY.-` (ไม่ submittable)
 เสนอราคางานซ่อมก่อนเปิดใบสั่งงาน
@@ -142,6 +143,34 @@ Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น
 - **เปิดใบสั่งงาน:** Service Order → New หรือสร้างจาก Appointment/Quotation
 - **เสนอราคา:** Repair Quotation → New → เมื่อรับงานกด สร้าง Service Order
 - **แพ็คเกจ:** Service Package → New
+
+---
+
+## บทบาทและสิทธิ์ผู้ใช้ (Roles & Permissions)
+
+Role ของแอป (seed จาก `create_default_roles()` ใน [install.py](truck_service_center/install.py) — รันอัตโนมัติตอน install; site เดิมรันเองด้วย `bench --site <site> execute truck_service_center.install.create_default_roles`):
+
+| Role | บทบาท |
+|---|---|
+| **Service Manager** | ผู้จัดการศูนย์ — สิทธิ์เต็มทุก doctype รวมถึง cancel/delete และแก้ Settings |
+| **Service User** | ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิด+submit ใบสั่งงาน ลงทะเบียนรถ |
+| **Technician** | ช่าง — อ่านข้อมูลทั่วไป และแก้ไข Service Order (อัพเดทงาน/เวลาจริง) แต่สร้าง/submit ไม่ได้ |
+
+และใช้ role มาตรฐานของ ERPNext เพิ่มเติม: **Stock User** (อ่าน Service Order เพื่อเบิกอะไหล่), **Accounts User** (อ่าน Service Order + Repair Quotation เพื่อออกบิล)
+
+### Permission matrix (สรุป)
+
+| Doctype | Service Manager | Service User | Technician | Stock User | Accounts User |
+|---|---|---|---|---|---|
+| Service Order | ทั้งหมด + submit/cancel | create/write/submit | read/write | read | read |
+| Service Appointment | ทั้งหมด + submit/cancel | create/write/submit/cancel | read | — | — |
+| Repair Quotation | ทั้งหมด | create/write | — | — | read |
+| Vehicle | ทั้งหมด | create/write | read | — | — |
+| Vehicle Brand | ทั้งหมด | create/read | read | — | — |
+| Master data อื่น (Service Type/Group, Repair Position, Package, Slot) | ทั้งหมด | read | read | — | — |
+| Truck Service Center Settings | read/write | — | — | — | — |
+
+หมายเหตุ: การ **cancel Service Order** สงวนให้ Service Manager (Service User submit ได้แต่ยกเลิกไม่ได้) และ whitelisted endpoint ทุกตัว (เช่น `receive_vehicle`, `create_material_issue`, `create_sales_invoice_from_service_order`) มี `check_permission` ตรวจสิทธิ์ตามตารางนี้ก่อนทำงานเสมอ
 
 ## License
 MIT

@@ -2,9 +2,9 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
-from frappe.contacts.doctype.address.address import get_address_display
 
 
 class ServiceOrder(Document):
@@ -25,10 +25,7 @@ class ServiceOrder(Document):
 
 		old_status = self.get_doc_before_save()
 		if old_status and old_status.status == "In Progress" and self.status == "Draft":
-			frappe.throw(
-				"ไม่สามารถย้อนสถานะจาก In Progress กลับเป็น Draft ได้",
-				title="ไม่สามารถเปลี่ยนสถานะได้"
-			)
+			frappe.throw("ไม่สามารถย้อนสถานะจาก In Progress กลับเป็น Draft ได้", title="ไม่สามารถเปลี่ยนสถานะได้")
 
 	def set_address_display(self):
 		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
@@ -41,20 +38,20 @@ class ServiceOrder(Document):
 			self.shipping_address = get_address_display(self.shipping_address_name)
 		else:
 			self.shipping_address = ""
-	
+
 	def check_material_issue_items(self):
 		"""ตรวจสอบว่าไม่มีการลบแถวที่มี Material Issue ที่ submit ไปแล้ว"""
 		if self.is_new():
 			return
-		
+
 		# ดึงข้อมูลเดิมจาก database
 		old_doc = self.get_doc_before_save()
 		if not old_doc:
 			return
-		
+
 		# สร้าง set ของ item names ที่มีอยู่ในเอกสารปัจจุบัน
 		current_item_names = {item.name for item in self.service_items if item.name}
-		
+
 		# ตรวจสอบแต่ละ item ในเอกสารเดิม
 		for old_item in old_doc.service_items:
 			# ถ้า item ถูกลบออก (ไม่อยู่ใน current_item_names)
@@ -62,22 +59,20 @@ class ServiceOrder(Document):
 				# ตรวจสอบว่า item นี้มี Material Issue ที่ submit แล้วหรือไม่
 				if old_item.material_issue:
 					material_issue_status = frappe.db.get_value(
-						"Stock Entry", 
-						old_item.material_issue, 
-						"docstatus"
+						"Stock Entry", old_item.material_issue, "docstatus"
 					)
-					
+
 					if material_issue_status == 1:
 						frappe.throw(
 							f"ไม่สามารถลบรายการ '{old_item.item_name or old_item.item_code}' ได้ "
 							f"เนื่องจากใบเบิกอะไหล่ {old_item.material_issue} ถูก submit ไปแล้ว<br>"
 							f"กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบรายการ",
-							title="ไม่สามารถลบรายการได้"
+							title="ไม่สามารถลบรายการได้",
 						)
-	
+
 	def apply_service_packages(self):
 		"""นำรายการบริการและอะไหล่จากแพ็คเกจมาใส่อัตโนมัติ (รองรับหลาย package)
-		
+
 		Logic:
 		- ตรวจสอบว่ามี service_packages rows ที่ยังไม่ได้ดึงข้อมูล (ไม่มี service_type/item ที่ผูกกับ package นี้)
 		- สำหรับแต่ละ package → ดึง service types + parts → เพิ่มในตาราง service_types/service_items
@@ -86,72 +81,78 @@ class ServiceOrder(Document):
 		"""
 		if not self.service_packages:
 			return
-		
+
 		# รวบรวม package names ที่ยังอยู่ในตาราง
 		current_package_names = set()
 		for pkg_row in self.service_packages:
 			if pkg_row.service_package:
 				current_package_names.add(pkg_row.service_package)
-		
+
 		# Cascade delete: ลบ service_types/service_items ที่ผูกกับ package ที่ถูกลบออก
 		self.service_types = [
-			st for st in self.service_types
+			st
+			for st in self.service_types
 			if not st.service_package or st.service_package in current_package_names
 		]
 		self.service_items = [
-			si for si in self.service_items
+			si
+			for si in self.service_items
 			if not si.service_package or si.service_package in current_package_names
 		]
-		
+
 		# สำหรับแต่ละ package ตรวจสอบว่าดึงข้อมูลแล้วหรือยัง
 		for pkg_row in self.service_packages:
 			if not pkg_row.service_package:
 				continue
-			
+
 			pkg_name = pkg_row.service_package
-			
+
 			# ตรวจสอบว่ามี service_types ที่ผูกกับ package นี้อยู่แล้วหรือไม่
-			has_service_types = any(
-				st.service_package == pkg_name for st in self.service_types
-			)
-			
+			has_service_types = any(st.service_package == pkg_name for st in self.service_types)
+
 			if has_service_types:
 				continue  # ดึงข้อมูลแล้ว ข้ามไป
-			
+
 			# ดึงข้อมูลจาก package
 			package = frappe.get_doc("Service Package", pkg_name)
-			
+
 			if not package.is_active:
 				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
-			
+
 			discount_pct = flt(package.discount_percent)
-			
+
 			# เพิ่ม service types จาก package
 			for st in package.package_service_types:
-				self.append("service_types", {
-					"service_type": st.service_type,
-					"service_type_group": st.service_type_group,
-					"maintenance_type": st.maintenance_type,
-					"estimated_time": st.estimated_time,
-					"labor_charges": st.labor_rate,
-					"discount_percentage": discount_pct,
-					"service_package": pkg_name,
-				})
-			
+				self.append(
+					"service_types",
+					{
+						"service_type": st.service_type,
+						"service_type_group": st.service_type_group,
+						"maintenance_type": st.maintenance_type,
+						"estimated_time": st.estimated_time,
+						"labor_charges": st.labor_rate,
+						"discount_percentage": discount_pct,
+						"service_package": pkg_name,
+					},
+				)
+
 			# เพิ่ม parts จาก package
 			default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
 			for part in package.package_parts:
-				self.append("service_items", {
-					"item_code": part.item_code,
-					"item_name": part.item_name,
-					"qty": part.qty,
-					"uom": part.uom,
-					"rate": part.rate,
-					"discount_percentage": discount_pct,
-					"warehouse": default_warehouse,
-					"service_package": pkg_name,
-				})
-	
+				self.append(
+					"service_items",
+					{
+						"item_code": part.item_code,
+						"item_name": part.item_name,
+						"qty": part.qty,
+						"uom": part.uom,
+						"rate": part.rate,
+						"discount_percentage": discount_pct,
+						"warehouse": default_warehouse,
+						"service_package": pkg_name,
+					},
+				)
+
 	def set_tax_defaults(self):
 		"""ตั้งค่าภาษีเริ่มต้นจาก Settings"""
 		settings = frappe.get_single("Truck Service Center Settings")
@@ -169,11 +170,11 @@ class ServiceOrder(Document):
 			if not item.rate:
 				rate = frappe.db.get_value("Item", item.item_code, "valuation_rate") or 0
 				item.rate = rate
-			
+
 			# คำนวณส่วนลดระดับบรรทัด
 			self._calculate_line_discount(item)
 			self.total_parts_amount += flt(item.amount)
-		
+
 		# คำนวณค่าแรงรวมและเวลารวมจากประเภทบริการทั้งหมด
 		self.labor_charges = 0
 		self.estimated_time = 0
@@ -182,13 +183,13 @@ class ServiceOrder(Document):
 			self._calculate_service_type_discount(service_type)
 			self.labor_charges += flt(service_type.amount)
 			self.estimated_time += flt(service_type.estimated_time)
-		
+
 		# คำนวณยอดก่อนภาษี (subtotal หลังหักส่วนลดระดับเอกสาร)
 		subtotal = flt(self.total_parts_amount) + flt(self.labor_charges) - flt(self.discount_amount)
-		
+
 		# คำนวณภาษีตามประเภท
 		vat_rate = flt(self.vat_rate)
-		
+
 		if self.tax_type == "ราคารวม VAT" and vat_rate:
 			# ราคารวม VAT แล้ว → แยก VAT ออกจากยอดรวม
 			self.tax_amount = flt(subtotal * vat_rate / (100 + vat_rate), 2)
@@ -204,58 +205,58 @@ class ServiceOrder(Document):
 			self.net_total = flt(subtotal, 2)
 			self.tax_amount = 0
 			self.total_amount = flt(subtotal, 2)
-		
+
 		# คำนวณยอดคงค้าง
 		self.outstanding_amount = flt(self.total_amount) - flt(self.paid_amount)
-	
+
 	def _calculate_line_discount(self, item):
 		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item
-		
+
 		Logic (inspired by ERPNext Sales Order):
 		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก rate
-		- ถ้ากรอก discount_amount (โดยไม่มี discount_percentage) → คำนวณ discount_percentage จาก rate  
+		- ถ้ากรอก discount_amount (โดยไม่มี discount_percentage) → คำนวณ discount_percentage จาก rate
 		- amount = (rate - discount_per_unit) * qty
 		"""
 		rate = flt(item.rate)
 		qty = flt(item.qty)
-		
+
 		if flt(item.discount_percentage) > 0:
 			# คำนวณ discount_amount จาก percentage
 			item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2)
-		
+
 		if flt(item.discount_amount) > 0 and rate > 0 and not flt(item.discount_percentage):
 			# คำนวณ discount_percentage จาก amount (ถ้ายังไม่มี percentage)
 			item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2)
-		
+
 		# คำนวณ amount หลังส่วนลด
 		discount_per_unit = flt(item.discount_amount)
 		net_rate = flt(rate - discount_per_unit, 2)
 		if net_rate < 0:
 			net_rate = 0
 		item.amount = flt(net_rate * qty, 2)
-	
+
 	def _calculate_service_type_discount(self, service_type):
 		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type
-		
+
 		Logic:
 		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก labor_charges
 		- ถ้ากรอก discount_amount → คำนวณ discount_percentage จาก labor_charges
 		- amount = labor_charges - discount_amount
 		"""
 		labor = flt(service_type.labor_charges)
-		
+
 		if flt(service_type.discount_percentage) > 0:
 			service_type.discount_amount = flt(labor * flt(service_type.discount_percentage) / 100, 2)
-		
+
 		if flt(service_type.discount_amount) > 0 and labor > 0 and not flt(service_type.discount_percentage):
 			service_type.discount_percentage = flt(flt(service_type.discount_amount) / labor * 100, 2)
-		
+
 		discount = flt(service_type.discount_amount)
 		net_labor = flt(labor - discount, 2)
 		if net_labor < 0:
 			net_labor = 0
 		service_type.amount = flt(net_labor, 2)
-	
+
 	def update_payment_status(self):
 		"""อัพเดทสถานะการชำระเงิน"""
 		if flt(self.paid_amount) == 0:
@@ -264,7 +265,7 @@ class ServiceOrder(Document):
 			self.payment_status = "Paid"
 		else:
 			self.payment_status = "Partially Paid"
-	
+
 	def update_material_issue_status(self):
 		"""อัพเดทสถานะ Material Issue ในแต่ละ Item"""
 		for item in self.service_items:
@@ -279,7 +280,7 @@ class ServiceOrder(Document):
 					item.material_issue_status = "Cancelled"
 			else:
 				item.material_issue_status = None
-	
+
 	def on_submit(self):
 		"""เมื่อ submit ให้อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
 		self.update_vehicle_info()
@@ -294,40 +295,40 @@ class ServiceOrder(Document):
 		)
 		for appt_name in appointments:
 			frappe.db.set_value("Service Appointment", appt_name, "status", "Completed")
-    
+
 	def before_submit(self):
 		"""ก่อน submit ให้ตรวจสอบเงื่อนไขและตั้งสถานะเป็น Completed"""
 		# 1. ต้องมีการสร้าง service type อย่างน้อย 1 รายการ
 		if not self.service_types:
 			frappe.throw("กรุณาเพิ่มประเภทบริการอย่างน้อย 1 รายการก่อน Submit")
-		
+
 		# 2. ราคายอดรวมทั้งหมดต้องมากกว่า 0
 		if flt(self.total_amount) <= 0:
 			frappe.throw("ยอดรวมทั้งหมดต้องมากกว่า 0")
-		
+
 		# 3. เวลาทำงานจริงต้องมากกว่า 0
 		if flt(self.actual_time) <= 0:
 			frappe.throw("กรุณาระบุเวลาทำงานจริงที่มากกว่า 0")
-		
+
 		# 4. ตรวจสอบ Material Issue ของ stock items
 		self.validate_material_issues_for_submit()
-		
+
 		self.status = "Completed"
-	
+
 	def validate_material_issues_for_submit(self):
 		"""ตรวจสอบว่า stock items ทุกตัวมี Material Issue ที่ submitted แล้ว"""
 		items_without_mi = []
 		unsubmitted_mis = {}
-		
+
 		for item in self.service_items:
 			if not item.item_code:
 				continue
-			
+
 			# ตรวจสอบว่าเป็น stock item หรือไม่
 			is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
 			if not is_stock_item:
 				continue
-			
+
 			if not item.material_issue:
 				# stock item ที่ยังไม่มี material issue
 				items_without_mi.append(f"{item.item_name or item.item_code} (แถวที่ {item.idx})")
@@ -335,18 +336,20 @@ class ServiceOrder(Document):
 				# ตรวจสอบสถานะ material issue
 				docstatus = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
 				if docstatus != 1:
-					status_text = "Draft" if docstatus == 0 else ("Cancelled" if docstatus == 2 else "Unknown")
+					status_text = (
+						"Draft" if docstatus == 0 else ("Cancelled" if docstatus == 2 else "Unknown")
+					)
 					if item.material_issue not in unsubmitted_mis:
 						unsubmitted_mis[item.material_issue] = status_text
-		
+
 		errors = []
-		
+
 		if items_without_mi:
 			errors.append(
 				"รายการอะไหล่ต่อไปนี้ยังไม่มีใบเบิกอะไหล่ (Material Issue):<br>"
 				+ "<br>".join(f"• {name}" for name in items_without_mi)
 			)
-		
+
 		if unsubmitted_mis:
 			mi_list = [f"• {mi} (สถานะ: {status})" for mi, status in unsubmitted_mis.items()]
 			errors.append(
@@ -354,13 +357,10 @@ class ServiceOrder(Document):
 				+ "<br>".join(mi_list)
 				+ "<br><br>กรุณา Submit ใบเบิกอะไหล่ทั้งหมดก่อน Submit Service Order"
 			)
-		
+
 		if errors:
-			frappe.throw(
-				"<br><br>".join(errors),
-				title="ไม่สามารถ Submit ได้"
-			)
-	
+			frappe.throw("<br><br>".join(errors), title="ไม่สามารถ Submit ได้")
+
 	def create_stock_entry(self):
 		"""สร้าง Stock Entry เพื่อตัดสต็อกอะไหล่"""
 		if not self.service_items:
@@ -386,7 +386,7 @@ class ServiceOrder(Document):
 
 			# ตรวจสอบว่า item เป็น stock item หรือไม่
 			is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
-			
+
 			# ข้าม item ที่ไม่ใช่ stock item (เช่น service)
 			if not is_stock_item:
 				continue
@@ -397,67 +397,74 @@ class ServiceOrder(Document):
 				missing_warehouse_items.append(item.item_code)
 				continue
 
-			stock_entry.append("items", {
-				"item_code": item.item_code,
-				"qty": item.qty,
-				"s_warehouse": s_warehouse,
-				"cost_center": item.cost_center or settings.default_cost_center,
-				"expense_account": item.expense_account or settings.default_expense_account,
-				"basic_rate": item.rate
-			})
+			stock_entry.append(
+				"items",
+				{
+					"item_code": item.item_code,
+					"qty": item.qty,
+					"s_warehouse": s_warehouse,
+					"cost_center": item.cost_center or settings.default_cost_center,
+					"expense_account": item.expense_account or settings.default_expense_account,
+					"basic_rate": item.rate,
+				},
+			)
 
 		if missing_warehouse_items:
 			frappe.msgprint(
 				"ไม่สามารถสร้าง Stock Entry สำหรับบางรายการ เนื่องจากไม่พบคลังสินค้า: "
 				+ ", ".join(missing_warehouse_items),
 				indicator="orange",
-				title="ขาดข้อมูลคลังสินค้า"
+				title="ขาดข้อมูลคลังสินค้า",
 			)
 
 		if stock_entry.items:
 			stock_entry.insert()
 			stock_entry.submit()
-			
+
 			# เก็บ reference ของ Stock Entry
 			self.db_set("stock_entry", stock_entry.name)
-			
+
 			frappe.msgprint(f"สร้าง Stock Entry: {stock_entry.name}")
-	
+
 	def update_vehicle_info(self):
 		"""อัพเดทข้อมูลรถหลังการบริการ"""
 		if self.vehicle and self.current_mileage:
 			vehicle = frappe.get_doc("Vehicle", self.vehicle)
 			vehicle.update_service_info(self)
 			frappe.msgprint(f"อัพเดทข้อมูลรถ {self.vehicle} เรียบร้อยแล้ว")
-	
+
 	def create_sales_invoice(self):
 		"""สร้างใบแจ้งหนี้"""
 		if self.sales_invoice:
 			frappe.throw("มีการสร้าง Sales Invoice ไปแล้ว")
-		
+
 		# ดึงการตั้งค่าจาก Settings
 		settings = frappe.get_single("Truck Service Center Settings")
-		
+
 		# ดึง company
-		company = settings.default_company or frappe.defaults.get_defaults().get("company") or frappe.db.get_single_value("Global Defaults", "default_company")
-		
+		company = (
+			settings.default_company
+			or frappe.defaults.get_defaults().get("company")
+			or frappe.db.get_single_value("Global Defaults", "default_company")
+		)
+
 		sales_invoice = frappe.new_doc("Sales Invoice")
 		sales_invoice.customer = self.customer
 		sales_invoice.company = company
 		sales_invoice.posting_date = self.service_date
 		sales_invoice.set_posting_time = 1
 		sales_invoice.due_date = self.service_date
-		
+
 		# ใช้ Payment Terms Template ถ้ามีการตั้งค่า
 		if settings.payment_terms_template:
 			sales_invoice.payment_terms_template = settings.payment_terms_template
-		
+
 		# เพิ่มรายการบริการและอะไหล่ (พร้อมส่วนลดระดับบรรทัด)
 		for item in self.service_items:
 			if item.item_code:
 				original_rate = flt(item.rate)
 				has_discount = flt(item.discount_percentage) > 0 or flt(item.discount_amount) > 0
-				
+
 				si_item = {
 					"item_code": item.item_code,
 					"item_name": item.item_name or "",
@@ -467,9 +474,9 @@ class ServiceOrder(Document):
 					"warehouse": item.warehouse or settings.default_warehouse,
 					"expense_account": item.expense_account or settings.default_expense_account,
 					"cost_center": item.cost_center or settings.default_cost_center,
-					"income_account": settings.default_income_account
+					"income_account": settings.default_income_account,
 				}
-				
+
 				if has_discount and original_rate > 0:
 					# ตั้ง price_list_rate = ราคาเต็ม เพื่อให้ SI แสดงส่วนลดได้ถูกต้อง
 					# ERPNext คำนวณ: rate = price_list_rate * (1 - discount_percentage / 100)
@@ -480,9 +487,9 @@ class ServiceOrder(Document):
 					si_item["rate"] = flt(original_rate - flt(item.discount_amount), 2)
 				else:
 					si_item["rate"] = original_rate
-				
+
 				sales_invoice.append("items", si_item)
-		
+
 		# เพิ่มรายการ Service Types (ค่าแรงแยกตามประเภทบริการ)
 		if self.service_types:
 			for service_type_row in self.service_types:
@@ -492,9 +499,9 @@ class ServiceOrder(Document):
 						"Service Type",
 						service_type_row.service_type,
 						["item_code", "service_type_name", "income_account", "cost_center"],
-						as_dict=1
+						as_dict=1,
 					)
-					
+
 					if service_type_item and service_type_item.item_code:
 						# ถ้า Service Type ผูกกับ Item ให้ใช้ Item นั้น
 						item_code = service_type_item.item_code
@@ -503,29 +510,36 @@ class ServiceOrder(Document):
 						if not settings.labor_item:
 							frappe.throw(
 								f"ประเภทบริการ '{service_type_row.service_type}' ไม่ได้ผูกกับ Item และยังไม่ได้ตั้งค่า 'รายการสินค้าสำหรับค่าแรง' ใน Truck Service Center Settings",
-								title="ยังไม่ได้ตั้งค่า"
+								title="ยังไม่ได้ตั้งค่า",
 							)
 						item_code = settings.labor_item
-					
+
 					# สร้าง description สำหรับรายการนี้
 					description = service_type_row.service_type
 					if service_type_row.repair_position:
 						description += f" - {service_type_row.repair_position}"
 					if service_type_row.remark:
 						description += f" ({service_type_row.remark})"
-					
+
 					si_item = {
 						"item_code": item_code,
 						"description": description,
 						"qty": 1,
 						"expense_account": settings.labor_expense_account,
-						"cost_center": service_type_item.cost_center if service_type_item and service_type_item.cost_center else (settings.labor_cost_center or settings.default_cost_center),
-						"income_account": service_type_item.income_account if service_type_item and service_type_item.income_account else settings.default_income_account
+						"cost_center": service_type_item.cost_center
+						if service_type_item and service_type_item.cost_center
+						else (settings.labor_cost_center or settings.default_cost_center),
+						"income_account": service_type_item.income_account
+						if service_type_item and service_type_item.income_account
+						else settings.default_income_account,
 					}
-					
+
 					labor_rate = flt(service_type_row.labor_charges)
-					has_discount = flt(service_type_row.discount_percentage) > 0 or flt(service_type_row.discount_amount) > 0
-					
+					has_discount = (
+						flt(service_type_row.discount_percentage) > 0
+						or flt(service_type_row.discount_amount) > 0
+					)
+
 					if has_discount and labor_rate > 0:
 						# ตั้ง price_list_rate = ค่าแรงเต็ม เพื่อให้ SI แสดงส่วนลดได้ถูกต้อง
 						si_item["price_list_rate"] = labor_rate
@@ -535,40 +549,43 @@ class ServiceOrder(Document):
 						si_item["rate"] = flt(labor_rate - flt(service_type_row.discount_amount), 2)
 					else:
 						si_item["rate"] = labor_rate
-					
+
 					sales_invoice.append("items", si_item)
-		
+
 		# ถ้าไม่มี service_types แต่มี labor_charges รวม ให้เพิ่มเป็นรายการเดียว (backward compatibility)
 		elif flt(self.labor_charges) > 0:
 			# ตรวจสอบว่ามีการตั้งค่า Labor Item หรือไม่
 			if not settings.labor_item:
 				frappe.throw(
 					"กรุณาตั้งค่า 'รายการสินค้าสำหรับค่าแรง' ใน Truck Service Center Settings ก่อนสร้าง Sales Invoice",
-					title="ยังไม่ได้ตั้งค่า"
+					title="ยังไม่ได้ตั้งค่า",
 				)
-			
-			sales_invoice.append("items", {
-				"item_code": settings.labor_item,
-				"qty": 1,
-				"rate": flt(self.labor_charges),
-				"expense_account": settings.labor_expense_account,
-				"cost_center": settings.labor_cost_center or settings.default_cost_center,
-				"income_account": settings.default_income_account
-			})
-		
+
+			sales_invoice.append(
+				"items",
+				{
+					"item_code": settings.labor_item,
+					"qty": 1,
+					"rate": flt(self.labor_charges),
+					"expense_account": settings.labor_expense_account,
+					"cost_center": settings.labor_cost_center or settings.default_cost_center,
+					"income_account": settings.default_income_account,
+				},
+			)
+
 		# ตรวจสอบว่ามีรายการหรือไม่
 		if not sales_invoice.items:
 			frappe.throw("ไม่สามารถสร้าง Sales Invoice ได้เนื่องจากไม่มีรายการสินค้า")
-		
+
 		# ส่วนลด (ถ้ามี)
 		if flt(self.discount_amount) > 0:
 			sales_invoice.discount_amount = flt(self.discount_amount)
 			sales_invoice.additional_discount_percentage = 0
 			sales_invoice.apply_discount_on = "Grand Total"
-		
+
 		# Insert ก่อนโดยยังไม่ใส่ taxes (ป้องกัน ERPNext override ระหว่าง insert)
 		sales_invoice.insert()
-		
+
 		# ตั้งค่าเทมเพลตภาษี (taxes_and_charges) จาก Settings หลัง insert
 		tax_type = self.tax_type or settings.default_tax_type or "ราคาแยก VAT"
 		tax_template = settings.get_tax_template_for_type(tax_type)
@@ -577,30 +594,31 @@ class ServiceOrder(Document):
 			# ล้าง taxes ที่ ERPNext อาจตั้งค่าอัตโนมัติ แล้วใส่จากเทมเพลตของเรา
 			sales_invoice.set("taxes", [])
 			from erpnext.controllers.accounts_controller import get_taxes_and_charges
+
 			taxes = get_taxes_and_charges("Sales Taxes and Charges Template", tax_template)
 			for tax in taxes:
 				sales_invoice.append("taxes", tax)
-		
+
 		# คำนวณภาษีและยอดรวมใหม่แล้วบันทึก
 		sales_invoice.run_method("calculate_taxes_and_totals")
 		sales_invoice.save()
-		
+
 		# Submit อัตโนมัติถ้ามีการตั้งค่า
 		if settings.auto_submit_sales_invoice:
 			sales_invoice.submit()
-		
+
 		# เก็บ reference
 		self.db_set("sales_invoice", sales_invoice.name)
-		
+
 		frappe.msgprint(f"สร้าง Sales Invoice: {sales_invoice.name}")
-		
+
 		return sales_invoice.name
 
 
 @frappe.whitelist()
 def check_material_issues_before_submit(service_order):
 	"""ตรวจสอบสถานะ Material Issues ก่อน Submit - เรียกจาก client side
-	
+
 	Returns:
 		dict: {
 			"can_submit": bool,
@@ -609,37 +627,40 @@ def check_material_issues_before_submit(service_order):
 		}
 	"""
 	doc = frappe.get_doc("Service Order", service_order)
-	
+	doc.check_permission("read")
+
 	items_without_mi = []
 	unsubmitted_mis = {}
-	
+
 	for item in doc.service_items:
 		if not item.item_code:
 			continue
-		
+
 		is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
 		if not is_stock_item:
 			continue
-		
+
 		if not item.material_issue:
-			items_without_mi.append({
-				"idx": item.idx,
-				"item_code": item.item_code,
-				"item_name": item.item_name or item.item_code,
-			})
+			items_without_mi.append(
+				{
+					"idx": item.idx,
+					"item_code": item.item_code,
+					"item_name": item.item_name or item.item_code,
+				}
+			)
 		else:
 			docstatus = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
 			if docstatus != 1:
 				status_text = "Draft" if docstatus == 0 else ("Cancelled" if docstatus == 2 else "Unknown")
 				if item.material_issue not in unsubmitted_mis:
 					unsubmitted_mis[item.material_issue] = status_text
-	
+
 	can_submit = len(items_without_mi) == 0 and len(unsubmitted_mis) == 0
-	
+
 	return {
 		"can_submit": can_submit,
 		"items_without_mi": items_without_mi,
-		"unsubmitted_mis": unsubmitted_mis
+		"unsubmitted_mis": unsubmitted_mis,
 	}
 
 
@@ -647,6 +668,7 @@ def check_material_issues_before_submit(service_order):
 def create_sales_invoice_from_service_order(service_order):
 	"""สร้าง Sales Invoice จาก Service Order - สำหรับเรียกจาก client"""
 	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
 	return doc.create_sales_invoice()
 
 
@@ -654,57 +676,45 @@ def create_sales_invoice_from_service_order(service_order):
 def get_item_rate(item_code, customer=None, price_list=None):
 	"""ดึงราคาสินค้าจาก Item Price หรือ Standard Rate"""
 	from frappe.utils import flt
-	
+
 	rate = 0
-	
+
 	# 1. พยายามดึงจาก Item Price ก่อน
 	if not price_list:
-		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
-	
+		price_list = (
+			frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+		)
+
 	item_price = frappe.db.get_value(
-		"Item Price",
-		{
-			"item_code": item_code,
-			"price_list": price_list,
-			"selling": 1
-		},
-		"price_list_rate"
+		"Item Price", {"item_code": item_code, "price_list": price_list, "selling": 1}, "price_list_rate"
 	)
-	
+
 	if item_price:
 		rate = flt(item_price)
 	else:
 		# 2. ถ้าไม่มีใน Item Price ให้ดึงจาก Item
 		item_data = frappe.db.get_value(
-			"Item",
-			item_code,
-			["standard_rate", "item_name", "description", "stock_uom"],
-			as_dict=1
+			"Item", item_code, ["standard_rate", "item_name", "description", "stock_uom"], as_dict=1
 		)
-		
+
 		if item_data:
 			rate = flt(item_data.standard_rate)
-			
+
 			return {
 				"rate": rate,
 				"item_name": item_data.item_name,
 				"description": item_data.description,
-				"uom": item_data.stock_uom
+				"uom": item_data.stock_uom,
 			}
-	
+
 	# 3. ดึงข้อมูลเพิ่มเติมของ Item
-	item_data = frappe.db.get_value(
-		"Item",
-		item_code,
-		["item_name", "description", "stock_uom"],
-		as_dict=1
-	)
-	
+	item_data = frappe.db.get_value("Item", item_code, ["item_name", "description", "stock_uom"], as_dict=1)
+
 	return {
 		"rate": rate,
 		"item_name": item_data.item_name if item_data else "",
 		"description": item_data.description if item_data else "",
-		"uom": item_data.stock_uom if item_data else ""
+		"uom": item_data.stock_uom if item_data else "",
 	}
 
 
@@ -712,82 +722,72 @@ def get_item_rate(item_code, customer=None, price_list=None):
 def get_item_by_barcode(barcode, customer=None, price_list=None):
 	"""ค้นหา Item จากบาร์โค้ดและดึงราคา"""
 	from frappe.utils import flt
-	
+
 	if not barcode:
 		return None
-	
+
 	# ค้นหา Item จากตาราง Item Barcode
-	item_code = frappe.db.get_value(
-		"Item Barcode",
-		{"barcode": barcode},
-		"parent"
-	)
-	
+	item_code = frappe.db.get_value("Item Barcode", {"barcode": barcode}, "parent")
+
 	if not item_code:
 		# ถ้าไม่เจอใน Item Barcode ให้ลองค้นหาจาก Item.name โดยตรง
 		if frappe.db.exists("Item", barcode):
 			item_code = barcode
 		else:
 			return None
-	
+
 	# ดึงข้อมูล Item
 	item_data = frappe.db.get_value(
-		"Item",
-		item_code,
-		["item_code", "item_name", "description", "stock_uom", "standard_rate"],
-		as_dict=1
+		"Item", item_code, ["item_code", "item_name", "description", "stock_uom", "standard_rate"], as_dict=1
 	)
-	
+
 	if not item_data:
 		return None
-	
+
 	# ดึงราคาจาก Item Price
 	rate = 0
 	if not price_list:
-		price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
-	
+		price_list = (
+			frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+		)
+
 	item_price = frappe.db.get_value(
-		"Item Price",
-		{
-			"item_code": item_code,
-			"price_list": price_list,
-			"selling": 1
-		},
-		"price_list_rate"
+		"Item Price", {"item_code": item_code, "price_list": price_list, "selling": 1}, "price_list_rate"
 	)
-	
+
 	if item_price:
 		rate = flt(item_price)
 	else:
 		rate = flt(item_data.standard_rate)
-	
+
 	return {
 		"item_code": item_data.item_code,
 		"item_name": item_data.item_name,
 		"description": item_data.description,
 		"uom": item_data.stock_uom,
-		"rate": rate
+		"rate": rate,
 	}
 
 
 @frappe.whitelist()
 def create_material_issue(service_order, item_rows=None):
 	"""สร้าง Material Issue สำหรับ items ที่ยังไม่มีใบเบิก
-	
+
 	Args:
 		service_order: ชื่อของ Service Order
 		item_rows: list ของ row indices ที่ต้องการสร้าง Material Issue (ถ้าไม่ระบุจะสร้างทั้งหมด)
 	"""
 	import json
-	
+
 	if isinstance(item_rows, str):
 		item_rows = json.loads(item_rows)
-	
+
 	doc = frappe.get_doc("Service Order", service_order)
-	
+	doc.check_permission("write")
+
 	# ดึง settings
 	settings = frappe.get_single("Truck Service Center Settings")
-	
+
 	# สร้าง Stock Entry
 	stock_entry = frappe.new_doc("Stock Entry")
 	stock_entry.stock_entry_type = "Material Issue"
@@ -795,139 +795,147 @@ def create_material_issue(service_order, item_rows=None):
 	stock_entry.set_posting_time = 1
 	stock_entry.posting_date = frappe.utils.today()
 	stock_entry.custom_service_order = service_order  # Link กลับไป Service Order
-	
+
 	items_added = []
-	
+
 	for idx, item in enumerate(doc.service_items):
 		# ถ้าระบุ item_rows ให้ตรวจสอบว่า item นี้อยู่ในรายการหรือไม่
 		if item_rows and idx not in item_rows:
 			continue
-		
+
 		# ข้าม item ที่มี Material Issue แล้ว
 		if item.material_issue:
 			continue
-		
+
 		# ตรวจสอบว่าเป็น stock item
 		is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
 		if not is_stock_item:
 			continue
-		
+
 		# เลือกคลัง
 		s_warehouse = item.warehouse or settings.default_source_warehouse or settings.default_warehouse
 		if not s_warehouse:
 			frappe.msgprint(f"ไม่พบคลังสินค้าสำหรับ {item.item_code}", indicator="orange")
 			continue
-		
-		stock_entry.append("items", {
-			"item_code": item.item_code,
-			"qty": item.qty,
-			"s_warehouse": s_warehouse,
-			"cost_center": item.cost_center or settings.default_cost_center,
-			"expense_account": item.expense_account or settings.default_expense_account,
-			"basic_rate": item.rate,
-			"custom_service_order_item_idx": idx  # เก็บ index เพื่อ link กลับ
-		})
+
+		stock_entry.append(
+			"items",
+			{
+				"item_code": item.item_code,
+				"qty": item.qty,
+				"s_warehouse": s_warehouse,
+				"cost_center": item.cost_center or settings.default_cost_center,
+				"expense_account": item.expense_account or settings.default_expense_account,
+				"basic_rate": item.rate,
+				"custom_service_order_item_idx": idx,  # เก็บ index เพื่อ link กลับ
+			},
+		)
 		items_added.append(idx)
-	
+
 	if not stock_entry.items:
 		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
-	
+
 	stock_entry.insert()
-	
+
 	# อัพเดท Material Issue reference ใน Service Order Items
 	for idx in items_added:
 		doc.service_items[idx].material_issue = stock_entry.name
 		doc.service_items[idx].material_issue_status = "Draft"
-	
+
 	doc.save()
-	
+
 	frappe.msgprint(f"สร้าง Material Issue: {stock_entry.name}")
-	
+
 	return stock_entry.name
 
 
 @frappe.whitelist()
 def sync_material_issue(service_order, material_issue):
 	"""ซิงค์ข้อมูลจาก Material Issue กลับมายัง Service Order
-	
+
 	Args:
 		service_order: ชื่อของ Service Order
 		material_issue: ชื่อของ Stock Entry (Material Issue)
 	"""
 	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
 	stock_entry = frappe.get_doc("Stock Entry", material_issue)
-	
+
 	# ตรวจสอบว่า Material Issue ยัง Draft อยู่หรือไม่
 	if stock_entry.docstatus != 0:
 		frappe.throw("สามารถ Sync ได้เฉพาะ Material Issue ที่อยู่ในสถานะ Draft เท่านั้น")
-	
+
 	# อัพเดทข้อมูลจาก Stock Entry กลับมายัง Service Order Items
 	updated_items = []
-	
+
 	for stock_item in stock_entry.items:
 		# หา item ใน Service Order ที่ตรงกัน
 		idx = stock_item.get("custom_service_order_item_idx")
-		
+
 		if idx is not None and idx < len(doc.service_items):
 			service_item = doc.service_items[idx]
-			
+
 			# อัพเดทข้อมูล
 			service_item.qty = stock_item.qty
 			service_item.rate = stock_item.basic_rate or stock_item.valuation_rate
 			service_item.warehouse = stock_item.s_warehouse
-			
+
 			updated_items.append(service_item.item_code)
-	
+
 	doc.save()
-	
+
 	if updated_items:
 		frappe.msgprint(f"Sync ข้อมูลจาก Material Issue เรียบร้อย: {', '.join(updated_items)}")
 	else:
 		frappe.msgprint("ไม่พบรายการที่ต้อง Sync", indicator="orange")
-	
+
 	return True
 
 
 @frappe.whitelist()
 def get_service_type_items(service_type):
 	"""ดึงรายการอะไหล่ที่ผูกไว้กับ Service Type
-	
+
 	Args:
 		service_type: ชื่อ Service Type
-		
+
 	Returns:
 		list: รายการอะไหล่พร้อมรายละเอียด
 	"""
 	doc = frappe.get_doc("Service Type", service_type)
-	
+	doc.check_permission("read")
+
 	items = []
 	if doc.items:
 		for item in doc.items:
-			items.append({
-				"item_code": item.item_code,
-				"item_name": item.item_name,
-				"description": item.description,
-				"qty": item.qty,
-				"uom": item.uom,
-				"rate": item.rate,
-				"amount": item.amount
-			})
-	
+			items.append(
+				{
+					"item_code": item.item_code,
+					"item_name": item.item_name,
+					"description": item.description,
+					"qty": item.qty,
+					"uom": item.uom,
+					"rate": item.rate,
+					"amount": item.amount,
+				}
+			)
+
 	return items
 
 
 @frappe.whitelist()
 def get_material_issue_summary(service_order):
 	"""ดึงสรุปข้อมูล Material Issues ทั้งหมดของ Service Order
-	
+
 	Returns:
 		dict: สถิติและรายการ Material Issues
 	"""
 	doc = frappe.get_doc("Service Order", service_order)
-	
+	doc.check_permission("read")
+
 	# รวบรวม Material Issues ทั้งหมด
 	material_issues = {}
-	
+
 	for item in doc.service_items:
 		if item.material_issue:
 			if item.material_issue not in material_issues:
@@ -936,9 +944,9 @@ def get_material_issue_summary(service_order):
 					"Stock Entry",
 					item.material_issue,
 					["name", "docstatus", "posting_date", "total_amount"],
-					as_dict=1
+					as_dict=1,
 				)
-				
+
 				if stock_entry:
 					status_map = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
 					material_issues[item.material_issue] = {
@@ -946,23 +954,21 @@ def get_material_issue_summary(service_order):
 						"status": status_map.get(stock_entry.docstatus, "Unknown"),
 						"posting_date": stock_entry.posting_date,
 						"total_amount": stock_entry.total_amount,
-						"item_count": 0
+						"item_count": 0,
 					}
-			
+
 			# นับจำนวน items
 			if item.material_issue in material_issues:
 				material_issues[item.material_issue]["item_count"] += 1
-	
-	return {
-		"total_count": len(material_issues),
-		"material_issues": list(material_issues.values())
-	}
+
+	return {"total_count": len(material_issues), "material_issues": list(material_issues.values())}
 
 
 @frappe.whitelist()
 def get_party_shipping_address(doctype, name):
 	"""Wrapper for erpnext get_party_shipping_address"""
 	from erpnext.accounts.party import get_party_shipping_address as _get_party_shipping_address
+
 	return _get_party_shipping_address(doctype, name)
 
 
@@ -970,6 +976,7 @@ def get_party_shipping_address(doctype, name):
 def receive_vehicle(service_order):
 	"""รับรถ — stamp user, เวลา, เปลี่ยนสถานะเป็น In Progress"""
 	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
 
 	if doc.docstatus != 0:
 		frappe.throw("ไม่สามารถรับรถได้ เอกสารถูก submit หรือ cancel แล้ว")
@@ -986,3 +993,106 @@ def receive_vehicle(service_order):
 	doc.save()
 
 	return {"status": "ok"}
+
+
+@frappe.whitelist()
+def create_payment_entry(service_order):
+	"""สร้าง Payment Entry (draft) รับชำระเงินจาก Sales Invoice ของ Service Order
+
+	ใช้ helper มาตรฐานของ ERPNext (get_payment_entry) เพื่อให้ allocation/บัญชีถูกต้อง
+	ผู้ใช้ตรวจสอบและ Submit ที่หน้า Payment Entry เอง — เมื่อ Submit แล้ว
+	สถานะการชำระเงินของ Service Order จะถูกซิงค์กลับผ่าน doc_events (ดู hooks.py)
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("read")
+
+	if not doc.sales_invoice:
+		frappe.throw("กรุณาสร้าง Sales Invoice ก่อนรับชำระเงิน")
+
+	si_docstatus, si_outstanding = frappe.db.get_value(
+		"Sales Invoice", doc.sales_invoice, ["docstatus", "outstanding_amount"]
+	)
+	if si_docstatus != 1:
+		frappe.throw(f"Sales Invoice {doc.sales_invoice} ยังไม่ได้ Submit หรือถูกยกเลิกแล้ว")
+	if flt(si_outstanding) <= 0:
+		frappe.throw("ใบแจ้งหนี้นี้ชำระครบแล้ว")
+
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	payment_entry = get_payment_entry("Sales Invoice", doc.sales_invoice)
+
+	# จับคู่วิธีชำระเงินของใบสั่งงานกับ Mode of Payment ของ ERPNext (ถ้ามี)
+	mode_alias = {"Bank Transfer": "Wire Transfer"}
+	mode = mode_alias.get(doc.payment_method, doc.payment_method)
+	if mode and frappe.db.exists("Mode of Payment", mode):
+		payment_entry.mode_of_payment = mode
+
+	payment_entry.insert()
+
+	frappe.msgprint(f"สร้าง Payment Entry: {payment_entry.name}")
+
+	return payment_entry.name
+
+
+def sync_payment_from_sales_invoice(sales_invoice):
+	"""ซิงค์ยอดชำระจาก Sales Invoice กลับมายัง Service Order ที่ผูกกัน
+
+	paid_amount = grand_total - outstanding ของใบแจ้งหนี้ (ยอดที่ตัดหนี้จริงในบัญชี
+	ไม่ว่าจะชำระผ่าน Payment Entry, Journal Entry หรือ POS)
+	"""
+	so_names = frappe.get_all("Service Order", filters={"sales_invoice": sales_invoice}, pluck="name")
+	if not so_names:
+		return
+
+	si = frappe.db.get_value(
+		"Sales Invoice", sales_invoice, ["grand_total", "outstanding_amount", "docstatus"], as_dict=1
+	)
+	if not si:
+		return
+
+	for so_name in so_names:
+		total_amount = flt(frappe.db.get_value("Service Order", so_name, "total_amount"))
+
+		# ใบแจ้งหนี้ถูกยกเลิก/ยัง draft → ถือว่ายังไม่มีการชำระ
+		paid = flt(si.grand_total) - flt(si.outstanding_amount) if si.docstatus == 1 else 0
+
+		if paid <= 0:
+			payment_status, paid = "Unpaid", 0
+		elif flt(si.outstanding_amount) <= 0:
+			payment_status = "Paid"
+		else:
+			payment_status = "Partially Paid"
+
+		# ยอดค้างมองจากฝั่ง Service Order (กันเศษปัดจากภาษีของใบแจ้งหนี้)
+		outstanding = 0 if payment_status == "Paid" else max(total_amount - paid, 0)
+
+		frappe.db.set_value(
+			"Service Order",
+			so_name,
+			{
+				"paid_amount": paid,
+				"outstanding_amount": outstanding,
+				"payment_status": payment_status,
+			},
+		)
+
+
+def on_payment_entry_change(doc, method=None):
+	"""doc_events hook: Payment Entry submit/cancel → ซิงค์สถานะชำระเงินของ Service Order"""
+	for ref in doc.references or []:
+		if ref.reference_doctype == "Sales Invoice":
+			sync_payment_from_sales_invoice(ref.reference_name)
+
+
+def on_journal_entry_change(doc, method=None):
+	"""doc_events hook: Journal Entry submit/cancel → ซิงค์สถานะชำระเงินของ Service Order"""
+	seen = set()
+	for acc in doc.accounts or []:
+		if acc.reference_type == "Sales Invoice" and acc.reference_name and acc.reference_name not in seen:
+			seen.add(acc.reference_name)
+			sync_payment_from_sales_invoice(acc.reference_name)
+
+
+def on_sales_invoice_change(doc, method=None):
+	"""doc_events hook: Sales Invoice submit/cancel → ซิงค์สถานะชำระเงินของ Service Order"""
+	sync_payment_from_sales_invoice(doc.name)
