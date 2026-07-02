@@ -7,7 +7,7 @@ frappe.query_reports["Revenue by Service Group"] = {
 			fieldname: "from_date",
 			label: "ตั้งแต่วันที่",
 			fieldtype: "Date",
-			default: frappe.datetime.month_start(),
+			default: frappe.datetime.add_months(frappe.datetime.get_today(), -3),
 			reqd: 1,
 		},
 		{
