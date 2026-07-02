@@ -19,11 +19,13 @@ bench --site bu3.localhost clear-cache          # after editing workspaces/fixtu
 bench --site bu3.localhost console               # interactive python REPL with frappe loaded
 bench build --app truck_service_center           # rebuild JS/CSS assets
 
-# Tests (Frappe test runner)
+# Tests (Frappe test runner; site_config needs "allow_tests": true — already set on bu3)
 bench --site bu3.localhost run-tests --app truck_service_center
 bench --site bu3.localhost run-tests --doctype "Service Order"     # single doctype
 bench --site bu3.localhost run-tests --module truck_service_center.truck_service_center.doctype.service_order.test_service_order
 ```
+
+The money-calculation tests (`test_service_order.py`, `test_repair_quotation.py`) build **unsaved** docs and call `calculate_totals()` / `calculate_wht()` directly — deliberately no `insert()`, because saving triggers `fetch_from` which overwrites child `labor_charges` from the Service Type master, and `IntegrationTestCase`'s auto test-record loading collides with real site data (Price List "Standard Buying" already exists). Use `UnitTestCase` for this kind of test.
 
 Lint/format is via **pre-commit** (run from the app root), configured in [.pre-commit-config.yaml](.pre-commit-config.yaml): ruff (lint + format, line-length 110), eslint, prettier, pyupgrade.
 
