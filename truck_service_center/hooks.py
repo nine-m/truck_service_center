@@ -153,23 +153,13 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"truck_service_center.tasks.all"
-# 	],
-# 	"daily": [
-# 		"truck_service_center.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"truck_service_center.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"truck_service_center.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"truck_service_center.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"daily": [
+		"truck_service_center.tasks.mark_expired_quotations",
+		"truck_service_center.tasks.notify_vehicle_expirations",
+		"truck_service_center.tasks.notify_service_due",
+	],
+}
 
 # Testing
 # -------

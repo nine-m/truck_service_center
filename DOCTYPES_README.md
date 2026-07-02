@@ -38,6 +38,7 @@ child table ที่ทุกเอกสารใช้เหมือนก�
 **ฟิลด์สำคัญ:** `license_plate`, `truck_number`, `vehicle_type`, `customer`, `current_mileage`, `service_interval_km`, `service_interval_months`, `next_service_due`, `next_service_mileage`
 
 **Methods:** `validate_mileage()` (กันเลขไมล์ย้อนหลัง), `calculate_next_service()`, `update_service_info()`, `get_service_history()`, `is_service_due()`, `get_upcoming_expirations()`
+**แจ้งเตือนอัตโนมัติ:** scheduled task รายวัน ([tasks.py](truck_service_center/tasks.py)) แจ้งเอกสารใกล้หมดอายุและรถถึงกำหนดบริการถึง Service Manager/Service User ผ่าน Notification Log — เปิด/ปิดและตั้งจำนวนวันล่วงหน้าได้ใน Settings (ดู [SETTINGS_README.md](SETTINGS_README.md))
 **Whitelisted:** `check_service_due`, `get_vehicle_service_history`, `get_customer_contact_info`, `get_vehicle_expirations`
 
 ### Service Type Group (กลุ่มบริการ)

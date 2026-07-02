@@ -85,6 +85,23 @@
 
 ---
 
+### การแจ้งเตือนอัตโนมัติ (Notification Settings)
+
+ควบคุม scheduled task รายวัน (ดู `scheduler_events` ใน hooks.py และ [tasks.py](truck_service_center/tasks.py)) — แจ้งเตือนเป็น Notification Log (กระดิ่งใน Desk) ถึงผู้ใช้ role **Service Manager** และ **Service User** เหตุการณ์เดียวกันแจ้งครั้งเดียวจนกว่าวันครบกำหนดจะเปลี่ยน (เช่น ต่อประกันแล้ว)
+
+#### แจ้งเตือนเอกสารรถใกล้หมดอายุ (`enable_expiry_notifications`)
+- ตรวจรถสถานะ Active ที่ ประกันภัย / ทะเบียนรถ / ภาษีรถ / ตรวจสภาพรถ ใกล้หมดอายุหรือหมดอายุแล้ว
+- **แจ้งล่วงหน้า (วัน)** (`expiry_notice_days`) — ค่าเริ่มต้น 30 วัน
+
+#### แจ้งเตือนรถถึงกำหนดบริการ (`enable_service_due_notifications`)
+- ตรวจตาม `next_service_due` (วันที่) และ `next_service_mileage` เทียบเลขไมล์ปัจจุบัน
+- **แจ้งล่วงหน้า (วัน)** (`service_due_notice_days`) — ค่าเริ่มต้น 7 วัน
+
+> นอกจากแจ้งเตือน scheduler ยังเปลี่ยนสถานะ **Repair Quotation** ที่เลย `valid_until` จาก Open → Expired ให้อัตโนมัติทุกวัน (อันนี้ไม่มี toggle)
+> ค่าเริ่มต้นถูกเติมลง DB โดย patch `set_notification_defaults` — toggle ที่ยังไม่เคยบันทึก (NULL) ถือว่าเปิดใช้งาน
+
+---
+
 ## วิธีตั้งค่าครั้งแรก
 
 ### 1. สร้าง Labor Item (ค่าแรง)

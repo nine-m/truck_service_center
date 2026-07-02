@@ -32,7 +32,13 @@
   "tax_template_section",
   "vat_exclusive_template",
   "column_break_tax_template",
-  "vat_inclusive_template"
+  "vat_inclusive_template",
+  "notification_settings_section",
+  "enable_expiry_notifications",
+  "expiry_notice_days",
+  "column_break_notify",
+  "enable_service_due_notifications",
+  "service_due_notice_days"
  ],
  "fields": [
   {
@@ -195,12 +201,49 @@
    "label": "เทมเพลต ราคารวม VAT",
    "options": "Sales Taxes and Charges Template",
    "description": "เทมเพลตภาษีสำหรับราคารวม VAT (ราคาสินค้ารวม VAT แล้ว, included_in_print_rate = Yes)"
+  },
+  {
+   "fieldname": "notification_settings_section",
+   "fieldtype": "Section Break",
+   "label": "การแจ้งเตือนอัตโนมัติ"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_expiry_notifications",
+   "fieldtype": "Check",
+   "label": "แจ้งเตือนเอกสารรถใกล้หมดอายุ (ประกัน/ทะเบียน/ภาษี/ตรวจสภาพ)"
+  },
+  {
+   "default": "30",
+   "depends_on": "eval:doc.enable_expiry_notifications",
+   "description": "แจ้งเตือนก่อนวันหมดอายุกี่วัน (ค่าเริ่มต้น 30 วัน)",
+   "fieldname": "expiry_notice_days",
+   "fieldtype": "Int",
+   "label": "แจ้งล่วงหน้า (วัน) — เอกสารหมดอายุ"
+  },
+  {
+   "fieldname": "column_break_notify",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_service_due_notifications",
+   "fieldtype": "Check",
+   "label": "แจ้งเตือนรถถึงกำหนดบริการ"
+  },
+  {
+   "default": "7",
+   "depends_on": "eval:doc.enable_service_due_notifications",
+   "description": "แจ้งเตือนก่อนถึงกำหนดบริการกี่วัน (ค่าเริ่มต้น 7 วัน)",
+   "fieldname": "service_due_notice_days",
+   "fieldtype": "Int",
+   "label": "แจ้งล่วงหน้า (วัน) — กำหนดบริการ"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-07-02 03:06:20.915799",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",
