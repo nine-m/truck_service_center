@@ -214,22 +214,23 @@ function show_available_slots(frm) {
 		},
 		callback: function(r) {
 			if (r.message && r.message.length > 0) {
-				// สร้าง HTML table แสดง slots
-				let html = '<table class="table table-bordered" style="margin-top: 10px;">';
+				// สร้าง HTML table แสดง slots (คลิกแถวเพื่อเลือกช่วงเวลา)
+				let html = '<p class="text-muted" style="margin-bottom: 5px;">คลิกช่วงเวลาที่ต้องการเพื่อเลือก</p>';
+				html += '<table class="table table-bordered" style="margin-top: 5px;">';
 				html += '<thead><tr><th>ช่วงเวลา</th><th>เวลา</th><th>ว่าง/ทั้งหมด</th></tr></thead>';
 				html += '<tbody>';
-				
+
 				r.message.forEach(function(slot) {
 					let badge_class = slot.available > 0 ? 'badge-success' : 'badge-danger';
-					html += '<tr>';
+					html += `<tr class="slot-row" data-slot="${frappe.utils.escape_html(slot.slot)}" style="cursor: pointer;">`;
 					html += `<td><strong>${slot.slot_name}</strong></td>`;
 					html += `<td>${slot.start_time} - ${slot.end_time}</td>`;
 					html += `<td><span class="badge ${badge_class}">${slot.available}/${slot.capacity}</span></td>`;
 					html += '</tr>';
 				});
-				
+
 				html += '</tbody></table>';
-				
+
 				// แสดงผลใน dialog
 				let d = new frappe.ui.Dialog({
 					title: __('Available Time Slots - {0}', [frm.doc.appointment_date]),
@@ -242,6 +243,16 @@ function show_available_slots(frm) {
 					size: 'small'
 				});
 				d.show();
+
+				// คลิกแถวเพื่อเลือก slot แล้วใส่ลงช่องช่วงเวลาให้อัตโนมัติ
+				d.$wrapper.find('.slot-row').on('click', function() {
+					let slot_name = $(this).data('slot');
+					d.hide();
+					frm.set_value('appointment_slot', slot_name);
+				}).hover(
+					function() { $(this).addClass('active'); },
+					function() { $(this).removeClass('active'); }
+				);
 			} else {
 				frappe.msgprint(__('No available slots for this date'));
 			}
@@ -362,6 +373,38 @@ frappe.ui.form.on('Service Appointment Package', {
 });
 
 frappe.ui.form.on('Service Appointment Service Type', {
+	service_type: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.service_type) return;
+
+		// ดึงรายการอะไหล่มาตรฐานจาก Service Type (เหมือนใบสั่งงาน)
+		frappe.call({
+			method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items',
+			args: { service_type: row.service_type },
+			callback: function(r) {
+				if (!r.message || !r.message.length) return;
+
+				let items = r.message;
+				let item_list = items.map(function(item) {
+					return `• ${item.item_name || item.item_code} - จำนวน: ${item.qty} ${item.uom || ''} (฿${item.rate || 0})`;
+				}).join('<br>');
+
+				frappe.confirm(
+					__('ประเภทบริการ "{0}" มีรายการอะไหล่มาตรฐาน {1} รายการ:<br><br>{2}<br><br>ต้องการเพิ่มรายการอะไหล่เหล่านี้ในนัดหมายหรือไม่?',
+						[row.service_type, items.length, item_list]),
+					function() {
+						add_service_type_items(frm, items);
+
+						frappe.show_alert({
+							message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย',
+								[items.length, row.service_type]),
+							indicator: 'green'
+						});
+					}
+				);
+			}
+		});
+	},
 	estimated_time: function(frm) {
 		calculate_estimated_duration(frm);
 	},
@@ -412,6 +455,31 @@ frappe.ui.form.on('Service Appointment Item', {
 		calculate_totals(frm);
 	}
 });
+
+function add_service_type_items(frm, items) {
+	// รวมกับแถวเดิมถ้ามี item_code ซ้ำ มิฉะนั้นสร้างแถวใหม่
+	items.forEach(function(item) {
+		let existing = (frm.doc.service_items || []).find(function(si) {
+			return si.item_code === item.item_code;
+		});
+
+		if (existing) {
+			existing.qty = flt(existing.qty) + flt(item.qty);
+			existing.amount = flt(existing.qty) * flt(existing.rate);
+		} else {
+			let new_row = frm.add_child('service_items');
+			new_row.item_code = item.item_code;
+			new_row.item_name = item.item_name;
+			new_row.qty = item.qty;
+			new_row.uom = item.uom;
+			new_row.rate = item.rate;
+			new_row.amount = flt(item.amount) || flt(item.qty) * flt(item.rate);
+		}
+	});
+
+	frm.refresh_field('service_items');
+	calculate_totals(frm);
+}
 
 function calculate_estimated_duration(frm) {
 	let total = 0;
