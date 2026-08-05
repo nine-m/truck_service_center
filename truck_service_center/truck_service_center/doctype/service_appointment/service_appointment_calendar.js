@@ -13,9 +13,9 @@ frappe.views.calendar["Service Appointment"] = {
 		"all_day",
 		"license_plate",
 		"status",
-		"service_type",
 	],
-	get_events_method: "frappe.desk.calendar.get_events",
+	get_events_method:
+		"truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_calendar_events",
 	order_by: "appointment_date asc",
 	prepare_events(events) {
 		// Force timed events when both datetimes are present; otherwise render as all-day.
@@ -50,10 +50,9 @@ frappe.views.calendar["Service Appointment"] = {
 				event.color = bg;
 			}
 
-			// Compose title with plate, service type, status for clearer calendar labels.
+			// Compose title with plate and status for clearer calendar labels.
 			const titleParts = [];
 			if (event.license_plate) titleParts.push(event.license_plate);
-			if (event.service_type) titleParts.push(event.service_type);
 			if (event.status) titleParts.push(event.status);
 			event.title = titleParts.join(" · ") || event.name;
 			delete event.__has_time_range;
@@ -62,13 +61,14 @@ frappe.views.calendar["Service Appointment"] = {
 	},
 	get_css_class: function(event) {
 		const status = event.status || "";
+		// โทนสีเดียวกับ get_indicator ใน service_appointment_list.js
 		const colors = {
-			"Scheduled": "#0d6efd",
+			"Scheduled": "#6c757d",
 			"Confirmed": "#0d6efd",
 			"In Progress": "#fd7e14",
 			"Completed": "#198754",
 			"Cancelled": "#dc3545",
-			"No Show": "#6c757d",
+			"No Show": "#343a40",
 		};
 		return colors[status] || "#adb5bd";
 	}

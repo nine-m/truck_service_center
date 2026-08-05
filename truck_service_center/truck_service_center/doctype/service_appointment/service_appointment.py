@@ -4,7 +4,7 @@
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import add_to_date, flt, format_datetime, get_datetime, now_datetime
+from frappe.utils import add_to_date, flt, format_datetime, get_datetime, getdate, now_datetime
 
 
 class ServiceAppointment(Document):
@@ -225,6 +225,16 @@ class ServiceAppointment(Document):
 		frappe.msgprint(f"สร้าง Service Order: {service_order.name}")
 
 		return service_order.name
+
+
+@frappe.whitelist()
+def get_calendar_events(doctype, start, end, field_map, filters=None, fields=None):
+	"""Wrapper รอบ frappe.desk.calendar.get_events — ฝั่ง client ส่ง start/end เป็น
+	datetime string ตาม system timezone แต่ get_events ประกาศรับ datetime.date
+	ทำให้โดน pydantic ปฏิเสธเมื่อเวลาไม่ใช่ 00:00:00 จึงตัดเวลาทิ้งก่อนส่งต่อ"""
+	from frappe.desk.calendar import get_events
+
+	return get_events(doctype, getdate(start), getdate(end), field_map, filters, fields)
 
 
 @frappe.whitelist()
