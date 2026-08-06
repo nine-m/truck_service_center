@@ -17,6 +17,10 @@ MATERIAL_ISSUE_LOCKED_NUMERIC_FIELDS = {
 	"rate": "ราคา",
 }
 
+# ฟิลด์ที่ต้องกรอกก่อน submit ใบสั่งงาน (นอกเหนือจาก reqd ในฟอร์ม) — ใช้ label จาก meta
+# จะได้ไม่ต้องเขียนชื่อภาษาไทยซ้ำกับที่ตั้งไว้ใน doctype
+SUBMIT_REQUIRED_FIELDS = ("fuel_level_in", "fuel_level_out", "technician")
+
 
 def get_default_selling_rate(item_code):
 	"""ราคาขายเริ่มต้นของสินค้า: Item Price (selling) → standard_rate → valuation_rate
@@ -444,10 +448,25 @@ class ServiceOrder(Document):
 		if flt(self.actual_time) <= 0:
 			frappe.throw("กรุณาระบุเวลาทำงานจริงที่มากกว่า 0")
 
-		# 4. ตรวจสอบ Material Issue ของ stock items
+		# 4. ข้อมูลรับรถ/ผู้รับผิดชอบต้องครบ
+		self.validate_required_fields_for_submit()
+
+		# 5. ตรวจสอบ Material Issue ของ stock items
 		self.validate_material_issues_for_submit()
 
 		self.status = "Completed"
+
+	def validate_required_fields_for_submit(self):
+		"""ฟิลด์ที่ต้องกรอกก่อนปิดงาน — รวบให้ครบแล้วฟ้องทีเดียว จะได้ไม่ต้องแก้ทีละรอบ"""
+		missing = [
+			self.meta.get_label(fieldname) for fieldname in SUBMIT_REQUIRED_FIELDS if not self.get(fieldname)
+		]
+
+		if missing:
+			frappe.throw(
+				"กรุณาระบุข้อมูลต่อไปนี้ก่อน Submit:<br>" + "<br>".join(f"• {label}" for label in missing),
+				title="ข้อมูลไม่ครบ",
+			)
 
 	def validate_material_issues_for_submit(self):
 		"""กัน submit ถ้าใบเบิกอะไหล่ยังไม่ครบหรือไม่ตรงกับรายการในใบสั่งงาน"""

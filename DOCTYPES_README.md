@@ -84,12 +84,12 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 - เงิน/ภาษี: `total_parts_amount`, `labor_charges`, `tax_type` (ราคารวม VAT/ราคาแยก VAT/ไม่คิด VAT), `vat_rate`, `discount_amount`, `net_total`, `tax_amount`, `total_amount`
 - การชำระเงิน: `payment_status` (Unpaid/Partially Paid/Paid), `payment_method`, `paid_amount`, `outstanding_amount` — สามฟิลด์สถานะ/ยอดเป็น **read-only ระบบคุมเอง**: รับชำระผ่านปุ่ม "รับชำระเงิน" (สร้าง Payment Entry จาก Sales Invoice) แล้ว doc_events ใน hooks.py ซิงค์ยอดจากใบแจ้งหนี้กลับมาอัตโนมัติเมื่อ Payment Entry / Journal Entry / Sales Invoice ถูก submit หรือ cancel (`sync_payment_from_sales_invoice`)
 - ภาษีหัก ณ ที่จ่าย (WHT): `apply_wht` (ติ๊กอัตโนมัติเมื่อลูกค้าเป็นนิติบุคคล/Company), `wht_rate` (default 3%), `wht_base` (ค่าแรงเท่านั้น = แยกบิล / ทั้งใบ = จ้างเหมา), `wht_amount`, `net_payment_amount` (ยอดรับชำระสุทธิ), `wht_certificate_no/date` (บันทึกใบ 50 ทวิ ได้หลัง submit) — คำนวณจาก**ยอดก่อน VAT** ใน `calculate_wht()` (เฉลี่ยส่วนลดท้ายบิลตามสัดส่วน, ถอด VAT ถ้าราคารวม VAT) และตอนกด "รับชำระเงิน" ระบบใส่แถวหัก (Deductions → `wht_account` จาก Settings) ใน Payment Entry ให้: รับเงินจริงน้อยลงแต่ปิดหนี้เต็มจำนวน (ถ้ามีการชำระบางส่วนก่อนแล้วต้องใส่ deduction เอง)
-- ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
+- ลิงก์ ERPNext: `sales_invoice` (ใบเบิกอะไหล่ผูกรายแถวที่ `service_items.material_issue` ไม่ใช่ระดับเอกสาร)
 - สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 
 **Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type; แถวอะไหล่ที่ไม่มีราคาใช้ `get_default_selling_rate()`: Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย), `calculate_wht()`, `update_payment_status()`, `update_material_issue_status()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `revert_vehicle_info()` (**on_cancel** — คืนข้อมูลบริการของรถจากใบงานที่เหลือ หรือล้างถ้าไม่มี), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
 
-**Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue`, `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบ)
+**Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue` (ใบเบิก → ใบงาน), `push_to_material_issue` (ใบงาน → ใบเบิก Draft), `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบหรือจำนวนไม่ตรง)
 **Whitelisted อื่น:** `get_item_rate`, `get_item_by_barcode`, `receive_vehicle`, `get_service_type_items`, `create_sales_invoice_from_service_order`
 
 **Workflow:**
@@ -97,6 +97,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 2. เลือกแพ็คเกจ (auto-load บริการ+อะไหล่) หรือเพิ่ม service_types / service_items เอง (พิมพ์หรือยิงบาร์โค้ด)
 3. เบิกอะไหล่ด้วยปุ่ม "Create Material Issue" (สร้าง Stock Entry ประเภท Material Issue) — ต้องกดเอง ไม่มีการสร้างอัตโนมัติ และต้อง submit ใบเบิกให้ครบก่อนจึงจะ submit ใบสั่งงานได้
 4. Submit → ปิดใบนัดที่ผูกอยู่ + อัปเดตข้อมูลรถ
+   เงื่อนไขก่อน submit (`before_submit`): มีประเภทบริการอย่างน้อย 1 รายการ, ยอดรวม > 0, เวลาทำงานจริง > 0, กรอก **สถานะน้ำมันรับเข้า/ออก** และ **ช่างผู้รับผิดชอบ 1** (`SUBMIT_REQUIRED_FIELDS`), และใบเบิกอะไหล่ครบ+จำนวนตรง
 5. สร้าง Sales Invoice (auto-submit ได้ตาม Settings)
 6. กด "รับชำระเงิน" → สร้าง Payment Entry (draft) จากใบแจ้งหนี้ → ตรวจสอบ/Submit ที่หน้า Payment Entry → สถานะชำระเงินบน Service Order อัปเดตเอง (จะกดซ้ำได้จนกว่าจะ Paid — รองรับชำระบางส่วน)
 
