@@ -929,10 +929,11 @@ def create_material_issue(service_order, item_rows=None):
 				"cost_center": item.cost_center or settings.default_cost_center,
 				"expense_account": item.expense_account or settings.default_expense_account,
 				"basic_rate": item.rate,
-				"custom_service_order_item_idx": idx,  # เก็บ index เพื่อ link กลับ
+				# เก็บ name ของแถวเพื่อ link กลับ — ห้ามใช้ index เพราะเลื่อนได้เมื่อมีการลบแถว
+				"custom_service_order_item": item.name,
 			},
 		)
-		items_added.append(idx)
+		items_added.append(item)
 
 	if not stock_entry.items:
 		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
@@ -940,9 +941,9 @@ def create_material_issue(service_order, item_rows=None):
 	stock_entry.insert()
 
 	# อัพเดท Material Issue reference ใน Service Order Items
-	for idx in items_added:
-		doc.service_items[idx].material_issue = stock_entry.name
-		doc.service_items[idx].material_issue_status = "Draft"
+	for item in items_added:
+		item.material_issue = stock_entry.name
+		item.material_issue_status = "Draft"
 
 	doc.save()
 
@@ -967,29 +968,37 @@ def sync_material_issue(service_order, material_issue):
 	if stock_entry.docstatus != 0:
 		frappe.throw("สามารถ Sync ได้เฉพาะ Material Issue ที่อยู่ในสถานะ Draft เท่านั้น")
 
-	# อัพเดทข้อมูลจาก Stock Entry กลับมายัง Service Order Items
+	if stock_entry.get("custom_service_order") != service_order:
+		frappe.throw(f"ใบเบิก {material_issue} ไม่ได้เป็นของใบสั่งงาน {service_order}")
+
+	# จับคู่ด้วย name ของแถว ไม่ใช่ลำดับ — ลำดับเลื่อนได้ถ้ามีการลบแถวหลังสร้างใบเบิก
+	rows_by_name = {row.name: row for row in doc.service_items}
 	updated_items = []
 
 	for stock_item in stock_entry.items:
-		# หา item ใน Service Order ที่ตรงกัน
-		idx = stock_item.get("custom_service_order_item_idx")
+		service_item = rows_by_name.get(stock_item.get("custom_service_order_item"))
+		if not service_item:
+			continue
 
-		if idx is not None and idx < len(doc.service_items):
-			service_item = doc.service_items[idx]
+		# ซิงค์เฉพาะจำนวนกับคลัง — ห้ามดึง basic_rate กลับมาเป็น rate เด็ดขาด
+		# ERPNext เขียนทับ basic_rate ของบรรทัดที่มี s_warehouse ด้วยราคาทุนทุกครั้งที่ save
+		# (set_rate_for_outgoing_items) ดึงกลับมาจะกลายเป็นขายเท่าทุน
+		service_item.qty = stock_item.qty
+		service_item.warehouse = stock_item.s_warehouse
 
-			# อัพเดทข้อมูล
-			service_item.qty = stock_item.qty
-			service_item.rate = stock_item.basic_rate or stock_item.valuation_rate
-			service_item.warehouse = stock_item.s_warehouse
+		updated_items.append(service_item.item_code)
 
-			updated_items.append(service_item.item_code)
+	if not updated_items:
+		# ใบเบิกที่สร้างก่อนแอปมีฟิลด์เชื่อมจะไม่มี custom_service_order_item ให้จับคู่
+		frappe.throw(
+			f"ไม่สามารถจับคู่รายการในใบเบิก {material_issue} กับใบสั่งงานได้<br>"
+			"ใบเบิกนี้อาจถูกสร้างก่อนระบบมีฟิลด์เชื่อมรายการ กรุณาลบใบเบิกแล้วสร้างใหม่",
+			title="Sync ไม่สำเร็จ",
+		)
 
 	doc.save()
 
-	if updated_items:
-		frappe.msgprint(f"Sync ข้อมูลจาก Material Issue เรียบร้อย: {', '.join(updated_items)}")
-	else:
-		frappe.msgprint("ไม่พบรายการที่ต้อง Sync", indicator="orange")
+	frappe.msgprint(f"Sync ข้อมูลจาก Material Issue เรียบร้อย: {', '.join(updated_items)}")
 
 	return True
 

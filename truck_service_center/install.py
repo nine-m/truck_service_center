@@ -2,6 +2,38 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+# ฟิลด์ที่แอปเพิ่มบน doctype ของ ERPNext เพื่อเชื่อมใบเบิกอะไหล่กลับมายังใบสั่งงาน
+# ทั้งคู่ระบบเป็นคนเขียน (create_material_issue) ผู้ใช้ไม่ต้องกรอกเอง
+CUSTOM_FIELDS = {
+	"Stock Entry": [
+		{
+			"fieldname": "custom_service_order",
+			"label": "ใบสั่งงาน",
+			"fieldtype": "Link",
+			"options": "Service Order",
+			"insert_after": "stock_entry_type",
+			"read_only": 1,
+			"no_copy": 1,  # amend ใบเบิกแล้วต้องไม่ลากใบงานเดิมติดไปด้วย
+			"print_hide": 1,
+		}
+	],
+	"Stock Entry Detail": [
+		{
+			"fieldname": "custom_service_order_item",
+			# เก็บ name ของแถวใน Service Order Item — ใช้ Data ไม่ใช่ Link เพราะ Link
+			# ไปหา child doctype ไม่มี UI รองรับ และจะไปพัวพันกับ link check ตอน cancel
+			"label": "แถวอะไหล่ในใบสั่งงาน",
+			"fieldtype": "Data",
+			"insert_after": "expense_account",
+			"read_only": 1,
+			"no_copy": 1,
+			"hidden": 1,
+			"print_hide": 1,
+		}
+	],
+}
 
 # ยี่ห้อรถบรรทุก/รถเพื่อการพาณิชย์ที่จำหน่ายในประเทศไทย
 DEFAULT_VEHICLE_BRANDS = [
@@ -35,6 +67,7 @@ DEFAULT_ROLES = [
 
 
 def after_install():
+	create_custom_fields(CUSTOM_FIELDS)
 	create_default_roles()
 	create_default_vehicle_brands()
 
