@@ -923,25 +923,12 @@ def create_material_issue(service_order, item_rows=None):
 		if not is_stock_item:
 			continue
 
-		# เลือกคลัง
-		s_warehouse = item.warehouse or settings.default_source_warehouse or settings.default_warehouse
-		if not s_warehouse:
+		line = build_material_issue_line(item, settings)
+		if not line["s_warehouse"]:
 			frappe.msgprint(f"ไม่พบคลังสินค้าสำหรับ {item.item_code}", indicator="orange")
 			continue
 
-		stock_entry.append(
-			"items",
-			{
-				"item_code": item.item_code,
-				"qty": item.qty,
-				"s_warehouse": s_warehouse,
-				"cost_center": item.cost_center or settings.default_cost_center,
-				"expense_account": item.expense_account or settings.default_expense_account,
-				"basic_rate": item.rate,
-				# เก็บ name ของแถวเพื่อ link กลับ — ห้ามใช้ index เพราะเลื่อนได้เมื่อมีการลบแถว
-				"custom_service_order_item": item.name,
-			},
-		)
+		stock_entry.append("items", line)
 		items_added.append(item)
 
 	if not stock_entry.items:
@@ -961,6 +948,110 @@ def create_material_issue(service_order, item_rows=None):
 	return stock_entry.name
 
 
+def build_material_issue_line(item, settings):
+	"""แปลงแถวอะไหล่ในใบสั่งงานเป็นบรรทัดของ Stock Entry
+
+	ใช้ร่วมกันระหว่างตอนสร้างใบเบิกกับตอนส่งการแก้ไขไปใบเบิก จะได้ไม่ตั้งค่าคนละแบบ
+	ผู้เรียกต้องเช็คเองว่า s_warehouse ว่างหรือไม่
+	"""
+	return {
+		"item_code": item.item_code,
+		"qty": item.qty,
+		"s_warehouse": item.warehouse or settings.default_source_warehouse or settings.default_warehouse,
+		"cost_center": item.cost_center or settings.default_cost_center,
+		"expense_account": item.expense_account or settings.default_expense_account,
+		"basic_rate": item.rate,
+		# เก็บ name ของแถวเพื่อ link กลับ — ห้ามใช้ index เพราะเลื่อนได้เมื่อมีการลบแถว
+		"custom_service_order_item": item.name,
+	}
+
+
+def get_editable_material_issue(service_order, material_issue):
+	"""ดึงใบเบิกที่ยังแก้ไข/ซิงค์ได้ — ต้องเป็น Draft และเป็นของใบสั่งงานนี้"""
+	stock_entry = frappe.get_doc("Stock Entry", material_issue)
+
+	if stock_entry.docstatus != 0:
+		frappe.throw("สามารถ Sync ได้เฉพาะ Material Issue ที่อยู่ในสถานะ Draft เท่านั้น")
+
+	if stock_entry.get("custom_service_order") != service_order:
+		frappe.throw(f"ใบเบิก {material_issue} ไม่ได้เป็นของใบสั่งงาน {service_order}")
+
+	return stock_entry
+
+
+@frappe.whitelist()
+def push_to_material_issue(service_order, material_issue):
+	"""แก้ใบเบิก Draft ให้ตรงกับใบสั่งงาน (ทิศทางตรงข้ามกับ sync_material_issue)
+
+	แถวที่ใบเบิกยัง Draft ยังแก้จำนวนได้ พอแก้แล้วใบเบิกไม่ตามจะ submit ใบงานไม่ได้
+	(validate_material_issues_for_submit) ฟังก์ชันนี้คือทางแก้ฝั่งตรงข้ามของปุ่ม Sync
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
+	stock_entry = get_editable_material_issue(service_order, material_issue)
+	settings = frappe.get_single("Truck Service Center Settings")
+
+	# เหลือเฉพาะแถวที่ยังชี้มาที่ใบเบิกนี้ — แถวที่ถูกลบหรือย้ายไปใบอื่นจะไม่อยู่ใน dict
+	pending_rows = {
+		row.name: row for row in doc.service_items if row.material_issue == material_issue and row.name
+	}
+
+	changes = []
+	kept_lines = []
+
+	for stock_item in stock_entry.items:
+		service_item = pending_rows.pop(stock_item.get("custom_service_order_item"), None)
+
+		if not service_item:
+			# แถวในใบงานถูกลบไปแล้ว บรรทัดนี้จึงไม่มีเจ้าของ
+			changes.append(f"ลบ {stock_item.item_code}")
+			continue
+
+		if flt(stock_item.qty) != flt(service_item.qty):
+			changes.append(f"{service_item.item_code}: จำนวน {flt(stock_item.qty)} → {flt(service_item.qty)}")
+			stock_item.qty = service_item.qty
+
+		if service_item.warehouse and stock_item.s_warehouse != service_item.warehouse:
+			changes.append(f"{service_item.item_code}: คลัง → {service_item.warehouse}")
+			stock_item.s_warehouse = service_item.warehouse
+
+		kept_lines.append(stock_item)
+
+	# แถวที่ยังผูกกับใบเบิกนี้แต่บรรทัดหายไป (เช่นถูกลบออกจากใบเบิกด้วยมือ) → เพิ่มกลับ
+	new_lines = []
+	for service_item in pending_rows.values():
+		line = build_material_issue_line(service_item, settings)
+		if not line["s_warehouse"]:
+			frappe.msgprint(f"ไม่พบคลังสินค้าสำหรับ {service_item.item_code}", indicator="orange")
+			continue
+		new_lines.append(line)
+		changes.append(f"เพิ่ม {service_item.item_code}")
+
+	if not changes:
+		frappe.msgprint("ใบเบิกตรงกับใบสั่งงานอยู่แล้ว ไม่มีอะไรต้องแก้")
+		return True
+
+	if not kept_lines and not new_lines:
+		frappe.throw(
+			f"การแก้ตามใบสั่งงานจะทำให้ใบเบิก {material_issue} ไม่เหลือรายการเลย<br>กรุณายกเลิกหรือลบใบเบิกนี้แทน",
+			title="แก้ใบเบิกไม่ได้",
+		)
+
+	stock_entry.items = kept_lines
+	for idx, line in enumerate(kept_lines, start=1):
+		line.idx = idx
+	for line in new_lines:
+		stock_entry.append("items", line)
+
+	stock_entry.save()
+
+	frappe.msgprint(
+		f"แก้ใบเบิก {material_issue} ตามใบสั่งงานเรียบร้อย:<br>" + "<br>".join(f"• {change}" for change in changes)
+	)
+
+	return True
+
+
 @frappe.whitelist()
 def sync_material_issue(service_order, material_issue):
 	"""ซิงค์ข้อมูลจาก Material Issue กลับมายัง Service Order
@@ -971,14 +1062,7 @@ def sync_material_issue(service_order, material_issue):
 	"""
 	doc = frappe.get_doc("Service Order", service_order)
 	doc.check_permission("write")
-	stock_entry = frappe.get_doc("Stock Entry", material_issue)
-
-	# ตรวจสอบว่า Material Issue ยัง Draft อยู่หรือไม่
-	if stock_entry.docstatus != 0:
-		frappe.throw("สามารถ Sync ได้เฉพาะ Material Issue ที่อยู่ในสถานะ Draft เท่านั้น")
-
-	if stock_entry.get("custom_service_order") != service_order:
-		frappe.throw(f"ใบเบิก {material_issue} ไม่ได้เป็นของใบสั่งงาน {service_order}")
+	stock_entry = get_editable_material_issue(service_order, material_issue)
 
 	# จับคู่ด้วย name ของแถว ไม่ใช่ลำดับ — ลำดับเลื่อนได้ถ้ามีการลบแถวหลังสร้างใบเบิก
 	rows_by_name = {row.name: row for row in doc.service_items}

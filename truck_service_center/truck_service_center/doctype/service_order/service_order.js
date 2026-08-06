@@ -1485,17 +1485,26 @@ function show_material_issue_summary(frm) {
 							issue.item_count +
 							"</small>";
 
-						// ปุ่ม Sync สำหรับ Draft
+						// ใบเบิก Draft ยังแก้ได้ทั้งสองฝั่ง จึงต้องให้ผู้ใช้เลือกทิศทางเอง
 						if (issue.status === "Draft") {
+							html += '<br><div class="btn-group" style="margin-top: 5px;">';
 							html +=
-								'<br><button class="btn btn-xs btn-default" style="margin-top: 5px;" ';
-							html +=
+								'<button class="btn btn-xs btn-default" title="เอาจำนวนในใบเบิกมาทับใบสั่งงาน" ' +
 								"onclick=\"sync_material_issue('" +
 								frm.doc.name +
 								"', '" +
 								issue.name +
 								"')\">";
-							html += '<i class="fa fa-refresh"></i> Sync</button>';
+							html += '<i class="fa fa-arrow-left"></i> ดึงจากใบเบิก</button>';
+							html +=
+								'<button class="btn btn-xs btn-default" title="แก้ใบเบิกให้ตรงกับใบสั่งงาน" ' +
+								"onclick=\"push_to_material_issue('" +
+								frm.doc.name +
+								"', '" +
+								issue.name +
+								"')\">";
+							html += 'ส่งไปใบเบิก <i class="fa fa-arrow-right"></i></button>';
+							html += "</div>";
 						}
 
 						html += "</div></div></div>";
@@ -1562,6 +1571,22 @@ window.sync_material_issue = function (service_order, material_issue) {
 		callback: function (r) {
 			if (r.message) {
 				// Reload เพื่อ update สถานะ Material Issue
+				cur_frm.reload_doc();
+			}
+		},
+	});
+};
+
+// ทิศทางตรงข้าม: แก้ใบเบิก Draft ให้ตรงกับใบสั่งงาน
+window.push_to_material_issue = function (service_order, material_issue) {
+	frappe.call({
+		method: "truck_service_center.truck_service_center.doctype.service_order.service_order.push_to_material_issue",
+		args: {
+			service_order: service_order,
+			material_issue: material_issue,
+		},
+		callback: function (r) {
+			if (r.message) {
 				cur_frm.reload_doc();
 			}
 		},
