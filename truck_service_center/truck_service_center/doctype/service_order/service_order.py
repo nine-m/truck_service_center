@@ -6,6 +6,17 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import cint, flt, now_datetime
 
+# ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
+# (lock_rows_with_submitted_material_issue ใน service_order.js)
+MATERIAL_ISSUE_LOCKED_TEXT_FIELDS = {
+	"item_code": "รหัสสินค้า",
+	"warehouse": "คลังสินค้า",
+}
+MATERIAL_ISSUE_LOCKED_NUMERIC_FIELDS = {
+	"qty": "จำนวน",
+	"rate": "ราคา",
+}
+
 
 def get_default_selling_rate(item_code):
 	"""ราคาขายเริ่มต้นของสินค้า: Item Price (selling) → standard_rate → valuation_rate
@@ -65,7 +76,11 @@ class ServiceOrder(Document):
 			self.shipping_address = ""
 
 	def check_material_issue_items(self):
-		"""ตรวจสอบว่าไม่มีการลบแถวที่มี Material Issue ที่ submit ไปแล้ว"""
+		"""ห้ามลบหรือแก้แถวอะไหล่ที่ใบเบิกถูก submit ไปแล้ว
+
+		ต้องตรวจที่เอกสารแม่ เพราะ Frappe ไม่เรียก validate ของ child doctype controller
+		(run_before_save_methods เรียก run_method("validate") ของ parent เท่านั้น)
+		"""
 		if self.is_new():
 			return
 
@@ -74,26 +89,45 @@ class ServiceOrder(Document):
 		if not old_doc:
 			return
 
-		# สร้าง set ของ item names ที่มีอยู่ในเอกสารปัจจุบัน
-		current_item_names = {item.name for item in self.service_items if item.name}
+		current_rows = {item.name: item for item in self.service_items if item.name}
 
-		# ตรวจสอบแต่ละ item ในเอกสารเดิม
 		for old_item in old_doc.service_items:
-			# ถ้า item ถูกลบออก (ไม่อยู่ใน current_item_names)
-			if old_item.name and old_item.name not in current_item_names:
-				# ตรวจสอบว่า item นี้มี Material Issue ที่ submit แล้วหรือไม่
-				if old_item.material_issue:
-					material_issue_status = frappe.db.get_value(
-						"Stock Entry", old_item.material_issue, "docstatus"
-					)
+			if not old_item.name or not old_item.material_issue:
+				continue
 
-					if material_issue_status == 1:
-						frappe.throw(
-							f"ไม่สามารถลบรายการ '{old_item.item_name or old_item.item_code}' ได้ "
-							f"เนื่องจากใบเบิกอะไหล่ {old_item.material_issue} ถูก submit ไปแล้ว<br>"
-							f"กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบรายการ",
-							title="ไม่สามารถลบรายการได้",
-						)
+			# ล็อกเฉพาะแถวที่ใบเบิก submit แล้ว — ใบเบิก Draft ยังแก้ตามกันได้
+			if frappe.db.get_value("Stock Entry", old_item.material_issue, "docstatus") != 1:
+				continue
+
+			label = old_item.item_name or old_item.item_code
+			row = current_rows.get(old_item.name)
+
+			if row is None:
+				frappe.throw(
+					f"ไม่สามารถลบรายการ '{label}' ได้ "
+					f"เนื่องจากใบเบิกอะไหล่ {old_item.material_issue} ถูก submit ไปแล้ว<br>"
+					f"กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการลบรายการ",
+					title="ไม่สามารถลบรายการได้",
+				)
+
+			changed_fields = [
+				th_label
+				for field, th_label in MATERIAL_ISSUE_LOCKED_TEXT_FIELDS.items()
+				if (old_item.get(field) or "") != (row.get(field) or "")
+			]
+			changed_fields += [
+				th_label
+				for field, th_label in MATERIAL_ISSUE_LOCKED_NUMERIC_FIELDS.items()
+				if flt(old_item.get(field)) != flt(row.get(field))
+			]
+
+			if changed_fields:
+				frappe.throw(
+					f"ไม่สามารถแก้ {', '.join(changed_fields)} ของรายการ '{label}' ได้ "
+					f"เนื่องจากใบเบิกอะไหล่ {old_item.material_issue} ถูก submit ไปแล้ว<br>"
+					f"กรุณายกเลิกใบเบิกอะไหล่ก่อนทำการแก้ไข",
+					title="ไม่สามารถแก้ไขรายการได้",
+				)
 
 	def apply_service_packages(self):
 		"""นำรายการบริการและอะไหล่จากแพ็คเกจมาใส่อัตโนมัติ (รองรับหลาย package)
