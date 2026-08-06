@@ -89,7 +89,6 @@
   "recommendations",
   "references_section",
   "sales_invoice",
-  "stock_entry",
   "column_break_7",
   "amended_from"
  ],
@@ -547,13 +546,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "stock_entry",
-   "fieldtype": "Link",
-   "label": "Stock Entry",
-   "options": "Stock Entry",
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_7",
    "fieldtype": "Column Break"
   },
@@ -636,7 +628,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-02 03:38:03.258218",
+ "modified": "2026-08-06 05:17:51.919389",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

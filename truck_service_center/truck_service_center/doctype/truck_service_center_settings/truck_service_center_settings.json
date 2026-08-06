@@ -14,7 +14,6 @@
   "column_break_1",
   "labor_cost_center",
   "stock_settings_section",
-  "auto_create_stock_entry",
   "default_source_warehouse",
   "column_break_2",
   "default_expense_account",
@@ -95,12 +94,6 @@
    "fieldname": "stock_settings_section",
    "fieldtype": "Section Break",
    "label": "การตั้งค่าคลังสินค้า"
-  },
-  {
-   "fieldname": "auto_create_stock_entry",
-   "fieldtype": "Check",
-   "label": "สร้าง Stock Entry อัตโนมัติเมื่อ Submit",
-   "default": "1"
   },
   {
    "fieldname": "default_source_warehouse",
@@ -270,7 +263,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-02 03:38:03.258218",
+ "modified": "2026-08-06 05:17:51.919389",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",

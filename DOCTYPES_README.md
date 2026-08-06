@@ -87,7 +87,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 - ลิงก์ ERPNext: `sales_invoice`, `stock_entry`
 - สถานะ: `status` (Draft/In Progress/Completed/Cancelled/On Hold)
 
-**Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type; แถวอะไหล่ที่ไม่มีราคาใช้ `get_default_selling_rate()`: Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย), `calculate_wht()`, `update_payment_status()`, `create_stock_entry()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `revert_vehicle_info()` (**on_cancel** — คืนข้อมูลบริการของรถจากใบงานที่เหลือ หรือล้างถ้าไม่มี), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
+**Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type; แถวอะไหล่ที่ไม่มีราคาใช้ `get_default_selling_rate()`: Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย), `calculate_wht()`, `update_payment_status()`, `update_material_issue_status()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `revert_vehicle_info()` (**on_cancel** — คืนข้อมูลบริการของรถจากใบงานที่เหลือ หรือล้างถ้าไม่มี), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
 
 **Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue`, `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบ)
 **Whitelisted อื่น:** `get_item_rate`, `get_item_by_barcode`, `receive_vehicle`, `get_service_type_items`, `create_sales_invoice_from_service_order`
@@ -95,7 +95,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 **Workflow:**
 1. สร้าง Service Order (เลือกรถ → ดึงข้อมูลลูกค้า/รถ/ที่อยู่อัตโนมัติ) หรือถูกสร้างจาก Appointment/Quotation
 2. เลือกแพ็คเกจ (auto-load บริการ+อะไหล่) หรือเพิ่ม service_types / service_items เอง (พิมพ์หรือยิงบาร์โค้ด)
-3. เบิกอะไหล่ (สร้าง Stock Entry / Material Issue) — ตาม Settings อาจสร้างอัตโนมัติเมื่อ submit
+3. เบิกอะไหล่ด้วยปุ่ม "Create Material Issue" (สร้าง Stock Entry ประเภท Material Issue) — ต้องกดเอง ไม่มีการสร้างอัตโนมัติ และต้อง submit ใบเบิกให้ครบก่อนจึงจะ submit ใบสั่งงานได้
 4. Submit → ปิดใบนัดที่ผูกอยู่ + อัปเดตข้อมูลรถ
 5. สร้าง Sales Invoice (auto-submit ได้ตาม Settings)
 6. กด "รับชำระเงิน" → สร้าง Payment Entry (draft) จากใบแจ้งหนี้ → ตรวจสอบ/Submit ที่หน้า Payment Entry → สถานะชำระเงินบน Service Order อัปเดตเอง (จะกดซ้ำได้จนกว่าจะ Paid — รองรับชำระบางส่วน)
@@ -122,7 +122,7 @@ seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointme
 
 ## Truck Service Center Settings (singleton)
 ควบคุมพฤติกรรมการตัดสต็อก/ออกบิล/ภาษีทั้งระบบ — ดูรายละเอียดที่ [SETTINGS_README.md](SETTINGS_README.md)
-ประเด็นสำคัญ: ต้องตั้ง **Labor Item** ก่อนจึงจะออก Sales Invoice ที่มีค่าแรงได้ (มีปุ่ม "Create Labor Item" / whitelisted `create_labor_item`); toggle `auto_create_stock_entry` และ `auto_submit_sales_invoice`; เทมเพลตภาษี (`vat_inclusive_template` / `vat_exclusive_template`) จับคู่กับ `tax_type` ของเอกสารผ่าน `get_tax_template_for_type()`
+ประเด็นสำคัญ: ต้องตั้ง **Labor Item** ก่อนจึงจะออก Sales Invoice ที่มีค่าแรงได้ (มีปุ่ม "Create Labor Item" / whitelisted `create_labor_item`); toggle `auto_submit_sales_invoice`; เทมเพลตภาษี (`vat_inclusive_template` / `vat_exclusive_template`) จับคู่กับ `tax_type` ของเอกสารผ่าน `get_tax_template_for_type()`
 
 ---
 

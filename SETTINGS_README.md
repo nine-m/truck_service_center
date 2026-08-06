@@ -32,9 +32,7 @@
 
 ### การตั้งค่าคลังสินค้า (Stock Settings)
 
-#### สร้าง Stock Entry อัตโนมัติเมื่อ Submit
-- ✅ เปิด: สร้าง Stock Entry อัตโนมัติเมื่อ Submit Service Order
-- ❌ ปิด: ต้องสร้าง Stock Entry เอง
+> การเบิกอะไหล่ทำผ่านปุ่ม **Create Material Issue** บน Service Order เท่านั้น ระบบไม่สร้าง Stock Entry ให้อัตโนมัติตอน Submit
 
 #### คลังต้นทางเริ่มต้น (Default Source Warehouse)
 - คลังที่จะตัดสต็อกอะไหล่

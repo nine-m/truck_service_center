@@ -549,6 +549,29 @@ frappe.ui.form.on("Service Order", {
 					return;
 				}
 
+				// จำนวนในใบสั่งงานไม่ตรงกับที่เบิกจริง หรือใบเบิกไม่มีบรรทัดที่ตรงกัน
+				// (แก้เองไม่ได้ ต้องให้ผู้ใช้ไปจัดการก่อน)
+				let mismatches = (result.qty_mismatches || []).map(function (row) {
+					return (
+						"• " + row.label + ": ใบสั่งงาน " + row.ordered + " / เบิกจริง " + row.issued
+					);
+				});
+				let missing = (result.missing_lines || []).map(function (row) {
+					return "• " + row.label + " → ไม่พบบรรทัดใน " + row.material_issue;
+				});
+
+				if (mismatches.length > 0 || missing.length > 0) {
+					frappe.msgprint({
+						title: __("ไม่สามารถ Submit ได้"),
+						indicator: "red",
+						message: __(
+							"ใบเบิกอะไหล่ไม่ตรงกับรายการในใบสั่งงาน:<br>{0}<br><br>กรุณาแก้จำนวนให้ตรงกัน หรือยกเลิกใบเบิกแล้วเบิกใหม่",
+							[mismatches.concat(missing).join("<br>")]
+						),
+					});
+					return;
+				}
+
 				// มี Material Issues ที่ยังไม่ได้ submit
 				if (Object.keys(result.unsubmitted_mis).length > 0) {
 					let mi_list = Object.entries(result.unsubmitted_mis)
