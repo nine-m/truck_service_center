@@ -132,21 +132,26 @@ after_install = "truck_service_center.install.after_install"
 # ---------------
 # Hook on document methods and events
 
-# ซิงค์สถานะการชำระเงินของ Service Order เมื่อเอกสารบัญชีที่ตัดหนี้ Sales Invoice เปลี่ยนสถานะ
-_payment_sync = "truck_service_center.truck_service_center.doctype.service_order.service_order"
+# ซิงค์สถานะกลับมายัง Service Order เมื่อเอกสารที่ผูกอยู่เปลี่ยนสถานะ:
+# เอกสารบัญชีที่ตัดหนี้ Sales Invoice → สถานะการชำระเงิน, ใบเบิกอะไหล่ → สถานะใบเบิกรายแถว
+_service_order = "truck_service_center.truck_service_center.doctype.service_order.service_order"
 
 doc_events = {
 	"Payment Entry": {
-		"on_submit": f"{_payment_sync}.on_payment_entry_change",
-		"on_cancel": f"{_payment_sync}.on_payment_entry_change",
+		"on_submit": f"{_service_order}.on_payment_entry_change",
+		"on_cancel": f"{_service_order}.on_payment_entry_change",
 	},
 	"Journal Entry": {
-		"on_submit": f"{_payment_sync}.on_journal_entry_change",
-		"on_cancel": f"{_payment_sync}.on_journal_entry_change",
+		"on_submit": f"{_service_order}.on_journal_entry_change",
+		"on_cancel": f"{_service_order}.on_journal_entry_change",
 	},
 	"Sales Invoice": {
-		"on_submit": f"{_payment_sync}.on_sales_invoice_change",
-		"on_cancel": f"{_payment_sync}.on_sales_invoice_change",
+		"on_submit": f"{_service_order}.on_sales_invoice_change",
+		"on_cancel": f"{_service_order}.on_sales_invoice_change",
+	},
+	"Stock Entry": {
+		"on_submit": f"{_service_order}.on_stock_entry_change",
+		"on_cancel": f"{_service_order}.on_stock_entry_change",
 	},
 }
 

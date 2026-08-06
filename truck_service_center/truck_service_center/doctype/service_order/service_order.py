@@ -4,7 +4,7 @@
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import flt, now_datetime
+from frappe.utils import cint, flt, now_datetime
 
 
 def get_default_selling_rate(item_code):
@@ -1252,3 +1252,48 @@ def on_journal_entry_change(doc, method=None):
 def on_sales_invoice_change(doc, method=None):
 	"""doc_events hook: Sales Invoice submit/cancel → ซิงค์สถานะชำระเงินของ Service Order"""
 	sync_payment_from_sales_invoice(doc.name)
+
+
+MATERIAL_ISSUE_STATUS_BY_DOCSTATUS = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
+
+
+def sync_material_issue_status(material_issue, docstatus=None):
+	"""เขียนสถานะใบเบิกอะไหล่ลง Service Order Item ที่ผูกอยู่ (ลง DB จริง ไม่ใช่แค่หน้าจอ)
+
+	ใบเบิกถูกยกเลิก → ปลด link ทิ้งด้วย เพื่อให้แถวนั้นกลับไปเป็น "ยังไม่มีใบเบิก"
+	เบิกใหม่ได้ (create_material_issue ข้ามแถวที่มี material_issue ทุกกรณี) และไม่ค้าง
+	validate_material_issues_for_submit ที่ต้องการใบเบิกสถานะ submitted
+	"""
+	rows = frappe.get_all(
+		"Service Order Item",
+		filters={"material_issue": material_issue},
+		fields=["name", "parent"],
+	)
+	if not rows:
+		return
+
+	if docstatus is None:
+		docstatus = frappe.db.get_value("Stock Entry", material_issue, "docstatus")
+
+	if cint(docstatus) == 2:
+		values = {"material_issue": None, "material_issue_status": None}
+	else:
+		values = {"material_issue_status": MATERIAL_ISSUE_STATUS_BY_DOCSTATUS.get(cint(docstatus))}
+
+	for row in rows:
+		frappe.db.set_value("Service Order Item", row.name, values, update_modified=False)
+		# set_value ล้าง cache ให้เฉพาะ doctype ที่เขียน — เอกสารแม่ที่ get_cached_doc
+		# ใช้อยู่ยังถือแถวลูกเวอร์ชันเก่า ต้องล้างเอง
+		frappe.clear_document_cache("Service Order", row.parent)
+
+
+def on_stock_entry_change(doc, method=None):
+	"""doc_events hook: Material Issue submit/cancel → ซิงค์สถานะกลับ Service Order
+
+	on_cancel ทำงานก่อน check_no_back_links_exist() การปลด link ที่นี่จึงทำให้
+	ยกเลิกใบเบิกของใบงานที่ submit แล้วได้ (เดิมติด LinkExistsError)
+	"""
+	if doc.purpose != "Material Issue":
+		return
+
+	sync_material_issue_status(doc.name, doc.docstatus)

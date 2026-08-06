@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 truck_service_center.patches.set_notification_defaults
+truck_service_center.patches.sync_material_issue_status
