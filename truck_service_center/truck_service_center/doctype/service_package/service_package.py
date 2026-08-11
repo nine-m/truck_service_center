@@ -88,7 +88,9 @@ class ServicePackage(Document):
 			self.package_rate = total_standard - discount_amount
 		elif self.package_rate and total_standard > 0:
 			discount_amount = total_standard - flt(self.package_rate)
-			self.discount_percent = (discount_amount / total_standard) * 100
+			# ราคาแพ็คเกจเท่ากับ/สูงกว่าราคามาตรฐาน = ไม่มีส่วนลด
+			# (ไม่คิดส่วนลดติดลบ เพราะจะไปติด validate_pricing)
+			self.discount_percent = (discount_amount / total_standard) * 100 if discount_amount > 0 else 0
 		elif not self.package_rate:
 			self.package_rate = total_standard
 			self.discount_percent = 0
@@ -111,7 +113,9 @@ class ServicePackage(Document):
 				indicator="orange",
 			)
 
-		if self.total_standard_rate > 0:
+		# ตรวจความสอดคล้องเฉพาะกรณีที่มีส่วนลด
+		# ถ้าไม่ใส่ส่วนลด ให้ระบุราคาแพ็คเกจได้อิสระ (สูงกว่าราคามาตรฐานได้ แค่เตือน)
+		if self.total_standard_rate > 0 and flt(self.discount_percent) > 0:
 			calculated_rate = flt(self.total_standard_rate) * (1 - flt(self.discount_percent) / 100)
 			rate_difference = abs(flt(self.package_rate) - calculated_rate)
 			if rate_difference > 0.01:

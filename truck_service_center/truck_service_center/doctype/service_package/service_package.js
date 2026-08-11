@@ -13,7 +13,9 @@ frappe.ui.form.on('Service Package', {
 			let total = frm.doc.total_standard_rate;
 			let package_rate = frm.doc.package_rate;
 			if (package_rate > total) {
+				// ไม่มีส่วนลด (ตั้งราคาสูงกว่าราคามาตรฐาน) — เตือนอย่างเดียว ไม่บล็อก
 				frappe.msgprint({ title: __('Warning'), indicator: 'orange', message: __('ราคาแพ็คเกจสูงกว่าราคามาตรฐาน') });
+				frm.set_value('discount_percent', 0);
 				return;
 			}
 			let discount_percent = ((total - package_rate) / total) * 100;
