@@ -30,30 +30,35 @@ class ServicePackage(Document):
 				continue
 			st_doc = frappe.get_doc("Service Type", st_row.service_type)
 			for item in st_doc.items:
-				auto_parts.append({
-					"service_type": st_row.service_type,
-					"item_code": item.item_code,
-					"item_name": item.item_name,
-					"qty": item.qty,
-					"uom": item.uom,
-					"rate": item.rate,
-					"amount": flt(item.qty) * flt(item.rate),
-				})
+				auto_parts.append(
+					{
+						"service_type": st_row.service_type,
+						"item_code": item.item_code,
+						"item_name": item.item_name,
+						"qty": item.qty,
+						"uom": item.uom,
+						"rate": item.rate,
+						"amount": flt(item.qty) * flt(item.rate),
+					}
+				)
 
 		# สร้างตารางอะไหล่ใหม่ = auto + manual
 		self.package_parts = []
 		for p in auto_parts:
 			self.append("package_parts", p)
 		for p in manual_parts:
-			self.append("package_parts", {
-				"service_type": p.service_type,
-				"item_code": p.item_code,
-				"item_name": p.item_name,
-				"qty": p.qty,
-				"uom": p.uom,
-				"rate": p.rate,
-				"amount": flt(p.qty) * flt(p.rate),
-			})
+			self.append(
+				"package_parts",
+				{
+					"service_type": p.service_type,
+					"item_code": p.item_code,
+					"item_name": p.item_name,
+					"qty": p.qty,
+					"uom": p.uom,
+					"rate": p.rate,
+					"amount": flt(p.qty) * flt(p.rate),
+				},
+			)
 
 	def calculate_totals(self):
 		"""คำนวณยอดรวมและราคาแพ็คเกจ"""
@@ -147,26 +152,30 @@ def get_package_details(package_name):
 
 	service_types = []
 	for st in package.package_service_types:
-		service_types.append({
-			"service_type": st.service_type,
-			"service_type_name": st.service_type_name,
-			"service_type_group": st.service_type_group,
-			"maintenance_type": st.maintenance_type,
-			"labor_rate": st.labor_rate,
-			"estimated_time": st.estimated_time,
-		})
+		service_types.append(
+			{
+				"service_type": st.service_type,
+				"service_type_name": st.service_type_name,
+				"service_type_group": st.service_type_group,
+				"maintenance_type": st.maintenance_type,
+				"labor_rate": st.labor_rate,
+				"estimated_time": st.estimated_time,
+			}
+		)
 
 	parts = []
 	for p in package.package_parts:
-		parts.append({
-			"service_type": p.service_type,
-			"item_code": p.item_code,
-			"item_name": p.item_name,
-			"qty": p.qty,
-			"uom": p.uom,
-			"rate": p.rate,
-			"amount": p.amount,
-		})
+		parts.append(
+			{
+				"service_type": p.service_type,
+				"item_code": p.item_code,
+				"item_name": p.item_name,
+				"qty": p.qty,
+				"uom": p.uom,
+				"rate": p.rate,
+				"amount": p.amount,
+			}
+		)
 
 	return {
 		"package_code": package.package_code,
@@ -193,7 +202,15 @@ def get_active_packages():
 	packages = frappe.get_all(
 		"Service Package",
 		filters={"is_active": 1},
-		fields=["name", "package_code", "package_name", "package_type", "package_rate", "discount_percent", "description"],
+		fields=[
+			"name",
+			"package_code",
+			"package_name",
+			"package_type",
+			"package_rate",
+			"discount_percent",
+			"description",
+		],
 		order_by="package_type, package_rate",
 	)
 	return packages
