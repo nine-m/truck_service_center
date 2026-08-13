@@ -22,6 +22,11 @@ frappe.query_reports["Technician Performance"] = {
 			label: "ช่าง",
 			fieldtype: "Link",
 			options: "User",
+			get_query: function () {
+				return {
+					query: "truck_service_center.queries.technician_query",
+				};
+			},
 		},
 	],
 };

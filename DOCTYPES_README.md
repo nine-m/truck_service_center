@@ -176,6 +176,8 @@ Role ของแอป (seed จาก `create_default_roles()` ใน [install
 
 และใช้ role มาตรฐานของ ERPNext เพิ่มเติม: **Stock User** (อ่าน Service Order เพื่อเบิกอะไหล่), **Accounts User** (อ่าน Service Order + Repair Quotation เพื่อออกบิล)
 
+> บทบาท **Technician** ยังใช้กรองรายชื่อในฟิลด์ช่างด้วย — `Service Order.technician`…`technician_4`, `Service Appointment.assigned_technician` และฟิลเตอร์ของรายงาน Technician Performance เป็น `Link → User` ที่ set_query ไปยัง `truck_service_center.queries.technician_query` ซึ่งแสดงเฉพาะ user ที่มีบทบาทนี้ (ตัด Administrator/Guest และ user ที่ถูกปิดใช้งานออก) **ต้องกำหนดบทบาท Technician ให้ช่างก่อน จึงจะเลือกได้** ถ้ายังไม่มีใครได้รับบทบาทนี้เลย ระบบจะถอยไปแสดง system user ทั้งหมดเพื่อไม่ให้ dropdown ว่าง
+
 ### Permission matrix (สรุป)
 
 | Doctype | Service Manager | Service User | Technician | Stock User | Accounts User |
