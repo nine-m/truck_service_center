@@ -22,16 +22,22 @@ MATERIAL_ISSUE_LOCKED_NUMERIC_FIELDS = {
 SUBMIT_REQUIRED_FIELDS = ("fuel_level_in", "fuel_level_out", "technician")
 
 
-def get_default_selling_rate(item_code):
+def get_default_selling_rate(item_code, price_list=None):
 	"""ราคาขายเริ่มต้นของสินค้า: Item Price (selling) → standard_rate → valuation_rate
 
 	ใช้เป็น fallback ตอนคำนวณยอดเมื่อแถวอะไหล่ไม่มีราคา — ราคาทุน (valuation_rate)
 	เป็นทางเลือกสุดท้ายเท่านั้น เพื่อไม่ให้เผลอขายเท่าทุนทั้งที่ตั้งราคาขายไว้แล้ว
+
+	ฝั่ง client (get_item_rate / get_item_by_barcode) ต้องใช้ลำดับราคาชุดเดียวกันนี้
+	ไม่งั้นราคาที่เห็นบนฟอร์มจะไม่ตรงกับยอดที่ได้หลังกด save
 	"""
 	if not item_code:
 		return 0
 
-	price_list = frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+	if not price_list:
+		price_list = (
+			frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
+		)
 	price = frappe.db.get_value(
 		"Item Price",
 		{"item_code": item_code, "price_list": price_list, "selling": 1},
@@ -804,44 +810,11 @@ def create_sales_invoice_from_service_order(service_order):
 
 @frappe.whitelist()
 def get_item_rate(item_code, customer=None, price_list=None):
-	"""ดึงราคาสินค้าจาก Item Price หรือ Standard Rate"""
-	from frappe.utils import flt
-
-	rate = 0
-
-	# 1. พยายามดึงจาก Item Price ก่อน
-	if not price_list:
-		price_list = (
-			frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
-		)
-
-	item_price = frappe.db.get_value(
-		"Item Price", {"item_code": item_code, "price_list": price_list, "selling": 1}, "price_list_rate"
-	)
-
-	if item_price:
-		rate = flt(item_price)
-	else:
-		# 2. ถ้าไม่มีใน Item Price ให้ดึงจาก Item
-		item_data = frappe.db.get_value(
-			"Item", item_code, ["standard_rate", "item_name", "description", "stock_uom"], as_dict=1
-		)
-
-		if item_data:
-			rate = flt(item_data.standard_rate)
-
-			return {
-				"rate": rate,
-				"item_name": item_data.item_name,
-				"description": item_data.description,
-				"uom": item_data.stock_uom,
-			}
-
-	# 3. ดึงข้อมูลเพิ่มเติมของ Item
+	"""ดึงราคาขายและข้อมูลสินค้าสำหรับเติมในแถวอะไหล่ (เรียกจากฟอร์ม)"""
 	item_data = frappe.db.get_value("Item", item_code, ["item_name", "description", "stock_uom"], as_dict=1)
 
 	return {
-		"rate": rate,
+		"rate": get_default_selling_rate(item_code, price_list),
 		"item_name": item_data.item_name if item_data else "",
 		"description": item_data.description if item_data else "",
 		"uom": item_data.stock_uom if item_data else "",
@@ -851,8 +824,6 @@ def get_item_rate(item_code, customer=None, price_list=None):
 @frappe.whitelist()
 def get_item_by_barcode(barcode, customer=None, price_list=None):
 	"""ค้นหา Item จากบาร์โค้ดและดึงราคา"""
-	from frappe.utils import flt
-
 	if not barcode:
 		return None
 
@@ -868,34 +839,18 @@ def get_item_by_barcode(barcode, customer=None, price_list=None):
 
 	# ดึงข้อมูล Item
 	item_data = frappe.db.get_value(
-		"Item", item_code, ["item_code", "item_name", "description", "stock_uom", "standard_rate"], as_dict=1
+		"Item", item_code, ["item_code", "item_name", "description", "stock_uom"], as_dict=1
 	)
 
 	if not item_data:
 		return None
-
-	# ดึงราคาจาก Item Price
-	rate = 0
-	if not price_list:
-		price_list = (
-			frappe.db.get_single_value("Selling Settings", "selling_price_list") or "Standard Selling"
-		)
-
-	item_price = frappe.db.get_value(
-		"Item Price", {"item_code": item_code, "price_list": price_list, "selling": 1}, "price_list_rate"
-	)
-
-	if item_price:
-		rate = flt(item_price)
-	else:
-		rate = flt(item_data.standard_rate)
 
 	return {
 		"item_code": item_data.item_code,
 		"item_name": item_data.item_name,
 		"description": item_data.description,
 		"uom": item_data.stock_uom,
-		"rate": rate,
+		"rate": get_default_selling_rate(item_code, price_list),
 	}
 
 

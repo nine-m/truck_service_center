@@ -3,6 +3,9 @@
 
 frappe.ui.form.on('Service Appointment', {
 	refresh: function(frm) {
+		// ให้ยอดขยับตั้งแต่ตอนพิมพ์ ไม่ต้องรอออกจากช่อง
+		setup_live_row_calc(frm);
+
 		// ปุ่มสร้าง Service Order
 		if (frm.doc.docstatus === 1 && !frm.doc.service_order && frm.doc.status !== 'Cancelled') {
 			frm.add_custom_button(__('Create Service Order'), function() {
@@ -425,27 +428,38 @@ frappe.ui.form.on('Service Appointment Item', {
 	item_code: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (row.item_code) {
-			frappe.db.get_value('Item', row.item_code, ['item_name', 'stock_uom', 'valuation_rate'], function(r) {
-				if (r) {
-					frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
-					frappe.model.set_value(cdt, cdn, 'uom', r.stock_uom);
-					frappe.model.set_value(cdt, cdn, 'rate', flt(r.valuation_rate));
-					frappe.model.set_value(cdt, cdn, 'amount', flt(row.qty) * flt(r.valuation_rate));
+			// ใช้ราคาขายชุดเดียวกับใบสั่งงาน (Item Price → standard_rate → ราคาทุน)
+			// ไม่ดึง valuation_rate ตรง ๆ เพราะนั่นคือราคาทุน ไม่ใช่ราคาที่จะเก็บลูกค้า
+			frappe.call({
+				method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_item_rate',
+				args: {
+					item_code: row.item_code,
+					customer: frm.doc.customer
+				},
+				callback: function(r) {
+					if (!r.message) return;
+
+					frappe.model.set_value(cdt, cdn, 'rate', flt(r.message.rate));
+					// สรุปยอดทันที ไม่ต้องรอ trigger ของ rate (ถ้าราคาเท่าเดิม trigger จะไม่ยิง)
+					calculate_item_amount(frm, cdt, cdn);
 					calculate_totals(frm);
+
+					if (!flt(r.message.rate)) {
+						frappe.show_alert({
+							message: __('ไม่พบราคาสำหรับสินค้านี้ กรุณาตั้งค่า Item Price'),
+							indicator: 'orange'
+						});
+					}
 				}
 			});
 		}
 	},
 	qty: function(frm, cdt, cdn) {
-		let row = locals[cdt][cdn];
-		row.amount = flt(row.qty) * flt(row.rate);
-		frm.refresh_field('service_items');
+		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 	rate: function(frm, cdt, cdn) {
-		let row = locals[cdt][cdn];
-		row.amount = flt(row.qty) * flt(row.rate);
-		frm.refresh_field('service_items');
+		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 	service_items_add: function(frm) {
@@ -479,6 +493,47 @@ function add_service_type_items(frm, items) {
 
 	frm.refresh_field('service_items');
 	calculate_totals(frm);
+}
+
+function calculate_item_amount(frm, cdt, cdn) {
+	// เขียนผ่าน model เพื่อให้ช่อง "ยอดรวม" ในตารางอัปเดตตามทันที
+	// (ห้ามแก้ row.amount เองก่อน ไม่งั้น set_value จะเห็นว่าค่าไม่เปลี่ยนแล้วไม่วาดช่องใหม่)
+	let row = locals[cdt][cdn];
+	frappe.model.set_value(cdt, cdn, 'amount', flt(flt(row.qty) * flt(row.rate), 2));
+}
+
+// ปกติ Frappe จะคำนวณให้ตอน "ออกจากช่อง" (event change) เท่านั้น
+// สองฟังก์ชันนี้ทำให้ยอดในแถวและยอดรวมท้ายเอกสารขยับตั้งแต่ตอนพิมพ์
+function setup_live_row_calc(frm) {
+	bind_live_row_calc(frm, 'service_items', ['qty', 'rate'], calculate_item_amount);
+	bind_live_row_calc(frm, 'service_types', ['labor_charges', 'estimated_time'], null);
+}
+
+function bind_live_row_calc(frm, gridfield, fieldnames, recalc_row) {
+	let field = frm.fields_dict[gridfield];
+	if (!field || !field.grid || field.grid.__live_row_calc) return;
+
+	let grid = field.grid;
+	grid.__live_row_calc = true;
+
+	grid.wrapper.on('input', 'input[data-fieldname]', function() {
+		let fieldname = $(this).attr('data-fieldname');
+		if (fieldnames.indexOf(fieldname) === -1) return;
+
+		let cdt = grid.doctype;
+		let cdn = $(this).closest('.grid-row').attr('data-name');
+		let row = cdn && locals[cdt] && locals[cdt][cdn];
+		if (!row) return;
+
+		// เขียนค่าที่กำลังพิมพ์ลงแถวตรง ๆ ไม่ผ่าน frappe.model.set_value
+		// เพราะ set_value จะ format ค่าในช่องที่กำลังพิมพ์ใหม่ทันที (พิมพ์ทศนิยมต่อไม่ได้)
+		// ค่าจริงจะถูกคอมมิตอีกครั้งตอนออกจากช่องตามกลไกปกติของ Frappe
+		row[fieldname] = flt($(this).val());
+		if (!frm.doc.__unsaved) frm.dirty();
+		recalc_row && recalc_row(frm, cdt, cdn);
+		calculate_estimated_duration(frm);
+		calculate_totals(frm);
+	});
 }
 
 function calculate_estimated_duration(frm) {

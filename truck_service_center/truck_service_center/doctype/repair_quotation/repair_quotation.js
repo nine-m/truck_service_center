@@ -22,6 +22,9 @@ frappe.ui.form.on('Repair Quotation', {
 	},
 
 	refresh: function(frm) {
+		// ให้ยอดขยับตั้งแต่ตอนพิมพ์ ไม่ต้องรอออกจากช่อง
+		setup_live_row_calc(frm);
+
 		// ตั้งค่า filter ต่างๆ
 		setup_service_type_filter(frm);
 		setup_service_package_filter(frm);
@@ -438,10 +441,7 @@ frappe.ui.form.on('Repair Quotation Service Type', {
 	},
 
 	labor_charges: function(frm, cdt, cdn) {
-		let row = locals[cdt][cdn];
-		calculate_service_type_discount(row);
-		frappe.model.set_value(cdt, cdn, 'discount_amount', row.discount_amount);
-		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 
@@ -453,8 +453,7 @@ frappe.ui.form.on('Repair Quotation Service Type', {
 		} else {
 			frappe.model.set_value(cdt, cdn, 'discount_amount', 0);
 		}
-		calculate_service_type_discount(row);
-		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 
@@ -466,8 +465,7 @@ frappe.ui.form.on('Repair Quotation Service Type', {
 		} else if (flt(row.discount_amount) === 0) {
 			frappe.model.set_value(cdt, cdn, 'discount_percentage', 0);
 		}
-		calculate_service_type_discount(row);
-		frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 
@@ -502,6 +500,11 @@ frappe.ui.form.on('Repair Quotation Item', {
 						frappe.model.set_value(cdt, cdn, 'description', r.message.description);
 						frappe.model.set_value(cdt, cdn, 'uom', r.message.uom);
 						frappe.model.set_value(cdt, cdn, 'rate', r.message.rate || 0);
+
+						// สรุปยอดทันทีที่เลือกอะไหล่ ไม่ต้องรอ trigger ของ rate
+						// (frappe.model.set_value จะไม่ยิง trigger ถ้าค่าใหม่เท่าค่าเดิม)
+						calculate_item_amount(frm, cdt, cdn);
+						calculate_totals(frm);
 
 						if (!r.message.rate || r.message.rate === 0) {
 							frappe.show_alert({
@@ -570,44 +573,107 @@ function create_service_order(frm) {
 
 function calculate_item_amount(frm, cdt, cdn) {
 	let row = locals[cdt][cdn];
-	calculate_item_discount(row);
-	frappe.model.set_value(cdt, cdn, 'discount_amount', row.discount_amount);
-	frappe.model.set_value(cdt, cdn, 'amount', row.amount);
+	let values = get_item_amounts(row);
+	set_row_value(row, 'discount_amount', values.discount_amount);
+	set_row_value(row, 'amount', values.amount);
 }
 
-function calculate_item_discount(item) {
+function calculate_service_type_amount(frm, cdt, cdn) {
+	let row = locals[cdt][cdn];
+	let values = get_service_type_amounts(row);
+	set_row_value(row, 'discount_amount', values.discount_amount);
+	set_row_value(row, 'amount', values.amount);
+}
+
+// ปกติ Frappe จะคำนวณให้ตอน "ออกจากช่อง" (event change) เท่านั้น
+// สองฟังก์ชันนี้ทำให้ยอดในแถวและยอดรวมท้ายเอกสารขยับตั้งแต่ตอนพิมพ์
+function setup_live_row_calc(frm) {
+	bind_live_row_calc(frm, 'service_items', ['qty', 'rate'], calculate_item_amount);
+	bind_live_row_calc(frm, 'service_types', ['labor_charges', 'estimated_time'], calculate_service_type_amount);
+}
+
+function bind_live_row_calc(frm, gridfield, fieldnames, recalc_row) {
+	let field = frm.fields_dict[gridfield];
+	if (!field || !field.grid || field.grid.__live_row_calc) return;
+
+	let grid = field.grid;
+	grid.__live_row_calc = true;
+
+	grid.wrapper.on('input', 'input[data-fieldname]', function() {
+		let fieldname = $(this).attr('data-fieldname');
+		if (fieldnames.indexOf(fieldname) === -1) return;
+
+		let cdt = grid.doctype;
+		let cdn = $(this).closest('.grid-row').attr('data-name');
+		let row = cdn && locals[cdt] && locals[cdt][cdn];
+		if (!row) return;
+
+		// เขียนค่าที่กำลังพิมพ์ลงแถวตรง ๆ ไม่ผ่าน frappe.model.set_value
+		// เพราะ set_value จะ format ค่าในช่องที่กำลังพิมพ์ใหม่ทันที (พิมพ์ทศนิยมต่อไม่ได้)
+		// ค่าจริงจะถูกคอมมิตอีกครั้งตอนออกจากช่องตามกลไกปกติของ Frappe
+		row[fieldname] = flt($(this).val());
+		if (!frm.doc.__unsaved) frm.dirty();
+		recalc_row(frm, cdt, cdn);
+		calculate_totals(frm);
+	});
+}
+
+// เขียนค่าลงแถวผ่าน model เพื่อให้ช่องในตารางรีเฟรชทันที
+//
+// สำคัญ: ห้ามแก้ค่าใน row เองก่อนเรียก frappe.model.set_value เด็ดขาด
+// เพราะ set_value จะเทียบค่าใหม่กับค่าใน model ถ้าเท่ากันจะถือว่า "ไม่มีอะไรเปลี่ยน"
+// แล้วไม่ยิง event ที่ทำให้ grid วาดช่องใหม่ (ตัวเลขในตารางจะค้างจนกว่าจะ refresh ทั้งตาราง)
+function set_row_value(row, fieldname, value) {
+	if (locals[row.doctype] && locals[row.doctype][row.name]) {
+		frappe.model.set_value(row.doctype, row.name, fieldname, value);
+	} else {
+		row[fieldname] = value;
+	}
+}
+
+// คำนวณส่วนลดระดับบรรทัดของอะไหล่ — คืนค่าใหม่โดยไม่แก้ค่าใน item
+function get_item_amounts(item) {
 	let rate = flt(item.rate);
 	let qty = flt(item.qty);
+	let discount_percentage = flt(item.discount_percentage);
+	let discount_amount = flt(item.discount_amount);
 
-	if (flt(item.discount_percentage) > 0) {
-		item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2);
+	if (discount_percentage > 0) {
+		discount_amount = flt(rate * discount_percentage / 100, 2);
+	} else if (discount_amount > 0 && rate > 0) {
+		discount_percentage = flt(discount_amount / rate * 100, 2);
 	}
 
-	if (flt(item.discount_amount) > 0 && rate > 0 && !flt(item.discount_percentage)) {
-		item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2);
-	}
-
-	let discount_per_unit = flt(item.discount_amount);
-	let net_rate = flt(rate - discount_per_unit, 2);
+	let net_rate = flt(rate - discount_amount, 2);
 	if (net_rate < 0) net_rate = 0;
-	item.amount = flt(net_rate * qty, 2);
+
+	return {
+		discount_percentage: discount_percentage,
+		discount_amount: discount_amount,
+		amount: flt(net_rate * qty, 2)
+	};
 }
 
-function calculate_service_type_discount(row) {
+// คำนวณส่วนลดระดับบรรทัดของค่าแรง — คืนค่าใหม่โดยไม่แก้ค่าใน row
+function get_service_type_amounts(row) {
 	let labor = flt(row.labor_charges);
+	let discount_percentage = flt(row.discount_percentage);
+	let discount_amount = flt(row.discount_amount);
 
-	if (flt(row.discount_percentage) > 0) {
-		row.discount_amount = flt(labor * flt(row.discount_percentage) / 100, 2);
+	if (discount_percentage > 0) {
+		discount_amount = flt(labor * discount_percentage / 100, 2);
+	} else if (discount_amount > 0 && labor > 0) {
+		discount_percentage = flt(discount_amount / labor * 100, 2);
 	}
 
-	if (flt(row.discount_amount) > 0 && labor > 0 && !flt(row.discount_percentage)) {
-		row.discount_percentage = flt(flt(row.discount_amount) / labor * 100, 2);
-	}
-
-	let discount = flt(row.discount_amount);
-	let net_labor = flt(labor - discount, 2);
+	let net_labor = flt(labor - discount_amount, 2);
 	if (net_labor < 0) net_labor = 0;
-	row.amount = flt(net_labor, 2);
+
+	return {
+		discount_percentage: discount_percentage,
+		discount_amount: discount_amount,
+		amount: flt(net_labor, 2)
+	};
 }
 
 function calculate_totals(frm) {
@@ -617,8 +683,10 @@ function calculate_totals(frm) {
 
 	if (frm.doc.service_types) {
 		frm.doc.service_types.forEach(function(row) {
-			calculate_service_type_discount(row);
-			total_labor += flt(row.amount);
+			let values = get_service_type_amounts(row);
+			// เขียนผ่าน model เพื่อให้ช่อง "ยอดรวม" ของแถวนั้นอัปเดตทันที
+			set_row_value(row, 'amount', values.amount);
+			total_labor += flt(values.amount);
 			total_time += flt(row.estimated_time);
 		});
 	}
@@ -630,8 +698,10 @@ function calculate_totals(frm) {
 	let total_parts = 0;
 	if (frm.doc.service_items) {
 		frm.doc.service_items.forEach(function(item) {
-			calculate_item_discount(item);
-			total_parts += flt(item.amount);
+			let values = get_item_amounts(item);
+			// เขียนผ่าน model เพื่อให้ช่อง "ยอดรวม" ของแถวนั้นอัปเดตทันที
+			set_row_value(item, 'amount', values.amount);
+			total_parts += flt(values.amount);
 		});
 	}
 	frm.set_value('total_parts_amount', total_parts);
