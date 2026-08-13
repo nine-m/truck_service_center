@@ -3,6 +3,9 @@
 
 frappe.ui.form.on("Service Package", {
 	refresh: function (frm) {
+		// ให้ยอดขยับตั้งแต่ตอนพิมพ์ ไม่ต้องรอออกจากช่อง
+		setup_live_row_calc(frm);
+
 		frm.set_query("service_type", "package_service_types", function () {
 			return { filters: { is_active: 1 } };
 		});
@@ -106,6 +109,37 @@ frappe.ui.form.on("Service Package Part", {
 	package_parts_remove: function (frm) {
 		calculate_package_totals(frm);
 	},
+	item_code: function (frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.item_code) return;
+
+		// อะไหล่ที่เพิ่มเอง (ไม่ได้มาจาก Service Type) ก็ต้องได้ราคาและสรุปยอดทันที
+		// ใช้ลำดับราคาขายชุดเดียวกับใบสั่งงาน
+		frappe.call({
+			method: "truck_service_center.truck_service_center.doctype.service_order.service_order.get_item_rate",
+			args: { item_code: row.item_code },
+			callback: function (r) {
+				if (!r.message) return;
+
+				frappe.model.set_value(cdt, cdn, "rate", flt(r.message.rate));
+				// สรุปยอดทันที ไม่ต้องรอ trigger ของ rate (ถ้าราคาเท่าเดิม trigger จะไม่ยิง)
+				frappe.model.set_value(
+					cdt,
+					cdn,
+					"amount",
+					flt(flt(row.qty) * flt(r.message.rate), 2)
+				);
+				calculate_package_totals(frm);
+
+				if (!flt(r.message.rate)) {
+					frappe.show_alert({
+						message: __("ไม่พบราคาสำหรับสินค้านี้ กรุณาตั้งค่า Item Price"),
+						indicator: "orange",
+					});
+				}
+			},
+		});
+	},
 	qty: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		frappe.model.set_value(cdt, cdn, "amount", flt(row.qty) * flt(row.rate));
@@ -120,6 +154,41 @@ frappe.ui.form.on("Service Package Part", {
 		calculate_package_totals(frm);
 	},
 });
+
+// ปกติ Frappe จะคำนวณให้ตอน "ออกจากช่อง" (event change) เท่านั้น
+// สองฟังก์ชันนี้ทำให้ยอดในแถวและยอดรวมของแพ็คเกจขยับตั้งแต่ตอนพิมพ์
+function setup_live_row_calc(frm) {
+	bind_live_row_calc(frm, "package_parts", ["qty", "rate"], true);
+	bind_live_row_calc(frm, "package_service_types", ["labor_rate", "estimated_time"], false);
+}
+
+function bind_live_row_calc(frm, gridfield, fieldnames, recalc_amount) {
+	let field = frm.fields_dict[gridfield];
+	if (!field || !field.grid || field.grid.__live_row_calc) return;
+
+	let grid = field.grid;
+	grid.__live_row_calc = true;
+
+	grid.wrapper.on("input", "input[data-fieldname]", function () {
+		let fieldname = $(this).attr("data-fieldname");
+		if (fieldnames.indexOf(fieldname) === -1) return;
+
+		let cdt = grid.doctype;
+		let cdn = $(this).closest(".grid-row").attr("data-name");
+		let row = cdn && locals[cdt] && locals[cdt][cdn];
+		if (!row) return;
+
+		// เขียนค่าที่กำลังพิมพ์ลงแถวตรง ๆ ไม่ผ่าน frappe.model.set_value
+		// เพราะ set_value จะ format ค่าในช่องที่กำลังพิมพ์ใหม่ทันที (พิมพ์ทศนิยมต่อไม่ได้)
+		// ค่าจริงจะถูกคอมมิตอีกครั้งตอนออกจากช่องตามกลไกปกติของ Frappe
+		row[fieldname] = flt($(this).val());
+		if (!frm.doc.__unsaved) frm.dirty();
+		if (recalc_amount) {
+			frappe.model.set_value(cdt, cdn, "amount", flt(flt(row.qty) * flt(row.rate), 2));
+		}
+		calculate_package_totals(frm);
+	});
+}
 
 function calculate_package_totals(frm) {
 	// ค่าแรงรวม
