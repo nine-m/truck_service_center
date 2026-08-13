@@ -3,6 +3,9 @@
 
 frappe.ui.form.on("Service Order", {
 	onload: function (frm) {
+		// ตั้งค่า filter สำหรับช่างผู้รับผิดชอบ
+		set_technician_filter(frm);
+
 		// ตั้งค่าภาษีเริ่มต้นสำหรับเอกสารใหม่
 		if (frm.is_new()) {
 			frappe.db.get_value(
@@ -1274,6 +1277,19 @@ function add_service_type_items_to_order(frm, items, service_type) {
 			service_type,
 		]),
 		indicator: "green",
+	});
+}
+
+const TECHNICIAN_FIELDS = ["technician", "technician_2", "technician_3", "technician_4"];
+
+function set_technician_filter(frm) {
+	// ตั้งค่า filter สำหรับช่างผู้รับผิดชอบ ให้แสดงเฉพาะผู้ใช้ที่มีบทบาท Technician
+	TECHNICIAN_FIELDS.forEach(function (fieldname) {
+		frm.set_query(fieldname, function () {
+			return {
+				query: "truck_service_center.queries.technician_query",
+			};
+		});
 	});
 }
 

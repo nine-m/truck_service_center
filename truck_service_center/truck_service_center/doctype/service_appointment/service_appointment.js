@@ -81,8 +81,11 @@ frappe.ui.form.on('Service Appointment', {
 		
 		// ตั้งค่า filter สำหรับ service_package ในตาราง packages
 		setup_service_package_filter(frm);
+
+		// ตั้งค่า filter สำหรับช่างที่มอบหมาย
+		set_technician_filter(frm);
 	},
-	
+
 	customer: function(frm) {
 		// ตั้งค่า filter สำหรับ vehicle
 		set_vehicle_filter(frm);
@@ -182,6 +185,15 @@ frappe.ui.form.on('Service Appointment', {
 		// ไม่ต้องทำอะไร - ระบบใหม้ไม่ check ช่างอีกต่อไป
 	}
 });
+
+function set_technician_filter(frm) {
+	// แสดงเฉพาะผู้ใช้ที่มีบทบาท Technician
+	frm.set_query('assigned_technician', function() {
+		return {
+			query: 'truck_service_center.queries.technician_query'
+		};
+	});
+}
 
 function set_vehicle_filter(frm) {
 	if (frm.doc.customer) {
