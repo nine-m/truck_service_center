@@ -20,20 +20,25 @@ class ServiceAppointment(Document):
 	def calculate_estimated_duration(self):
 		"""คำนวณระยะเวลาโดยประมาณจาก service_types child table"""
 		total = sum(flt(row.estimated_time) for row in (self.service_types or []))
-		self.estimated_duration = total
+		self.estimated_duration = flt(total, 2)
 
 	def calculate_totals(self):
 		"""คำนวณยอดรวมราคาจาก service_types และ service_items"""
+		# ปัดเศษทุกค่าเป็นทศนิยม 2 ตำแหน่ง มิฉะนั้นค่าที่คำนวณใหม่ (เช่น 999.8299999999999)
+		# จะไม่ตรงกับค่าที่ฐานข้อมูลปัดเก็บไว้ (999.83) และทำให้ submit ไม่ผ่าน
+		# ด้วย error "Cannot Update After Submit"
 		# รวมค่าแรง
-		self.total_labor_charges = sum(flt(row.labor_charges) for row in (self.service_types or []))
+		self.total_labor_charges = flt(
+			sum(flt(row.labor_charges) for row in (self.service_types or [])), 2
+		)
 
 		# รวมค่าอะไหล่ (คำนวณ amount ของแต่ละรายการด้วย)
 		for item in self.service_items or []:
-			item.amount = flt(item.qty) * flt(item.rate)
-		self.total_parts_amount = sum(flt(row.amount) for row in (self.service_items or []))
+			item.amount = flt(flt(item.qty) * flt(item.rate), 2)
+		self.total_parts_amount = flt(sum(flt(row.amount) for row in (self.service_items or [])), 2)
 
 		# ยอดรวมทั้งหมด
-		self.total_amount = flt(self.total_labor_charges) + flt(self.total_parts_amount)
+		self.total_amount = flt(flt(self.total_labor_charges) + flt(self.total_parts_amount), 2)
 
 	def set_address_display(self):
 		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""

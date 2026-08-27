@@ -343,7 +343,7 @@ frappe.ui.form.on('Service Appointment Package', {
 					item_row.qty = part.qty;
 					item_row.uom = part.uom;
 					item_row.rate = part.rate;
-					item_row.amount = flt(part.qty) * flt(part.rate);
+					item_row.amount = flt(flt(part.qty) * flt(part.rate), 2);
 					item_row.service_package = pkg_name;
 				});
 				
@@ -491,7 +491,7 @@ function add_service_type_items(frm, items) {
 
 		if (existing) {
 			existing.qty = flt(existing.qty) + flt(item.qty);
-			existing.amount = flt(existing.qty) * flt(existing.rate);
+			existing.amount = flt(flt(existing.qty) * flt(existing.rate), 2);
 		} else {
 			let new_row = frm.add_child('service_items');
 			new_row.item_code = item.item_code;
@@ -499,7 +499,7 @@ function add_service_type_items(frm, items) {
 			new_row.qty = item.qty;
 			new_row.uom = item.uom;
 			new_row.rate = item.rate;
-			new_row.amount = flt(item.amount) || flt(item.qty) * flt(item.rate);
+			new_row.amount = flt(flt(item.amount) || flt(item.qty) * flt(item.rate), 2);
 		}
 	});
 
@@ -553,7 +553,7 @@ function calculate_estimated_duration(frm) {
 	(frm.doc.service_types || []).forEach(function(row) {
 		total += flt(row.estimated_time);
 	});
-	frm.set_value('estimated_duration', total);
+	frm.set_value('estimated_duration', flt(total, 2));
 }
 
 function calculate_totals(frm) {
@@ -565,9 +565,9 @@ function calculate_totals(frm) {
 	(frm.doc.service_items || []).forEach(function(row) {
 		total_parts += flt(row.amount);
 	});
-	frm.set_value('total_labor_charges', total_labor);
-	frm.set_value('total_parts_amount', total_parts);
-	frm.set_value('total_amount', total_labor + total_parts);
+	frm.set_value('total_labor_charges', flt(total_labor, 2));
+	frm.set_value('total_parts_amount', flt(total_parts, 2));
+	frm.set_value('total_amount', flt(total_labor + total_parts, 2));
 }
 
 function setup_service_package_filter(frm) {
