@@ -51,7 +51,13 @@ frappe.ui.form.on("Service Order", {
 		lock_rows_with_submitted_material_issue(frm);
 
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
-		if (frm.doc.docstatus === 0 && frm.doc.service_items && frm.doc.service_items.length > 0) {
+		// ต้องรับรถก่อนถึงจะเบิกอะไหล่ได้ — ถ้ายังไม่รับรถจะเห็นแค่ปุ่ม "รับรถ"
+		if (
+			frm.doc.docstatus === 0 &&
+			(frm.doc.received_date || frm.doc.status === "In Progress") &&
+			frm.doc.service_items &&
+			frm.doc.service_items.length > 0
+		) {
 			// ตรวจสอบว่ามี item ที่ยังไม่มี Material Issue หรือไม่
 			let has_unlinked_items = frm.doc.service_items.some(
 				(item) => !item.material_issue && item.item_code
