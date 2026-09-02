@@ -1,6 +1,8 @@
 # Copyright (c) 2026, SVL Technology Co. Ltd. and Contributors
 # See license.txt
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests import UnitTestCase
 
@@ -191,3 +193,114 @@ class UnitTestServiceOrder(UnitTestCase):
 	def test_outstanding_amount(self):
 		so = make_order(tax_type="ไม่คิด VAT", labor_rows=[{"labor_charges": 1000}], paid_amount=300)
 		self.assertEqual(so.outstanding_amount, 700)
+
+	# ---------- ผูกอะไหล่กับประเภทบริการ ----------
+
+	def test_orphan_items_removed_with_service_type(self):
+		"""ลบประเภทบริการ → อะไหล่ที่ดึงมาจากประเภทนั้นถูกลบตาม"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A"}],
+			item_rows=[
+				{"qty": 1, "rate": 100, "service_type": "ST-A"},
+				{"qty": 1, "rate": 200, "service_type": "ST-B"},  # ประเภทนี้ถูกลบไปแล้ว
+			],
+		)
+		so.remove_orphan_service_type_items()
+
+		self.assertEqual([i.service_type for i in so.service_items], ["ST-A"])
+
+	def test_manual_items_survive_service_type_removal(self):
+		"""อะไหล่ที่เพิ่มเอง (service_type ว่าง) ไม่ถูกลบ — ครอบคลุมข้อมูลเก่าก่อนมีฟิลด์นี้ด้วย"""
+		so = make_order(
+			labor_rows=[],
+			item_rows=[
+				{"qty": 1, "rate": 100},
+				{"qty": 1, "rate": 200, "service_type": "ST-B"},
+			],
+		)
+		so.remove_orphan_service_type_items()
+
+		self.assertEqual(len(so.service_items), 1)
+		self.assertFalse(so.service_items[0].service_type)
+		self.assertEqual(so.service_items[0].idx, 1)
+
+	def test_submitted_material_issue_blocks_orphan_removal(self):
+		"""แถวที่มีใบเบิกซึ่ง submit แล้วลบไม่ได้ ต้องยกเลิกใบเบิกก่อน"""
+		so = make_order(
+			labor_rows=[],
+			item_rows=[
+				{
+					"qty": 1,
+					"rate": 100,
+					"service_type": "ST-B",
+					"material_issue": "MAT-STE-0001",
+					"material_issue_status": "Submitted",
+				},
+				{"qty": 1, "rate": 200, "service_type": "ST-B", "material_issue_status": "Draft"},
+			],
+		)
+		so.remove_orphan_service_type_items()
+
+		self.assertEqual([i.material_issue for i in so.service_items], ["MAT-STE-0001"])
+
+	def test_package_not_reapplied_when_only_items_remain(self):
+		"""ลบประเภทบริการของแพ็คเกจจนหมด → save ซ้ำต้องไม่ดึงอะไหล่มาซ้ำ
+
+		ถ้าการ์ดพัง apply_service_packages จะไป frappe.get_doc แพ็คเกจสมมตินี้
+		แล้วโยน DoesNotExistError ทันที เทสต์จึงจับ regression ได้โดยไม่ต้องมีข้อมูลจริง
+		"""
+		so = make_order(
+			labor_rows=[],
+			item_rows=[{"qty": 1, "rate": 100, "service_package": "PKG-NOT-IN-DB"}],
+		)
+		so.append("service_packages", {"service_package": "PKG-NOT-IN-DB"})
+
+		so.apply_service_packages()
+
+		self.assertEqual(len(so.service_items), 1)
+		self.assertEqual(len(so.service_types), 0)
+
+	def _order_with_removed_service_type(self):
+		"""ใบงานที่เพิ่งลบ ST-B ออก โดยอะไหล่ของ ST-B ยังผูกใบเบิกอยู่"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A"}],
+			item_rows=[
+				{"qty": 1, "rate": 100, "service_type": "ST-B", "material_issue": "MAT-STE-0001"},
+			],
+		)
+		before = make_order(
+			labor_rows=[{"service_type": "ST-A"}, {"service_type": "ST-B"}],
+			item_rows=[
+				{"qty": 1, "rate": 100, "service_type": "ST-B", "material_issue": "MAT-STE-0001"},
+			],
+		)
+		so._doc_before_save = before
+		return so
+
+	def test_cannot_remove_service_type_with_submitted_issue(self):
+		"""ลบประเภทบริการที่อะไหล่ถูกเบิกไปแล้วไม่ได้ ต้องยกเลิกใบเบิกก่อน"""
+		so = self._order_with_removed_service_type()
+
+		with patch("frappe.get_all", return_value=["MAT-STE-0001"]):
+			with self.assertRaises(frappe.ValidationError):
+				so.validate_service_type_removal()
+
+	def test_can_remove_service_type_when_issue_not_submitted(self):
+		"""ใบเบิกที่ยังไม่ submit ไม่บล็อก — ไม่ต้อง mock เพราะใบเบิกสมมตินี้ไม่มีจริงในฐานข้อมูล"""
+		so = self._order_with_removed_service_type()
+
+		so.validate_service_type_removal()  # ต้องไม่โยน
+
+	def test_service_type_still_used_by_another_row_is_not_a_removal(self):
+		"""ลบแถวซ้ำของประเภทบริการเดียวกันไม่นับเป็นการลบ อะไหล่ไม่ถูก cascade อยู่แล้ว"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-B"}],
+			item_rows=[{"qty": 1, "rate": 100, "service_type": "ST-B", "material_issue": "MAT-STE-0001"}],
+		)
+		so._doc_before_save = make_order(
+			labor_rows=[{"service_type": "ST-B"}, {"service_type": "ST-B"}],
+			item_rows=[{"qty": 1, "rate": 100, "service_type": "ST-B", "material_issue": "MAT-STE-0001"}],
+		)
+
+		with patch("frappe.get_all", return_value=["MAT-STE-0001"]):
+			so.validate_service_type_removal()  # ต้องไม่โยน

@@ -695,6 +695,7 @@ frappe.ui.form.on("Service Order Package", {
 					item_row.rate = part.rate;
 					item_row.discount_percentage = discount_pct;
 					item_row.service_package = pkg_name;
+					item_row.service_type = part.service_type;
 				});
 
 				frm.refresh_field("service_types");
@@ -760,90 +761,66 @@ frappe.ui.form.on("Service Order Service Type", {
 		calculate_totals(frm);
 	},
 
+	// ห้ามลบประเภทบริการที่อะไหล่ของมันถูกเบิกไปแล้ว ไม่งั้นอะไหล่จะค้างเป็นแถวไร้ที่มา
+	// (remove_orphan_service_type_items ไม่ลบแถวที่มีใบเบิก submit) ใบงานกับใบเบิกจะไม่ตรงกัน
+	//
+	// ต้อง "reject promise" เท่านั้นจึงจะบล็อกได้ — grid_row.remove() ร้อย before_*_remove
+	// ไว้ใน frappe.run_serially แล้วดูแค่ว่า chain reject หรือไม่ การ return false ไม่มีผล
+	before_service_types_remove: function (frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.service_type) return;
+
+		// ถ้ายังมีแถวอื่นใช้ service type เดียวกัน อะไหล่จะไม่ถูก cascade ลบ จึงลบแถวนี้ได้
+		let still_used = (frm.doc.service_types || []).some(function (st) {
+			return st.name !== row.name && st.service_type === row.service_type;
+		});
+		if (still_used) return;
+
+		let issues = [];
+		(frm.doc.service_items || []).forEach(function (si) {
+			if (
+				si.service_type === row.service_type &&
+				si.material_issue &&
+				si.material_issue_status === "Submitted" &&
+				issues.indexOf(si.material_issue) === -1
+			) {
+				issues.push(si.material_issue);
+			}
+		});
+		if (!issues.length) return;
+
+		frappe.msgprint({
+			title: __("ไม่สามารถลบประเภทบริการได้"),
+			indicator: "red",
+			message: __(
+				'อะไหล่ของ "{0}" ถูกเบิกไปแล้วตามใบเบิก {1}<br>กรุณายกเลิกใบเบิกอะไหล่ก่อน จึงจะลบประเภทบริการนี้ได้',
+				[
+					row.service_type,
+					issues
+						.map(function (name) {
+							return `<a href="/app/stock-entry/${name}" target="_blank">${name}</a>`;
+						})
+						.join(", "),
+				]
+			),
+		});
+
+		return Promise.reject(new Error("service type has submitted material issue"));
+	},
+
 	service_types_remove: function (frm) {
+		// Cascade delete แบบเดียวกับตอนลบแพ็คเกจ — อะไหล่ที่ดึงมาจาก service type
+		// ที่ถูกลบไม่ควรค้างอยู่ในใบงาน
+		remove_orphan_service_type_items(frm);
 		calculate_totals(frm);
 	},
 
 	service_type: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		if (row.service_type) {
-			// ดึงรายการอะไหล่จาก Service Type
-			frappe.call({
-				method: "truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items",
-				args: {
-					service_type: row.service_type,
-				},
-				callback: function (r) {
-					if (r.message && r.message.length > 0) {
-						let items = r.message;
-						let item_list = items
-							.map(
-								(item) =>
-									`• ${item.item_name || item.item_code} - จำนวน: ${item.qty} ${
-										item.uom || ""
-									} (฿${item.rate || 0})`
-							)
-							.join("<br>");
+		if (!row.service_type) return;
 
-						frappe.confirm(
-							__(
-								'ประเภทบริการ "{0}" มีรายการอะไหล่มาตรฐาน {1} รายการ:<br><br>{2}<br><br>ต้องการเพิ่มรายการอะไหล่เหล่านี้ในใบสั่งงานหรือไม่?',
-								[row.service_type, items.length, item_list]
-							),
-							function () {
-								// Yes - เพิ่มรายการอะไหล่
-								items.forEach(function (item) {
-									// ตรวจสอบว่ามี item นี้อยู่แล้วหรือไม่
-									let exists = false;
-									if (frm.doc.service_items) {
-										for (let i = 0; i < frm.doc.service_items.length; i++) {
-											if (
-												frm.doc.service_items[i].item_code ===
-													item.item_code &&
-												!frm.doc.service_items[i].material_issue
-											) {
-												// มีอยู่แล้ว และยังไม่มีใบเบิก ให้เพิ่มจำนวน
-												frm.doc.service_items[i].qty += item.qty;
-												frm.doc.service_items[i].amount =
-													frm.doc.service_items[i].qty *
-													frm.doc.service_items[i].rate;
-												exists = true;
-												break;
-											}
-										}
-									}
-
-									if (!exists) {
-										let new_row = frm.add_child("service_items");
-										new_row.item_code = item.item_code;
-										new_row.item_name = item.item_name;
-										new_row.description = item.description;
-										new_row.qty = item.qty;
-										new_row.uom = item.uom;
-										new_row.rate = item.rate;
-										new_row.amount = item.amount || item.qty * item.rate;
-									}
-								});
-
-								frm.refresh_field("service_items");
-								calculate_totals(frm);
-
-								frappe.show_alert({
-									message: __(
-										'เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย',
-										[items.length, row.service_type]
-									),
-									indicator: "green",
-								});
-							},
-							function () {
-								// No - ไม่ต้องทำอะไร
-							}
-						);
-					}
-				},
-			});
-		}
+		// ใช้ตัวเดียวกับตอนสแกนบาร์โค้ด เพื่อให้ถามยืนยันและ stamp ที่มาเหมือนกัน
+		check_and_add_service_type_items(frm, row.service_type);
 	},
 
 	labor_charges: function (frm, cdt, cdn) {
@@ -1307,39 +1284,18 @@ function check_and_add_service_type_items(frm, service_type) {
 
 // ฟังก์ชันเพิ่มรายการอะไหล่จาก Service Type
 function add_service_type_items_to_order(frm, items, service_type) {
-	let added_count = 0;
-
+	// สร้างแถวใหม่เสมอ ไม่รวม qty เข้าแถวเดิม เพื่อให้อะไหล่ทุกแถวมีที่มาเพียง
+	// service type เดียว — ถ้ารวมแถว จะบอกไม่ได้ว่าต้องลบเท่าไหร่ตอนลบ service type
 	items.forEach(function (item) {
-		// ตรวจสอบว่ามี item นี้อยู่แล้วหรือไม่
-		let exists = false;
-		if (frm.doc.service_items) {
-			for (let i = 0; i < frm.doc.service_items.length; i++) {
-				if (
-					frm.doc.service_items[i].item_code === item.item_code &&
-					!frm.doc.service_items[i].material_issue
-				) {
-					// มีอยู่แล้ว และยังไม่มีใบเบิก ให้เพิ่มจำนวน
-					frm.doc.service_items[i].qty += item.qty;
-					frm.doc.service_items[i].amount =
-						frm.doc.service_items[i].qty * frm.doc.service_items[i].rate;
-					exists = true;
-					added_count++;
-					break;
-				}
-			}
-		}
-
-		if (!exists) {
-			let new_row = frm.add_child("service_items");
-			new_row.item_code = item.item_code;
-			new_row.item_name = item.item_name;
-			new_row.description = item.description;
-			new_row.qty = item.qty;
-			new_row.uom = item.uom;
-			new_row.rate = item.rate;
-			new_row.amount = item.amount || item.qty * item.rate;
-			added_count++;
-		}
+		let new_row = frm.add_child("service_items");
+		new_row.item_code = item.item_code;
+		new_row.item_name = item.item_name;
+		new_row.description = item.description;
+		new_row.qty = item.qty;
+		new_row.uom = item.uom;
+		new_row.rate = item.rate;
+		new_row.amount = item.amount || item.qty * item.rate;
+		new_row.service_type = service_type;
 	});
 
 	frm.refresh_field("service_items");
@@ -1347,11 +1303,37 @@ function add_service_type_items_to_order(frm, items, service_type) {
 
 	frappe.show_alert({
 		message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย', [
-			added_count,
+			items.length,
 			service_type,
 		]),
 		indicator: "green",
 	});
+}
+
+/**
+ * ลบอะไหล่ที่ดึงมาจาก service type ซึ่งไม่อยู่ในตารางประเภทบริการแล้ว
+ * เก็บไว้: อะไหล่ที่เพิ่มเอง (service_type ว่าง) และแถวที่มีใบเบิกซึ่ง submit แล้ว
+ */
+function remove_orphan_service_type_items(frm) {
+	let remaining = new Set();
+	(frm.doc.service_types || []).forEach(function (st) {
+		if (st.service_type) {
+			remaining.add(st.service_type);
+		}
+	});
+
+	frm.doc.service_items = (frm.doc.service_items || []).filter(function (si) {
+		if (!si.service_type || remaining.has(si.service_type)) {
+			return true;
+		}
+		// ใบเบิกที่ submit แล้วลบไม่ได้ ต้องยกเลิกใบเบิกก่อน
+		return si.material_issue && si.material_issue_status === "Submitted";
+	});
+
+	frm.doc.service_items.forEach(function (row, idx) {
+		row.idx = idx + 1;
+	});
+	frm.refresh_field("service_items");
 }
 
 const TECHNICIAN_FIELDS = ["technician", "technician_2", "technician_3", "technician_4"];

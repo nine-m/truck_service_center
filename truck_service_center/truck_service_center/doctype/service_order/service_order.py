@@ -60,6 +60,8 @@ class ServiceOrder(Document):
 		self.set_address_display()
 		self.check_material_issue_items()
 		self.apply_service_packages()
+		self.validate_service_type_removal()
+		self.remove_orphan_service_type_items()
 		self.calculate_totals()
 		self.calculate_wht()
 		self.update_payment_status()
@@ -201,11 +203,14 @@ class ServiceOrder(Document):
 
 			pkg_name = pkg_row.service_package
 
-			# ตรวจสอบว่ามี service_types ที่ผูกกับ package นี้อยู่แล้วหรือไม่
-			has_service_types = any(st.service_package == pkg_name for st in self.service_types)
+			# แพ็คเกจนี้ถูกดึงข้อมูลแล้วหรือยัง — ต้องดูทั้งสองตาราง เพราะถ้าดู service_types
+			# อย่างเดียว การลบประเภทบริการของแพ็คเกจจนหมดจะทำให้ดึงซ้ำ อะไหล่จึงบวกเป็นสองเท่า
+			already_applied = any(st.service_package == pkg_name for st in self.service_types) or any(
+				si.service_package == pkg_name for si in self.service_items
+			)
 
-			if has_service_types:
-				continue  # ดึงข้อมูลแล้ว ข้ามไป
+			if already_applied:
+				continue
 
 			# ดึงข้อมูลจาก package
 			package = frappe.get_doc("Service Package", pkg_name)
@@ -244,8 +249,89 @@ class ServiceOrder(Document):
 						"discount_percentage": discount_pct,
 						"warehouse": default_warehouse,
 						"service_package": pkg_name,
+						"service_type": part.service_type,
 					},
 				)
+
+	def validate_service_type_removal(self):
+		"""ห้ามลบประเภทบริการที่อะไหล่ของมันถูกเบิกไปแล้ว
+
+		remove_orphan_service_type_items() ไม่ยอมลบแถวที่มีใบเบิก submit ถ้าปล่อยให้ลบ
+		ประเภทบริการได้ อะไหล่จะค้างเป็นแถวไร้ที่มา ใบงานกับใบเบิกจึงไม่ตรงกัน
+		คู่กับ before_service_types_remove ฝั่ง client — ที่นี่คือด่านจริง เพราะครอบคลุม
+		การลบแพ็คเกจ (ซึ่งพาประเภทบริการหายไปด้วย) และการบันทึกผ่าน API ด้วย
+
+		ตรวจเฉพาะ "ตอนที่ลบ" โดยเทียบกับเอกสารก่อนบันทึก ไม่ใช่ตรวจสถานะปัจจุบัน
+		มิฉะนั้นเอกสารที่ค้างสถานะนี้อยู่ก่อนแล้วจะบันทึกไม่ได้อีกเลย
+		"""
+		old_doc = self.get_doc_before_save()
+		if not old_doc:
+			return
+
+		removed = {st.service_type for st in old_doc.service_types if st.service_type} - {
+			st.service_type for st in self.service_types if st.service_type
+		}
+		if not removed:
+			return
+
+		# ถามสถานะจาก Stock Entry ตรง ๆ แบบเดียวกับ check_material_issue_items
+		# ไม่เชื่อ material_issue_status ที่แคชไว้ในแถว เพราะ update_material_issue_status()
+		# เพิ่งจะรีเฟรชค่านั้นตอนท้าย validate
+		candidates = [
+			item for item in self.service_items if item.service_type in removed and item.material_issue
+		]
+		if not candidates:
+			return
+
+		submitted = set(
+			frappe.get_all(
+				"Stock Entry",
+				filters={"name": ["in", list({item.material_issue for item in candidates})], "docstatus": 1},
+				pluck="name",
+			)
+		)
+
+		blocked = {}
+		for item in candidates:
+			if item.material_issue in submitted:
+				blocked.setdefault(item.service_type, set()).add(item.material_issue)
+
+		if not blocked:
+			return
+
+		lines = "<br>".join(
+			f"• {service_type} — ใบเบิก {', '.join(sorted(issues))}"
+			for service_type, issues in sorted(blocked.items())
+		)
+		frappe.throw(
+			f"ลบประเภทบริการต่อไปนี้ไม่ได้ เพราะอะไหล่ถูกเบิกไปแล้ว<br>{lines}<br><br>กรุณายกเลิกใบเบิกอะไหล่ก่อน",
+			title="ไม่สามารถลบประเภทบริการได้",
+		)
+
+	def remove_orphan_service_type_items(self):
+		"""ลบอะไหล่ที่ดึงมาจากประเภทบริการซึ่งถูกลบออกจากตารางแล้ว
+
+		คู่กับ remove_orphan_service_type_items() ฝั่ง client — ทำซ้ำที่ server เพื่อให้
+		กฎยังทำงานเมื่อบันทึกผ่าน API/พอร์ทัล ไม่ใช่แค่ผ่านหน้า desk
+
+		อะไหล่ที่ service_type ว่างคือของที่เพิ่มเอง (รวมถึงข้อมูลเก่าก่อนมีฟิลด์นี้)
+		จะไม่ถูกแตะ ส่วนแถวที่มีใบเบิกซึ่ง submit แล้วก็ลบไม่ได้ ต้องยกเลิกใบเบิกก่อน
+		"""
+		remaining = {st.service_type for st in self.service_types if st.service_type}
+
+		kept = []
+		for item in self.service_items:
+			if not item.service_type or item.service_type in remaining:
+				kept.append(item)
+				continue
+			if item.material_issue and item.material_issue_status == "Submitted":
+				kept.append(item)
+				continue
+
+		self.service_items = kept
+
+		for idx, item in enumerate(self.service_items, start=1):
+			item.idx = idx
 
 	def set_tax_defaults(self):
 		"""ตั้งค่าภาษีเริ่มต้นจาก Settings"""

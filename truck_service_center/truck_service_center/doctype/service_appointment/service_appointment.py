@@ -218,6 +218,7 @@ class ServiceAppointment(Document):
 					"uom": item_row.uom,
 					"rate": item_row.rate,
 					"service_package": item_row.service_package,
+					"service_type": item_row.service_type,
 				},
 			)
 

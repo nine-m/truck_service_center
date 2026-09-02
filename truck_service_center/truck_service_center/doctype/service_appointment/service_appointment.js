@@ -345,6 +345,7 @@ frappe.ui.form.on('Service Appointment Package', {
 					item_row.rate = part.rate;
 					item_row.amount = flt(flt(part.qty) * flt(part.rate), 2);
 					item_row.service_package = pkg_name;
+					item_row.service_type = part.service_type;
 				});
 				
 				frm.refresh_field('service_types');
@@ -408,7 +409,7 @@ frappe.ui.form.on('Service Appointment Service Type', {
 					__('ประเภทบริการ "{0}" มีรายการอะไหล่มาตรฐาน {1} รายการ:<br><br>{2}<br><br>ต้องการเพิ่มรายการอะไหล่เหล่านี้ในนัดหมายหรือไม่?',
 						[row.service_type, items.length, item_list]),
 					function() {
-						add_service_type_items(frm, items);
+						add_service_type_items(frm, items, row.service_type);
 
 						frappe.show_alert({
 							message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย',
@@ -431,6 +432,9 @@ frappe.ui.form.on('Service Appointment Service Type', {
 		calculate_totals(frm);
 	},
 	service_types_remove: function(frm) {
+		// Cascade delete แบบเดียวกับตอนลบแพ็คเกจ — อะไหล่ที่ดึงมาจาก service type
+		// ที่ถูกลบไม่ควรค้างอยู่ในนัดหมาย
+		remove_orphan_service_type_items(frm);
 		calculate_estimated_duration(frm);
 		calculate_totals(frm);
 	}
@@ -482,29 +486,42 @@ frappe.ui.form.on('Service Appointment Item', {
 	}
 });
 
-function add_service_type_items(frm, items) {
-	// รวมกับแถวเดิมถ้ามี item_code ซ้ำ มิฉะนั้นสร้างแถวใหม่
+function add_service_type_items(frm, items, service_type) {
+	// สร้างแถวใหม่เสมอ ไม่รวม qty เข้าแถวเดิม เพื่อให้อะไหล่ทุกแถวมีที่มาเพียง
+	// service type เดียว — ถ้ารวมแถว จะบอกไม่ได้ว่าต้องลบเท่าไหร่ตอนลบ service type
 	items.forEach(function(item) {
-		let existing = (frm.doc.service_items || []).find(function(si) {
-			return si.item_code === item.item_code;
-		});
-
-		if (existing) {
-			existing.qty = flt(existing.qty) + flt(item.qty);
-			existing.amount = flt(flt(existing.qty) * flt(existing.rate), 2);
-		} else {
-			let new_row = frm.add_child('service_items');
-			new_row.item_code = item.item_code;
-			new_row.item_name = item.item_name;
-			new_row.qty = item.qty;
-			new_row.uom = item.uom;
-			new_row.rate = item.rate;
-			new_row.amount = flt(flt(item.amount) || flt(item.qty) * flt(item.rate), 2);
-		}
+		let new_row = frm.add_child('service_items');
+		new_row.item_code = item.item_code;
+		new_row.item_name = item.item_name;
+		new_row.qty = item.qty;
+		new_row.uom = item.uom;
+		new_row.rate = item.rate;
+		new_row.amount = flt(flt(item.amount) || flt(item.qty) * flt(item.rate), 2);
+		new_row.service_type = service_type;
 	});
 
 	frm.refresh_field('service_items');
 	calculate_totals(frm);
+}
+
+/**
+ * ลบอะไหล่ที่ดึงมาจาก service type ซึ่งไม่อยู่ในตารางประเภทบริการแล้ว
+ * เก็บอะไหล่ที่เพิ่มเอง (service_type ว่าง) ไว้
+ */
+function remove_orphan_service_type_items(frm) {
+	let remaining = new Set();
+	(frm.doc.service_types || []).forEach(function(st) {
+		if (st.service_type) {
+			remaining.add(st.service_type);
+		}
+	});
+
+	frm.doc.service_items = (frm.doc.service_items || []).filter(function(si) {
+		return !si.service_type || remaining.has(si.service_type);
+	});
+
+	frm.doc.service_items.forEach(function(row, idx) { row.idx = idx + 1; });
+	frm.refresh_field('service_items');
 }
 
 function calculate_item_amount(frm, cdt, cdn) {

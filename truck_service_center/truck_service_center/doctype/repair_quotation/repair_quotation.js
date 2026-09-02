@@ -364,6 +364,7 @@ frappe.ui.form.on('Repair Quotation Package', {
 					item_row.rate = part.rate;
 					item_row.discount_percentage = discount_pct;
 					item_row.service_package = pkg_name;
+					item_row.service_type = part.service_type;
 				});
 				
 				frm.refresh_field('service_types');
@@ -410,6 +411,9 @@ frappe.ui.form.on('Repair Quotation Service Type', {
 	},
 
 	service_types_remove: function(frm) {
+		// Cascade delete แบบเดียวกับตอนลบแพ็คเกจ — อะไหล่ที่ดึงมาจาก service type
+		// ที่ถูกลบไม่ควรค้างอยู่ในใบเสนอราคา
+		remove_orphan_service_type_items(frm);
 		calculate_totals(frm);
 	},
 
@@ -843,40 +847,45 @@ function check_and_add_service_type_items(frm, service_type) {
 }
 
 function add_service_type_items(frm, items, service_type) {
-	let added_count = 0;
-
+	// สร้างแถวใหม่เสมอ ไม่รวม qty เข้าแถวเดิม เพื่อให้อะไหล่ทุกแถวมีที่มาเพียง
+	// service type เดียว — ถ้ารวมแถว จะบอกไม่ได้ว่าต้องลบเท่าไหร่ตอนลบ service type
 	items.forEach(function(item) {
-		let exists = false;
-		if (frm.doc.service_items) {
-			for (let i = 0; i < frm.doc.service_items.length; i++) {
-				if (frm.doc.service_items[i].item_code === item.item_code) {
-					frm.doc.service_items[i].qty += item.qty;
-					frm.doc.service_items[i].amount = frm.doc.service_items[i].qty * frm.doc.service_items[i].rate;
-					exists = true;
-					added_count++;
-					break;
-				}
-			}
-		}
-
-		if (!exists) {
-			let new_row = frm.add_child('service_items');
-			new_row.item_code = item.item_code;
-			new_row.item_name = item.item_name;
-			new_row.description = item.description;
-			new_row.qty = item.qty;
-			new_row.uom = item.uom;
-			new_row.rate = item.rate;
-			new_row.amount = item.amount || (item.qty * item.rate);
-			added_count++;
-		}
+		let new_row = frm.add_child('service_items');
+		new_row.item_code = item.item_code;
+		new_row.item_name = item.item_name;
+		new_row.description = item.description;
+		new_row.qty = item.qty;
+		new_row.uom = item.uom;
+		new_row.rate = item.rate;
+		new_row.amount = item.amount || (item.qty * item.rate);
+		new_row.service_type = service_type;
 	});
 
 	frm.refresh_field('service_items');
 	calculate_totals(frm);
 
 	frappe.show_alert({
-		message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย', [added_count, service_type]),
+		message: __('เพิ่มรายการอะไหล่ {0} รายการจาก "{1}" เรียบร้อย', [items.length, service_type]),
 		indicator: 'green'
 	});
+}
+
+/**
+ * ลบอะไหล่ที่ดึงมาจาก service type ซึ่งไม่อยู่ในตารางประเภทบริการแล้ว
+ * เก็บอะไหล่ที่เพิ่มเอง (service_type ว่าง) ไว้
+ */
+function remove_orphan_service_type_items(frm) {
+	let remaining = new Set();
+	(frm.doc.service_types || []).forEach(function(st) {
+		if (st.service_type) {
+			remaining.add(st.service_type);
+		}
+	});
+
+	frm.doc.service_items = (frm.doc.service_items || []).filter(function(si) {
+		return !si.service_type || remaining.has(si.service_type);
+	});
+
+	frm.doc.service_items.forEach(function(row, idx) { row.idx = idx + 1; });
+	frm.refresh_field('service_items');
 }

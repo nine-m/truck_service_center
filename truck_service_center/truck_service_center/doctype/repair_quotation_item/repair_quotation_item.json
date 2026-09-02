@@ -15,7 +15,8 @@
   "discount_percentage",
   "discount_amount",
   "amount",
-  "service_package"
+  "service_package",
+  "service_type"
  ],
  "fields": [
   {
@@ -93,12 +94,19 @@
    "label": "\u0e08\u0e32\u0e01\u0e41\u0e1e\u0e47\u0e04\u0e40\u0e01\u0e08",
    "options": "Service Package",
    "read_only": 1
+  },
+  {
+   "fieldname": "service_type",
+   "fieldtype": "Link",
+   "label": "\u0e08\u0e32\u0e01\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23",
+   "options": "Service Type",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-02-26 10:00:00.000000",
+ "modified": "2026-09-02 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Repair Quotation Item",
