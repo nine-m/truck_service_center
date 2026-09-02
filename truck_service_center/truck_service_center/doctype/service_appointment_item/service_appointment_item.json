@@ -12,7 +12,8 @@
   "uom",
   "rate",
   "amount",
-  "service_package"
+  "service_package",
+  "service_type"
  ],
  "fields": [
   {
@@ -73,12 +74,19 @@
    "label": "จากแพ็คเกจ",
    "options": "Service Package",
    "read_only": 1
+  },
+  {
+   "fieldname": "service_type",
+   "fieldtype": "Link",
+   "label": "จากประเภทบริการ",
+   "options": "Service Type",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-02-26 10:00:00.000000",
+ "modified": "2026-09-02 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment Item",

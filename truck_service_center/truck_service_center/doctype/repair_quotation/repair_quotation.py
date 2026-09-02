@@ -12,6 +12,7 @@ class RepairQuotation(Document):
 		self.set_tax_defaults()
 		self.set_address_display()
 		self.apply_service_packages()
+		self.remove_orphan_service_type_items()
 		self.calculate_totals()
 		self.validate_valid_until()
 		self.update_status_on_save()
@@ -66,10 +67,13 @@ class RepairQuotation(Document):
 
 			pkg_name = pkg_row.service_package
 
-			# ตรวจสอบว่ามี service_types ที่ผูกกับ package นี้อยู่แล้วหรือไม่
-			has_service_types = any(st.service_package == pkg_name for st in self.service_types)
+			# แพ็คเกจนี้ถูกดึงข้อมูลแล้วหรือยัง — ต้องดูทั้งสองตาราง เพราะถ้าดู service_types
+			# อย่างเดียว การลบประเภทบริการของแพ็คเกจจนหมดจะทำให้ดึงซ้ำ อะไหล่จึงบวกเป็นสองเท่า
+			already_applied = any(st.service_package == pkg_name for st in self.service_types) or any(
+				si.service_package == pkg_name for si in self.service_items
+			)
 
-			if has_service_types:
+			if already_applied:
 				continue
 
 			# ดึงข้อมูลจาก package
@@ -107,8 +111,27 @@ class RepairQuotation(Document):
 						"rate": part.rate,
 						"discount_percentage": discount_pct,
 						"service_package": pkg_name,
+						"service_type": part.service_type,
 					},
 				)
+
+	def remove_orphan_service_type_items(self):
+		"""ลบอะไหล่ที่ดึงมาจากประเภทบริการซึ่งถูกลบออกจากตารางแล้ว
+
+		คู่กับ remove_orphan_service_type_items() ฝั่ง client — ทำซ้ำที่ server เพื่อให้
+		กฎยังทำงานเมื่อบันทึกผ่าน API/พอร์ทัล ไม่ใช่แค่ผ่านหน้า desk
+
+		อะไหล่ที่ service_type ว่างคือของที่เพิ่มเอง (รวมถึงข้อมูลเก่าก่อนมีฟิลด์นี้)
+		จะไม่ถูกแตะ
+		"""
+		remaining = {st.service_type for st in self.service_types if st.service_type}
+
+		self.service_items = [
+			item for item in self.service_items if not item.service_type or item.service_type in remaining
+		]
+
+		for idx, item in enumerate(self.service_items, start=1):
+			item.idx = idx
 
 	def calculate_totals(self):
 		"""คำนวณยอดรวมทั้งหมด (เหมือน Service Order)"""
@@ -281,6 +304,7 @@ def create_service_order_from_quotation(repair_quotation):
 				"amount": item.amount,
 				"warehouse": default_warehouse,
 				"service_package": item.service_package,
+				"service_type": item.service_type,
 			},
 		)
 
