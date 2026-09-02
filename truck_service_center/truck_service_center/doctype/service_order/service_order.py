@@ -55,6 +55,7 @@ def get_default_selling_rate(item_code, price_list=None):
 class ServiceOrder(Document):
 	def validate(self):
 		self.validate_status_change()
+		self.stamp_receive_on_progress()
 		self.set_tax_defaults()
 		self.set_address_display()
 		self.check_material_issue_items()
@@ -73,17 +74,41 @@ class ServiceOrder(Document):
 		if old_status and old_status.status == "In Progress" and self.status == "Draft":
 			frappe.throw("ไม่สามารถย้อนสถานะจาก In Progress กลับเป็น Draft ได้", title="ไม่สามารถเปลี่ยนสถานะได้")
 
-	def set_address_display(self):
-		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
-		if self.customer_address:
-			self.address_display = get_address_display(self.customer_address)
-		else:
-			self.address_display = ""
+	def stamp_receive_on_progress(self):
+		"""ถือว่าการเปลี่ยนสถานะเป็น In Progress คือการรับรถ และบันทึกเวลานั้นไว้
 
-		if self.shipping_address_name:
-			self.shipping_address = get_address_display(self.shipping_address_name)
-		else:
-			self.shipping_address = ""
+		ปุ่ม "รับรถ" (receive_vehicle) ยังเป็นทางหลักที่ผ่านการตรวจน้ำมันรับเข้า
+		แต่ status เป็น Select ที่แก้ด้วยมือในฟอร์มได้ ถ้าแก้ตรง ๆ ก็ให้ stamp ให้ด้วย
+		เพื่อให้ received_date สะท้อนเวลาที่เริ่มงานจริงเสมอ
+
+		ไม่เขียนทับค่าเดิม — receive_vehicle stamp มาก่อนเรียก save() อยู่แล้ว
+		และจำกัดเฉพาะตอนที่ status เปลี่ยนจริง เพื่อไม่ให้เอกสารเก่าที่ค้างสถานะ
+		In Progress อยู่ ถูก stamp เวลาผิดตอนบันทึกเรื่องอื่น
+		"""
+		if self.status != "In Progress" or self.received_date:
+			return
+
+		if not (self.is_new() or self.has_value_changed("status")):
+			return
+
+		self.received_by = frappe.session.user
+		self.received_date = now_datetime()
+
+	def set_address_display(self):
+		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address
+
+		คำนวณใหม่เฉพาะตอนที่ฟิลด์ที่อยู่เปลี่ยนจริง เพราะ get_address_display เรียก
+		Address.check_permission() ซึ่ง hook ของ Frappe ไปเช็คสิทธิ์ต่อบน doctype ที่ Address
+		ผูกอยู่ (Customer) — role อย่าง Technician ที่ไม่มี read บน Customer จะ save ใบสั่งงาน
+		ที่มีที่อยู่ไม่ได้เลย ทั้งที่ไม่ได้ไปยุ่งกับที่อยู่
+		"""
+		if self.is_new() or self.has_value_changed("customer_address"):
+			self.address_display = get_address_display(self.customer_address) if self.customer_address else ""
+
+		if self.is_new() or self.has_value_changed("shipping_address_name"):
+			self.shipping_address = (
+				get_address_display(self.shipping_address_name) if self.shipping_address_name else ""
+			)
 
 	def check_material_issue_items(self):
 		"""ห้ามลบหรือแก้แถวอะไหล่ที่ใบเบิกถูก submit ไปแล้ว
@@ -869,6 +894,15 @@ def create_material_issue(service_order, item_rows=None):
 
 	doc = frappe.get_doc("Service Order", service_order)
 	doc.check_permission("write")
+
+	# ต้องรับรถเข้ามาก่อนจึงจะเบิกอะไหล่ได้
+	# ยอมให้ status = In Progress ผ่านด้วย เพราะเอกสารเก่าที่เปลี่ยนสถานะด้วยมือ
+	# ก่อนมีกฎนี้จะไม่มี received_date (ของใหม่จะถูก stamp ให้ใน stamp_receive_on_progress)
+	if not doc.received_date and doc.status != "In Progress":
+		frappe.throw(
+			"ยังไม่ได้รับรถเข้าซ่อม กรุณากดปุ่ม “รับรถ” ก่อนสร้างใบเบิกอะไหล่",
+			title="ไม่สามารถสร้างใบเบิกอะไหล่ได้",
+		)
 
 	# ดึง settings
 	settings = frappe.get_single("Truck Service Center Settings")

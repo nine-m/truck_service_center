@@ -7,3 +7,5 @@
 truck_service_center.patches.set_notification_defaults
 truck_service_center.patches.sync_material_issue_status
 truck_service_center.patches.add_material_issue_link_fields
+truck_service_center.patches.create_technician_manager_role
+truck_service_center.patches.create_technician_role_profiles

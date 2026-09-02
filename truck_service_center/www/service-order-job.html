@@ -1,0 +1,440 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ job.name }}{% endblock %}
+
+{% block page_content %}
+<div class="tsc-job">
+
+	<div class="tsc-topbar">
+		<a class="tsc-back" href="/service-order-portal">&larr; กลับรายการงาน</a>
+		<button type="button" class="tsc-refresh" data-action="refresh">
+			<span class="tsc-refresh-icon">&#8635;</span> รีเฟรช
+		</button>
+	</div>
+
+	<header class="tsc-job-head">
+		<div class="tsc-job-head-top">
+			<span class="tsc-job-id">{{ job.name }}</span>
+			<span class="es-badge" data-theme="{{ job.status_theme }}">{{ job.status_label }}</span>
+		</div>
+		<div class="tsc-job-truck">{{ job.truck_label }}</div>
+		<div class="tsc-job-spec">{{ job.vehicle_spec }} &middot; {{ job.vehicle_type }} &middot; ข้อมูล ณ {{ fetched_at }}</div>
+	</header>
+
+	{% if not editable %}
+	<div class="tsc-locked">
+		ใบสั่งงานนี้ปิดหรือถูก submit แล้ว — ดูได้อย่างเดียว หากต้องแก้ไขกรุณาติดต่อผู้จัดการ
+	</div>
+	{% endif %}
+
+	<div class="tsc-cols">
+
+		<!-- ───────── ฝั่งข้อมูล (อ่านอย่างเดียว) ───────── -->
+		<section class="tsc-col tsc-col-info">
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">ข้อมูลงาน</h2>
+				<dl class="tsc-facts">
+					<div><dt>ลูกค้า</dt><dd>{{ job.customer }}</dd></div>
+					<div><dt>ผู้ติดต่อ</dt><dd>{{ job.contact_person }}</dd></div>
+					{% if job.contact_number %}
+					<div>
+						<dt>เบอร์โทร</dt>
+						<dd><a class="tsc-tel" href="tel:{{ job.contact_number }}">{{ job.contact_number }}</a></dd>
+					</div>
+					{% endif %}
+					<div><dt>วันที่เข้าบริการ</dt><dd>{{ job.service_date_label }}</dd></div>
+					{% if job.priority_label %}
+					<div><dt>ความสำคัญ</dt><dd>{{ job.priority_label }}</dd></div>
+					{% endif %}
+					<div><dt>เวลาประมาณการ</dt><dd>{{ job.estimated_time }} ชม.</dd></div>
+				</dl>
+			</div>
+
+			{% if job.packages %}
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">แพ็คเกจบริการ</h2>
+				<ul class="tsc-lines">
+					{% for package in job.packages %}
+					<li>
+						<span class="tsc-line-main">{{ package.label }}</span>
+						{% if package.code %}<span class="tsc-line-sub"><span class="tsc-pkg">{{ package.code }}</span></span>{% endif %}
+					</li>
+					{% endfor %}
+				</ul>
+			</div>
+			{% endif %}
+
+			{% if job.complaints %}
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">อาการที่ลูกค้าแจ้ง</h2>
+				<p class="tsc-complaints">{{ job.complaints }}</p>
+			</div>
+			{% endif %}
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">งานที่ต้องทำ ({{ job.service_types | length }})</h2>
+				{% if job.service_types %}
+				<ul class="tsc-lines">
+					{% for line in job.service_types %}
+					<li>
+						<span class="tsc-line-main">{{ line.label }}</span>
+						<span class="tsc-line-sub">
+							{%- if line.position %}{{ line.position }} &middot; {% endif -%}
+							{{ line.estimated_time }} ชม.
+							{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
+						</span>
+						{% if line.remark %}<span class="tsc-line-note">{{ line.remark }}</span>{% endif %}
+					</li>
+					{% endfor %}
+				</ul>
+				{% else %}
+				<p class="tsc-muted">ยังไม่ระบุรายการงาน</p>
+				{% endif %}
+			</div>
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">อะไหล่ที่ใช้ ({{ job.parts | length }})</h2>
+				{% if job.parts %}
+				<ul class="tsc-lines">
+					{% for line in job.parts %}
+					<li>
+						<span class="tsc-line-main">{{ line.label }}</span>
+						<span class="tsc-line-sub">
+							{{ line.qty }} {{ line.uom }}
+							&middot; {% if line.issued %}เบิกแล้ว{% else %}ยังไม่เบิก{% endif %}
+							{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
+						</span>
+					</li>
+					{% endfor %}
+				</ul>
+				{% else %}
+				<p class="tsc-muted">ยังไม่มีรายการอะไหล่</p>
+				{% endif %}
+			</div>
+
+		</section>
+
+		<!-- ───────── ฝั่งปุ่มอัปเดต ───────── -->
+		<section class="tsc-col tsc-col-actions">
+
+			{% if editable and status_actions %}
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">สถานะงาน</h2>
+				<div class="tsc-stack">
+					{% for action in status_actions %}
+					<button type="button" class="tsc-btn tsc-btn-{{ action.variant }}"
+						data-action="status" data-value="{{ action.status }}">{{ action.label }}</button>
+					{% endfor %}
+				</div>
+				{% if job.status == "Draft" %}
+				<p class="tsc-hint">ต้องเลือกสถานะน้ำมันรับเข้าก่อนจึงจะรับรถได้</p>
+				{% endif %}
+			</div>
+			{% endif %}
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">สถานะน้ำมันรับเข้า</h2>
+				<div class="tsc-choices" data-group="fuel-in">
+					{% for level in fuel_levels %}
+					<button type="button" class="tsc-choice {% if job.fuel_level_in == level %}is-active{% endif %}"
+						data-action="fuel" data-which="in" data-value="{{ level }}"
+						{% if not editable %}disabled{% endif %}>{{ level }}</button>
+					{% endfor %}
+				</div>
+			</div>
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">สถานะน้ำมันส่งออก</h2>
+				<div class="tsc-choices" data-group="fuel-out">
+					{% for level in fuel_levels %}
+					<button type="button" class="tsc-choice {% if job.fuel_level_out == level %}is-active{% endif %}"
+						data-action="fuel" data-which="out" data-value="{{ level }}"
+						{% if not editable %}disabled{% endif %}>{{ level }}</button>
+					{% endfor %}
+				</div>
+			</div>
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">เวลาทำงานจริง</h2>
+				<div class="tsc-stepper">
+					<button type="button" class="tsc-step" data-action="time" data-delta="-0.5"
+						{% if not editable %}disabled{% endif %} aria-label="ลด 0.5 ชั่วโมง">&minus;</button>
+					<div class="tsc-step-value"><span id="tsc-time">{{ job.actual_time }}</span> <small>ชม.</small></div>
+					<button type="button" class="tsc-step" data-action="time" data-delta="0.5"
+						{% if not editable %}disabled{% endif %} aria-label="เพิ่ม 0.5 ชั่วโมง">+</button>
+				</div>
+				<p class="tsc-hint" id="tsc-time-hint">ครั้งละ 0.5 ชม. &middot; ประมาณการไว้ {{ job.estimated_time }} ชม.</p>
+			</div>
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">เลขไมล์ปัจจุบัน (กม.)</h2>
+				<div class="tsc-inline">
+					<input type="number" id="tsc-mileage" class="tsc-input" inputmode="numeric"
+						step="1" min="0" value="{{ job.current_mileage }}"
+						{% if not editable %}disabled{% endif %}>
+					<button type="button" class="tsc-btn tsc-btn-primary" data-action="mileage"
+						{% if not editable %}disabled{% endif %}>บันทึก</button>
+				</div>
+			</div>
+
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">หมายเหตุช่าง</h2>
+				<div class="tsc-chips">
+					{% for preset in remark_presets %}
+					<button type="button" class="tsc-chip" data-action="preset" data-value="{{ preset }}"
+						{% if not editable %}disabled{% endif %}>+ {{ preset }}</button>
+					{% endfor %}
+				</div>
+				<textarea id="tsc-remarks" class="tsc-textarea" rows="4"
+					placeholder="กดปุ่มด้านบนเพื่อเพิ่มข้อความ หรือพิมพ์เพิ่มเองได้"
+					{% if not editable %}disabled{% endif %}>{{ job.remarks }}</textarea>
+				<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-block" data-action="remarks"
+					{% if not editable %}disabled{% endif %}>บันทึกหมายเหตุ</button>
+			</div>
+
+		</section>
+	</div>
+</div>
+
+<script>
+(function () {
+	var JOB = {{ job.name | tojson }};
+	var API = "truck_service_center.api.technician_portal.";
+
+	function toast(message, indicator) {
+		if (window.frappe && frappe.show_alert) {
+			frappe.show_alert({ message: message, indicator: indicator || "green" }, 4);
+		}
+	}
+
+	// ยิง API พร้อมล็อกปุ่มกันกดซ้ำระหว่างรอ
+	function call(method, args, btn, onSuccess) {
+		if (btn) { btn.disabled = true; btn.classList.add("is-busy"); }
+		frappe.call({
+			method: API + method,
+			args: Object.assign({ service_order: JOB }, args),
+			callback: function (r) {
+				if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
+				if (r && !r.exc) {
+					toast("บันทึกแล้ว");
+					if (onSuccess) onSuccess(r.message || {});
+				}
+			},
+			error: function () {
+				if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
+			}
+		});
+	}
+
+	// ── สถานะน้ำมัน: แตะปุ่มเดียวจบ
+	function onFuel(btn) {
+		call("set_fuel_level", { which: btn.dataset.which, value: btn.dataset.value }, btn, function () {
+			var group = btn.parentNode;
+			group.querySelectorAll(".tsc-choice").forEach(function (el) { el.classList.remove("is-active"); });
+			btn.classList.add("is-active");
+		});
+	}
+
+	// ── เวลาทำงาน: อัปเดตตัวเลขทันที แล้วรวบยอดบันทึกหลังหยุดกด 800ms
+	var timeEl = document.getElementById("tsc-time");
+	var timeHint = document.getElementById("tsc-time-hint");
+	var timeTimer = null;
+	var timeHintText = timeHint ? timeHint.textContent : "";
+
+	function onTime(btn) {
+		var next = Math.round((parseFloat(timeEl.textContent) + parseFloat(btn.dataset.delta)) * 2) / 2;
+		if (next < 0) { next = 0; }
+		timeEl.textContent = next;
+		if (timeHint) { timeHint.textContent = "กำลังบันทึก…"; }
+		clearTimeout(timeTimer);
+		timeTimer = setTimeout(function () {
+			call("set_actual_time", { hours: next }, null, function () {
+				if (timeHint) { timeHint.textContent = timeHintText; }
+			});
+		}, 800);
+	}
+
+	// ── ชิปหมายเหตุ: ต่อท้ายข้อความเดิม ช่างไม่ต้องพิมพ์
+	function onPreset(btn) {
+		var box = document.getElementById("tsc-remarks");
+		var current = box.value.trim();
+		box.value = current ? current + "\n" + btn.dataset.value : btn.dataset.value;
+		box.focus();
+		box.setSelectionRange(box.value.length, box.value.length);
+	}
+
+	function onStatus(btn) {
+		if (btn.dataset.value === "Completed" && !window.confirm("ยืนยันปิดงานนี้?")) { return; }
+		call("set_status", { status: btn.dataset.value }, btn, function () {
+			window.location.reload();
+		});
+	}
+
+	document.addEventListener("click", function (event) {
+		var btn = event.target.closest("[data-action]");
+		if (!btn || btn.disabled) { return; }
+
+		switch (btn.dataset.action) {
+			case "fuel":    onFuel(btn); break;
+			case "time":    onTime(btn); break;
+			case "preset":  onPreset(btn); break;
+			case "status":  onStatus(btn); break;
+			case "refresh": btn.disabled = true; window.location.reload(); break;
+			case "mileage":
+				call("set_mileage", { mileage: document.getElementById("tsc-mileage").value }, btn);
+				break;
+			case "remarks":
+				call("set_remarks", { remarks: document.getElementById("tsc-remarks").value }, btn);
+				break;
+		}
+	});
+})();
+</script>
+
+<style>
+	/* ออกแบบให้แท็บเล็ตเป็นหลัก (2 คอลัมน์ตั้งแต่ 768px) และยุบเหลือคอลัมน์เดียวบนมือถือ
+	   ปุ่มทุกตัวสูงอย่างน้อย 48px เพื่อให้กดด้วยนิ้วได้ขณะสวมถุงมือ */
+	.tsc-job { max-width: 1100px; margin: 0 auto; padding-bottom: 4rem; }
+
+	.tsc-topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+	.tsc-back {
+		display: inline-block; padding: 0.5rem 0; margin-bottom: 0.5rem;
+		font-size: 0.9375rem; text-decoration: none;
+	}
+
+	.tsc-job-head { padding: 0 0 1rem; }
+	.tsc-job-head-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.35rem; }
+	.tsc-job-id { font-size: 0.875rem; font-weight: 500; color: var(--text-muted); }
+	.tsc-job-truck { font-size: 1.75rem; font-weight: 700; line-height: 1.2; word-break: break-word; }
+	.tsc-job-spec { font-size: 0.9375rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+	.tsc-locked {
+		padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.9375rem;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--subtle-fg, #f4f5f6);
+	}
+
+	.tsc-cols { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+	.tsc-col { display: flex; flex-direction: column; gap: 1rem; }
+
+	.tsc-card {
+		border: 1px solid var(--border-color); border-radius: 10px;
+		padding: 1rem; background: var(--card-bg, #fff);
+	}
+	.tsc-card-title {
+		font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em;
+		text-transform: none; color: var(--text-muted);
+		margin: 0 0 0.75rem;
+	}
+
+	.tsc-facts { margin: 0; display: grid; gap: 0.5rem; }
+	.tsc-facts > div { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9375rem; }
+	.tsc-facts dt { font-weight: 400; color: var(--text-muted); flex-shrink: 0; }
+	.tsc-facts dd { margin: 0; text-align: right; word-break: break-word; }
+	.tsc-tel { font-weight: 600; white-space: nowrap; }
+
+	.tsc-complaints { margin: 0; font-size: 0.9375rem; line-height: 1.7; white-space: pre-line; }
+	.tsc-muted { margin: 0; font-size: 0.9375rem; color: var(--text-muted); }
+
+	.tsc-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+	.tsc-lines li { display: grid; gap: 0.15rem; }
+	.tsc-lines li + li { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+	.tsc-line-main { font-size: 0.9375rem; font-weight: 500; }
+	.tsc-line-sub { font-size: 0.8125rem; color: var(--text-muted); }
+	.tsc-line-note { font-size: 0.8125rem; color: var(--text-muted); font-style: italic; }
+
+	/* ปุ่มหลัก */
+	.tsc-btn {
+		min-height: 48px; padding: 0.75rem 1.25rem;
+		font-size: 1rem; font-weight: 600; border-radius: 8px;
+		border: 1px solid var(--border-color); background: var(--card-bg, #fff);
+		cursor: pointer; transition: opacity 0.15s;
+	}
+	.tsc-btn-primary { background: var(--primary, #171717); border-color: var(--primary, #171717); color: #fff; }
+	.tsc-btn-success { background: #158947; border-color: #158947; color: #fff; }
+	.tsc-btn-secondary { background: var(--subtle-fg, #f4f5f6); }
+	.tsc-btn-block { width: 100%; margin-top: 0.75rem; }
+	.tsc-btn:disabled, .tsc-choice:disabled, .tsc-step:disabled, .tsc-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+	.is-busy { opacity: 0.6; }
+
+	.tsc-stack { display: grid; gap: 0.5rem; }
+
+	/* ปุ่มเลือกระดับน้ำมัน — เต็มความกว้าง แตะง่าย */
+	.tsc-choices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.375rem; }
+	.tsc-choice {
+		min-height: 52px; padding: 0.5rem 0.25rem;
+		font-size: 0.9375rem; font-weight: 500;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--card-bg, #fff); cursor: pointer;
+	}
+	.tsc-choice.is-active {
+		background: var(--primary, #171717); border-color: var(--primary, #171717);
+		color: #fff; font-weight: 600;
+	}
+
+	/* ตัวนับเวลาทำงาน */
+	.tsc-stepper { display: grid; grid-template-columns: 64px 1fr 64px; gap: 0.5rem; align-items: center; }
+	.tsc-step {
+		min-height: 56px; font-size: 1.5rem; font-weight: 600;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--card-bg, #fff); cursor: pointer;
+	}
+	.tsc-step-value { text-align: center; font-size: 1.75rem; font-weight: 700; }
+	.tsc-step-value small { font-size: 0.875rem; font-weight: 400; color: var(--text-muted); }
+
+	.tsc-hint { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--text-muted); text-align: center; }
+
+	.tsc-inline { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; }
+	.tsc-input {
+		min-height: 48px; padding: 0.5rem 0.75rem; font-size: 1.125rem;
+		border: 1px solid var(--border-color); border-radius: 8px; width: 100%;
+	}
+
+	.tsc-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.75rem; }
+	.tsc-chip {
+		min-height: 40px; padding: 0.4rem 0.75rem;
+		font-size: 0.875rem; border-radius: 999px;
+		border: 1px solid var(--border-color); background: var(--subtle-fg, #f4f5f6);
+		cursor: pointer;
+	}
+	.tsc-textarea {
+		width: 100%; padding: 0.75rem; font-size: 1rem; line-height: 1.6;
+		border: 1px solid var(--border-color); border-radius: 8px; resize: vertical;
+	}
+
+	/* แท็บเล็ตขึ้นไป: ข้อมูลเป็นคอลัมน์แคบด้านซ้าย ยกพื้นที่ที่เหลือให้ฝั่งปุ่ม
+	   เพราะฝั่งซ้ายเป็นคู่ label/value สั้น ๆ ถ้าให้กว้างจะเหลือแต่ที่ว่าง
+	   ส่วนฝั่งขวาเป็น control (ปุ่มน้ำมัน 5 ช่อง, stepper, ช่องกรอก, textarea) ที่ได้ประโยชน์จากความกว้าง */
+	@media (min-width: 768px) {
+		.tsc-cols {
+			grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+			align-items: start;
+		}
+		.tsc-col-actions { position: sticky; top: 1rem; }
+	}
+
+	@media (max-width: 767px) {
+		/* มือถือ: เรียงตาม DOM คือข้อมูลงานก่อน แล้วค่อยตามด้วยกลุ่มปุ่ม */
+		.tsc-choices { grid-template-columns: repeat(3, 1fr); }
+	}
+	/* ปุ่มรีเฟรช — ดึงข้อมูลใหม่จากเซิร์ฟเวอร์ (ทั้งสองหน้าตั้ง no_cache ไว้แล้ว) */
+	.tsc-refresh {
+		display: inline-flex; align-items: center; gap: 0.4rem;
+		min-height: 44px; padding: 0.5rem 0.9rem;
+		font-size: 0.9375rem; font-weight: 500; color: inherit;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--card-bg, #fff); cursor: pointer; flex-shrink: 0;
+	}
+	.tsc-refresh:disabled { opacity: 0.6; cursor: wait; }
+	.tsc-refresh-icon { display: inline-block; line-height: 1; font-size: 1.05rem; }
+	.tsc-refresh:disabled .tsc-refresh-icon { animation: tsc-spin 0.8s linear infinite; }
+	@keyframes tsc-spin { to { transform: rotate(360deg); } }
+	/* ป้ายแพ็คเกจ — บอกว่าบรรทัดนี้มาจากแพ็คเกจไหน */
+	.tsc-pkg {
+		display: inline-block; padding: 0.1rem 0.45rem; margin-left: 0.15rem;
+		font-size: 0.75rem; line-height: 1.5; border-radius: 999px;
+		background: var(--subtle-fg, #f4f5f6); border: 1px solid var(--border-color);
+	}
+</style>
+{% endblock %}

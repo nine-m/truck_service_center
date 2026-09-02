@@ -63,12 +63,22 @@ DEFAULT_ROLES = [
 	"Service Manager",  # ผู้จัดการศูนย์ — สิทธิ์เต็มทุก doctype ของแอป
 	"Service User",  # ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิดใบสั่งงาน
 	"Technician",  # ช่าง — ดูงานและอัพเดทงานซ่อม
+	"Technician Manager",  # หัวหน้าช่าง — เห็นและอัพเดทงานได้ทุกใบในพอร์ทัลช่าง แม้ไม่ได้ถูก assign
 ]
+
+
+# ชุด role สำเร็จรูปให้เลือกตอนสร้าง user (doctype Role Profile)
+DEFAULT_ROLE_PROFILES = {
+	"Technician": ["Technician"],
+	# หัวหน้าช่างทำงานช่างด้วย จึงได้ Technician ติดไปด้วย ไม่ใช่แค่สิทธิ์ดูทุกใบ
+	"Technician Manager": ["Technician", "Technician Manager"],
+}
 
 
 def after_install():
 	create_custom_fields(CUSTOM_FIELDS)
 	create_default_roles()
+	create_default_role_profiles()
 	create_default_vehicle_brands()
 
 
@@ -93,6 +103,45 @@ def create_default_roles():
 		frappe.db.commit()
 
 	print(f"✓ สร้างบทบาทผู้ใช้เริ่มต้นเรียบร้อย ({created} รายการ)")
+
+
+def create_default_role_profiles():
+	"""สร้าง Role Profile สำเร็จรูปของศูนย์บริการ (idempotent)
+
+	ถ้า profile มีอยู่แล้วจะเติมเฉพาะ role ที่ยังขาด ไม่ลบของที่ผู้ดูแลระบบเพิ่มเอง
+	"""
+	touched = 0
+	for profile_name, roles in DEFAULT_ROLE_PROFILES.items():
+		missing_roles = [role for role in roles if not frappe.db.exists("Role", role)]
+		if missing_roles:
+			print(f"⚠ ข้าม Role Profile {profile_name} เพราะยังไม่มี role: {', '.join(missing_roles)}")
+			continue
+
+		if frappe.db.exists("Role Profile", profile_name):
+			doc = frappe.get_doc("Role Profile", profile_name)
+			existing = {row.role for row in doc.roles}
+			added = [role for role in roles if role not in existing]
+			if not added:
+				continue
+			for role in added:
+				doc.append("roles", {"role": role})
+			doc.save(ignore_permissions=True)
+		else:
+			doc = frappe.get_doc(
+				{
+					"doctype": "Role Profile",
+					"role_profile": profile_name,
+					"roles": [{"role": role} for role in roles],
+				}
+			)
+			doc.insert(ignore_permissions=True)
+
+		touched += 1
+
+	if touched:
+		frappe.db.commit()
+
+	print(f"✓ สร้าง/อัปเดต Role Profile เรียบร้อย ({touched} รายการ)")
 
 
 def create_default_vehicle_brands():

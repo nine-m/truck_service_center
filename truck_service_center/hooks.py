@@ -60,9 +60,18 @@ required_apps = ["erpnext"]
 # home_page = "login"
 
 # website user home page (by Role)
-# role_home_page = {
-# 	"Role": "home_page"
-# }
+# ช่างที่ล็อกอินเข้ามาจะถูกส่งไปหน้าพอร์ทัลงานของตัวเองแทนหน้า desk
+# frappe.website.utils.get_home_page_via_hooks จะวนหา role แรกใน frappe.get_roles()
+# ที่ตรงกับ key นี้ — ใช้ได้กับ System User ด้วย (ไม่ได้จำกัดเฉพาะ Website User)
+role_home_page = {
+	"Technician": "service-order-portal",
+	"Technician Manager": "service-order-portal",
+}
+
+# เส้นทางหน้ารายละเอียดงานของพอร์ทัลช่าง — <name> จะถูกส่งเข้า frappe.form_dict.name
+website_route_rules = [
+	{"from_route": "/service-order-portal/<name>", "to_route": "service-order-job"},
+]
 
 # Generators
 # ----------
