@@ -186,6 +186,7 @@ def get_package_details(package_name):
 		"total_labor_rate": package.total_labor_rate,
 		"total_parts_amount": package.total_parts_amount,
 		"discount_percent": package.discount_percent,
+		"repair_time_hours": package.repair_time_hours,
 		"discount_amount": package.get_discount_amount(),
 		"validity_days": package.validity_days,
 		"service_interval_km": package.service_interval_km,
