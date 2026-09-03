@@ -6,6 +6,12 @@ frappe.ui.form.on("Service Order", {
 		// ตั้งค่า filter สำหรับช่างผู้รับผิดชอบ
 		set_technician_filter(frm);
 
+		// ตั้งค่า filter สำหรับช่องจอด (เฉพาะที่เปิดใช้งาน)
+		set_bay_filter(frm);
+
+		// ค่าตั้งต้นของช่องจอดหลัก ใช้คืนค่าเมื่อผู้ใช้ยกเลิกที่หน้าต่างเตือน
+		frm.__previous_bay = frm.doc.service_bay || null;
+
 		// ตั้งค่าภาษีเริ่มต้นสำหรับเอกสารใหม่
 		if (frm.is_new()) {
 			frappe.db.get_value(
@@ -449,6 +455,22 @@ frappe.ui.form.on("Service Order", {
 		});
 	},
 
+	service_bay: function (frm) {
+		// เติมแถวที่ยังไม่ระบุช่องจอดให้ทันที แล้วเตือนถ้าชนกับใบอื่น/งานต้องใช้หลุม
+		fill_empty_row_bays(frm);
+
+		// จำค่าก่อนหน้าไว้เอง เพราะ frappe ไม่ได้ส่งค่าเดิมเข้ามาใน trigger
+		let previous = frm.__previous_bay || null;
+		frm.__previous_bay = frm.doc.service_bay || null;
+
+		if (!frm.doc.service_bay || frm.is_new()) return;
+
+		confirm_bay_change(frm, { service_bay: frm.doc.service_bay }, function () {
+			frm.__previous_bay = previous;
+			frm.set_value("service_bay", previous);
+		});
+	},
+
 	labor_charges: function (frm) {
 		calculate_totals(frm);
 	},
@@ -759,6 +781,17 @@ frappe.ui.form.on("Service Order Package", {
 frappe.ui.form.on("Service Order Service Type", {
 	service_types_add: function (frm) {
 		calculate_totals(frm);
+	},
+
+	service_bay: function (frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		if (!row.service_bay || frm.is_new()) return;
+
+		let row_bays = {};
+		row_bays[row.name] = row.service_bay;
+		confirm_bay_change(frm, { row_bays: JSON.stringify(row_bays) }, function () {
+			frappe.model.set_value(cdt, cdn, "service_bay", null);
+		});
 	},
 
 	// ห้ามลบประเภทบริการที่อะไหล่ของมันถูกเบิกไปแล้ว ไม่งั้นอะไหล่จะค้างเป็นแถวไร้ที่มา
@@ -1372,6 +1405,59 @@ function set_technician_filter(frm) {
 			};
 		});
 	});
+
+	// ช่องช่างในกริดงานใช้ filter ชุดเดียวกัน จะได้ไม่ขึ้น user ทุกคนในระบบ
+	ROW_TECHNICIAN_FIELDS.forEach(function (fieldname) {
+		frm.set_query(fieldname, "service_types", function () {
+			return {
+				query: "truck_service_center.queries.technician_query",
+			};
+		});
+	});
+}
+
+function set_bay_filter(frm) {
+	// เลือกได้เฉพาะช่องจอดที่ยังเปิดใช้งาน ทั้งช่องจอดหลักและช่องจอดรายแถว
+	frm.set_query("service_bay", function () {
+		return { filters: { is_active: 1 } };
+	});
+	frm.set_query("service_bay", "service_types", function () {
+		return { filters: { is_active: 1 } };
+	});
+}
+
+// เตือนเรื่องช่องจอดก่อนตั้งค่าจริง — ยกเลิกแล้วคืนค่าเดิม (เตือนอย่างเดียว ไม่ห้าม)
+function confirm_bay_change(frm, args, on_cancel) {
+	frappe.call({
+		method: "truck_service_center.truck_service_center.doctype.service_order.service_order.check_bay_conflicts",
+		args: Object.assign({ service_order: frm.doc.name }, args),
+		callback: function (r) {
+			let warnings = (r && r.message && r.message.warnings) || [];
+			if (!warnings.length) return;
+
+			frappe.confirm(
+				warnings.join("<br>") + "<br><br>" + __("ยืนยันใช้ช่องจอดนี้?"),
+				function () {},
+				on_cancel
+			);
+		},
+	});
+}
+
+// เติมช่องจอดหลักลงแถวที่ยังว่าง — mirror ของ apply_default_bay ฝั่ง server
+// ทำฝั่ง client ด้วยเพื่อให้เห็นผลทันทีโดยไม่ต้องรอ save
+function fill_empty_row_bays(frm) {
+	if (!frm.doc.service_bay) return;
+
+	let changed = false;
+	(frm.doc.service_types || []).forEach(function (row) {
+		if (!row.service_bay) {
+			row.service_bay = frm.doc.service_bay;
+			changed = true;
+		}
+	});
+
+	if (changed) frm.refresh_field("service_types");
 }
 
 function set_vehicle_filter(frm) {
