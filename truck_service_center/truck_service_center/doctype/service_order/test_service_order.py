@@ -6,6 +6,8 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import UnitTestCase
 
+from truck_service_center.api.technician_portal import _validate_completion
+
 
 def make_order(
 	tax_type="ราคาแยก VAT",
@@ -304,3 +306,36 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		with patch("frappe.get_all", return_value=["MAT-STE-0001"]):
 			so.validate_service_type_removal()  # ต้องไม่โยน
+
+	# ── ด่านปิดงานจากพอร์ทัลช่าง (technician_portal._validate_completion) ─────────
+
+	def test_portal_completion_requires_actual_time(self):
+		"""ปิดงานไม่ได้ถ้ายังไม่ได้ลงเวลาทำงานจริง — ปิดแล้วช่างกลับมาแก้จากพอร์ทัลไม่ได้"""
+		so = make_order(actual_time=0, fuel_level_out="เต็ม")
+
+		with self.assertRaises(frappe.ValidationError):
+			_validate_completion(so)
+
+	def test_portal_completion_requires_fuel_out(self):
+		"""ปิดงานไม่ได้ถ้ายังไม่บันทึกน้ำมันนำส่ง — คู่กับน้ำมันรับเข้าที่บังคับตอนรับรถ"""
+		so = make_order(actual_time=2, fuel_level_out=None)
+
+		with self.assertRaises(frappe.ValidationError):
+			_validate_completion(so)
+
+	def test_portal_completion_lists_every_missing_field(self):
+		"""ขาดทั้งสองอย่างต้องฟ้องพร้อมกัน ช่างจะได้ไม่ต้องกดปิดงานซ้ำหลายรอบ"""
+		so = make_order(actual_time=0, fuel_level_out=None)
+
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			_validate_completion(so)
+
+		message = str(ctx.exception)
+		self.assertIn("เวลาทำงานจริง", message)
+		self.assertIn("น้ำมันนำส่ง", message)
+
+	def test_portal_completion_passes_when_complete(self):
+		"""ครบแล้วต้องผ่าน — เลขไมล์ไม่ใช่เงื่อนไขบังคับ เป็นแค่คำเตือนฝั่งหน้าเว็บ"""
+		so = make_order(actual_time=1.5, fuel_level_out="ครึ่ง", current_mileage=0)
+
+		_validate_completion(so)  # ต้องไม่โยน

@@ -128,12 +128,37 @@ def set_remarks(service_order, remarks):
 	return {"value": remarks}
 
 
+def _validate_completion(doc):
+	"""ข้อมูลที่ช่างต้องบันทึกให้ครบก่อนปิดงาน — รวบฟ้องทีเดียวจะได้ไม่ต้องแก้หลายรอบ
+
+	เวลาทำงานจริงเป็นเงื่อนไข submit อยู่แล้ว (Service Order.before_submit) แต่ต้องดัก
+	ตั้งแต่ปิดงาน เพราะ Completed หลุดจาก EDITABLE_STATUSES ช่างจึงกลับมาแก้ไม่ได้อีก
+	ส่วนน้ำมันนำส่งเป็นคู่ของน้ำมันรับเข้าที่ receive_vehicle บังคับไว้ตอนรับรถ
+	"""
+	missing = []
+
+	if flt(doc.actual_time) <= 0:
+		missing.append(_("เวลาทำงานจริง (ต้องมากกว่า 0 ชม.)"))
+
+	if not doc.fuel_level_out:
+		missing.append(_("สถานะน้ำมันนำส่ง"))
+
+	if missing:
+		frappe.throw(
+			_("กรุณาบันทึกข้อมูลต่อไปนี้ก่อนปิดงาน") + "<br>" + "<br>".join(f"• {label}" for label in missing),
+			title=_("ข้อมูลไม่ครบ"),
+		)
+
+
 @frappe.whitelist()
 def set_status(service_order, status):
 	"""เปลี่ยนสถานะงานตามเส้นทางที่อนุญาตเท่านั้น
 
 	Draft → In Progress ส่งต่อให้ receive_vehicle ของ controller เดิม
 	เพื่อให้ยัง stamp ผู้รับรถ/เวลา และบังคับกรอกน้ำมันรับเข้าเหมือนทำผ่าน desk
+
+	→ Completed ต้องผ่าน _validate_completion ก่อน (ด่านจริง — ฝั่งหน้าเว็บเตือนให้
+	เฉย ๆ) ส่วนเลขไมล์ที่ยังไม่อัปเดตเป็นแค่คำเตือน จึงถามยืนยันที่ฝั่งหน้าเว็บอย่างเดียว
 	"""
 	doc = _get_editable_job(service_order)
 
@@ -142,6 +167,9 @@ def set_status(service_order, status):
 			_("เปลี่ยนสถานะจาก {0} เป็น {1} ไม่ได้").format(doc.status, status),
 			title=_("ไม่สามารถเปลี่ยนสถานะได้"),
 		)
+
+	if status == "Completed":
+		_validate_completion(doc)
 
 	if doc.status == "Draft" and status == "In Progress":
 		receive_vehicle(doc.name)

@@ -89,6 +89,10 @@ def get_context(context):
 
 def _build_job_view(doc):
 	"""ดึงเฉพาะฟิลด์ที่ช่างต้องใช้ พร้อม format ให้เรียบร้อยตั้งแต่ฝั่ง python"""
+	# เลขไมล์ที่ผูกกับรถอยู่ คือค่าที่ระบบเติมให้ตอนสร้างใบงาน (service_order.js / service_appointment.py)
+	# หน้าเว็บใช้เทียบว่าช่างอัปเดตเลขไมล์ของงานนี้แล้วหรือยัง เพื่อถามยืนยันตอนปิดงาน
+	vehicle_mileage = frappe.db.get_value("Vehicle", doc.vehicle, "current_mileage") if doc.vehicle else None
+
 	return frappe._dict(
 		name=doc.name,
 		status=doc.status,
@@ -111,6 +115,7 @@ def _build_job_view(doc):
 		actual_time=_num(doc.actual_time),
 		estimated_time=_num(doc.estimated_time),
 		current_mileage=_num(doc.current_mileage),
+		vehicle_mileage=_num(vehicle_mileage) if vehicle_mileage else None,
 		packages=[
 			frappe._dict(
 				label=row.package_name or row.package_code or row.service_package,
