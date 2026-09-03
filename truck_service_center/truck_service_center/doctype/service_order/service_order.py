@@ -4,7 +4,7 @@
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import cint, flt, now_datetime
+from frappe.utils import cint, flt, now_datetime, time_diff_in_hours
 
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
 # (lock_rows_with_submitted_material_issue ใน service_order.js)
@@ -20,6 +20,17 @@ MATERIAL_ISSUE_LOCKED_NUMERIC_FIELDS = {
 # ฟิลด์ที่ต้องกรอกก่อน submit ใบสั่งงาน (นอกเหนือจาก reqd ในฟอร์ม) — ใช้ label จาก meta
 # จะได้ไม่ต้องเขียนชื่อภาษาไทยซ้ำกับที่ตั้งไว้ใน doctype
 SUBMIT_REQUIRED_FIELDS = ("fuel_level_in", "fuel_level_out", "technician")
+
+# ช่องช่างของ "แถวงาน" (Service Order Service Type) — แบน 10 ช่องตามที่ผู้ใช้เลือก
+ROW_TECHNICIAN_FIELDS = tuple(f"technician_{i}" for i in range(1, 11))
+
+# ช่องช่างระดับใบงาน — ช่องแรกชื่อ technician เฉย ๆ ที่เหลือมีเลขต่อท้าย
+PARENT_TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
+
+# สถานะที่ถือว่าใบงานยัง "เปิด" อยู่ — ใช้หาว่าช่องจอดถูกใบอื่นใช้ค้างไว้หรือเปล่า
+# ประกาศที่นี่ ไม่ import EDITABLE_STATUSES จาก technician_portal เพราะฝั่งนั้น
+# import receive_vehicle จากไฟล์นี้อยู่แล้ว (จะกลายเป็น circular import)
+OPEN_STATUSES = ("Draft", "In Progress", "On Hold")
 
 
 def get_default_selling_rate(item_code, price_list=None):
@@ -63,6 +74,10 @@ class ServiceOrder(Document):
 		self.validate_service_type_removal()
 		self.remove_orphan_service_type_items()
 		self.calculate_totals()
+		self.apply_default_bay()
+		self.sync_row_technicians_to_parent()
+		self.compute_actual_time()
+		self.warn_bay_issues()
 		self.calculate_wht()
 		self.update_payment_status()
 		self.update_material_issue_status()
@@ -492,6 +507,81 @@ class ServiceOrder(Document):
 					item.material_issue_status = "Cancelled"
 			else:
 				item.material_issue_status = None
+
+	# ── ช่องจอด / ช่างรายงาน / เวลาจริง ────────────────────────────────────────
+
+	def apply_default_bay(self):
+		"""แถวงานที่ไม่ได้ระบุช่องจอดเอง ให้ใช้ช่องจอดหลักของใบงาน
+
+		เติมตอน save เท่านั้น — แก้ช่องจอดหลักภายหลังจะมีผลเฉพาะแถวที่ยังว่างอยู่
+		แถวที่หัวหน้าช่างเจาะจงไว้แล้วจะไม่ถูกทับ
+		"""
+		if not self.service_bay:
+			return
+
+		for row in self.service_types:
+			if not row.service_bay:
+				row.service_bay = self.service_bay
+
+	def sync_row_technicians_to_parent(self):
+		"""รวมช่างจากทุกแถวงานขึ้นมาไว้ที่ระดับใบงาน
+
+		วางไว้ใน validate จึงได้ sync ทั้งตอนแก้ใน desk และตอนพอร์ทัลเรียก doc.save()
+		โดยไม่ต้องเขียนโค้ดซ้ำสองที่
+
+		เป็นการ sync ทางเดียว (แถว → ใบงาน) และไม่เคยลบช่างออกจากใบงาน เพราะช่าง
+		ระดับใบงานอาจถูกกรอกเองโดยไม่ได้ผูกกับงานรายการไหน
+		"""
+		on_rows = []
+		for row in self.service_types:
+			for fieldname in ROW_TECHNICIAN_FIELDS:
+				user = row.get(fieldname)
+				if user and user not in on_rows:
+					on_rows.append(user)
+
+		if not on_rows:
+			return
+
+		already = {self.get(f) for f in PARENT_TECHNICIAN_FIELDS if self.get(f)}
+		pending = [user for user in on_rows if user not in already]
+		if not pending:
+			return
+
+		free = [f for f in PARENT_TECHNICIAN_FIELDS if not self.get(f)]
+		for fieldname, user in zip(free, pending, strict=False):
+			self.set(fieldname, user)
+
+		overflow = pending[len(free) :]
+		if overflow:
+			frappe.msgprint(
+				"ช่างระดับใบงานเต็ม 10 คนแล้ว ช่างต่อไปนี้ยังอยู่เฉพาะในแถวงาน: " + ", ".join(overflow),
+				indicator="orange",
+			)
+
+	def compute_actual_time(self):
+		"""เวลาทำงานจริง = เวลาเริ่มแรกสุด → เวลาจบท้ายสุด ของงานทุกรายการ
+
+		เป็นเวลาแบบ wall-clock งานที่ทำขนานกันจึงไม่ถูกนับซ้ำ (ต่างจาก estimated_time
+		ที่เป็นผลรวมของทุกงาน) ส่วนการคิดเงินไม่ได้ใช้เวลาเลย ใช้ labor_charges ตรง ๆ
+
+		ใบเก่าที่ไม่มี timestamp สักอันจะไม่ถูกแตะ — ค่าที่กรอกมือไว้เดิมยังอยู่
+		ทำให้ยัง submit ผ่านด่าน actual_time > 0 ใน before_submit ได้ตามเดิม
+		"""
+		starts = [row.start_time for row in self.service_types if row.start_time]
+		ends = [row.end_time for row in self.service_types if row.end_time]
+
+		if not starts and not ends:
+			return
+
+		if not starts or not ends:
+			return
+
+		self.actual_time = flt(time_diff_in_hours(max(ends), min(starts)), 2)
+
+	def warn_bay_issues(self):
+		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)"""
+		for warning in get_bay_warnings(self):
+			frappe.msgprint(warning, indicator="orange")
 
 	def on_submit(self):
 		"""เมื่อ submit ให้อัพเดทข้อมูลรถ และปรับสถานะ Service Appointment"""
@@ -967,7 +1057,10 @@ def get_item_by_barcode(barcode, customer=None, price_list=None):
 
 @frappe.whitelist()
 def create_material_issue(service_order, item_rows=None):
-	"""สร้าง Material Issue สำหรับ items ที่ยังไม่มีใบเบิก
+	"""สร้าง Material Issue สำหรับ items ที่ยังไม่มีใบเบิก (เรียกจากปุ่มในหน้า desk)
+
+	แปลง index ของแถวเป็นตัวแถวจริง แล้วส่งต่อให้ create_material_issue_for_rows
+	ตัว index มาจาก dialog ฝั่ง client ที่ยังส่ง index มาเหมือนเดิม
 
 	Args:
 		service_order: ชื่อของ Service Order
@@ -981,6 +1074,24 @@ def create_material_issue(service_order, item_rows=None):
 	doc = frappe.get_doc("Service Order", service_order)
 	doc.check_permission("write")
 
+	if item_rows:
+		wanted = {cint(idx) for idx in item_rows}
+		rows = [item for idx, item in enumerate(doc.service_items) if idx in wanted]
+	else:
+		rows = list(doc.service_items)
+
+	return create_material_issue_for_rows(doc, rows)
+
+
+def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
+	"""สร้างใบเบิกอะไหล่จากแถวที่ส่งมาตรง ๆ (ไม่ใช้ index — index เลื่อนได้เมื่อมีการลบแถว)
+
+	ตัวที่ทำงานจริงของทั้งปุ่มในหน้า desk และปุ่มสร้างใบเบิกรายงานในพอร์ทัลช่าง
+	ผู้เรียกต้องตรวจสิทธิ์มาก่อนแล้ว — ที่นี่ตรวจเฉพาะกฎทางธุรกิจ (ต้องรับรถก่อน)
+
+	ignore_permissions ส่งต่อไปที่ stock_entry.insert() เพราะ role Technician ไม่มีสิทธิ์
+	สร้าง Stock Entry — พอร์ทัลจึงตรวจ gate ของตัวเองให้ครบก่อนแล้วค่อยข้ามสิทธิ์ตรงนี้
+	"""
 	# ต้องรับรถเข้ามาก่อนจึงจะเบิกอะไหล่ได้
 	# ยอมให้ status = In Progress ผ่านด้วย เพราะเอกสารเก่าที่เปลี่ยนสถานะด้วยมือ
 	# ก่อนมีกฎนี้จะไม่มี received_date (ของใหม่จะถูก stamp ให้ใน stamp_receive_on_progress)
@@ -999,15 +1110,11 @@ def create_material_issue(service_order, item_rows=None):
 	stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
 	stock_entry.set_posting_time = 1
 	stock_entry.posting_date = frappe.utils.today()
-	stock_entry.custom_service_order = service_order  # Link กลับไป Service Order
+	stock_entry.custom_service_order = doc.name  # Link กลับไป Service Order
 
 	items_added = []
 
-	for idx, item in enumerate(doc.service_items):
-		# ถ้าระบุ item_rows ให้ตรวจสอบว่า item นี้อยู่ในรายการหรือไม่
-		if item_rows and idx not in item_rows:
-			continue
-
+	for item in rows:
 		# ข้าม item ที่มี Material Issue แล้ว
 		if item.material_issue:
 			continue
@@ -1028,18 +1135,155 @@ def create_material_issue(service_order, item_rows=None):
 	if not stock_entry.items:
 		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
 
-	stock_entry.insert()
+	stock_entry.insert(ignore_permissions=ignore_permissions)
 
 	# อัพเดท Material Issue reference ใน Service Order Items
 	for item in items_added:
 		item.material_issue = stock_entry.name
 		item.material_issue_status = "Draft"
 
-	doc.save()
+	doc.save(ignore_permissions=ignore_permissions)
 
 	frappe.msgprint(f"สร้าง Material Issue: {stock_entry.name}")
 
 	return stock_entry.name
+
+
+def get_bay_warnings(doc):
+	"""ข้อความเตือนเรื่องช่องจอด — คืนเป็น list ไม่ throw (ผู้ใช้ยืนยันว่าเตือนอย่างเดียว)
+
+	แยกออกมาเป็นฟังก์ชัน pure ระดับ module เพื่อให้ทั้ง validate, endpoint ตรวจก่อนตั้งค่า
+	และเทสต์ เรียกใช้ชุดตรรกะเดียวกัน
+
+	สองชั้น:
+	1. ช่องจอดหลักถูกใบงานอื่นที่ยังเปิดอยู่ใช้ค้างไว้
+	2. งานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่มีผลจริงกับแถวนั้นไม่มีหลุม
+	"""
+	warnings = []
+
+	if doc.service_bay:
+		filters = {
+			"service_bay": doc.service_bay,
+			"docstatus": 0,
+			"status": ["in", OPEN_STATUSES],
+		}
+		if not doc.is_new():
+			filters["name"] = ["!=", doc.name]
+
+		busy = frappe.get_all("Service Order", filters=filters, pluck="name", limit=5)
+		if busy:
+			warnings.append(f"ช่องจอด {doc.service_bay} กำลังถูกใช้โดยใบงานที่ยังไม่ปิด: {', '.join(busy)}")
+
+	warnings.extend(_get_pit_warnings(doc))
+
+	return warnings
+
+
+def _get_pit_warnings(doc):
+	"""แถวงานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่จะได้ใช้จริงไม่มีหลุม
+
+	ดึงข้อมูล master ทีเดียวเป็น batch ทั้ง Service Type และ Service Bay กัน N+1
+	ช่องจอดที่มีผลกับแถว = ช่องจอดของแถวเอง ถ้าไม่มีก็ตกไปใช้ช่องจอดหลักของใบงาน
+	(ตรงกับที่ apply_default_bay จะเติมให้ตอน save)
+	"""
+	pairs = []
+	for row in doc.service_types:
+		bay = row.service_bay or doc.service_bay
+		if row.service_type and bay:
+			pairs.append((row.service_type, bay))
+
+	if not pairs:
+		return []
+
+	service_types = {service_type for service_type, _ in pairs}
+	bays = {bay for _, bay in pairs}
+
+	needs_pit = set(
+		frappe.get_all(
+			"Service Type",
+			filters={"name": ["in", list(service_types)], "requires_pit": 1},
+			pluck="name",
+		)
+	)
+	if not needs_pit:
+		return []
+
+	has_pit = set(
+		frappe.get_all(
+			"Service Bay",
+			filters={"name": ["in", list(bays)], "has_pit": 1},
+			pluck="name",
+		)
+	)
+
+	warnings = []
+	seen = set()
+	for service_type, bay in pairs:
+		if service_type not in needs_pit or bay in has_pit:
+			continue
+		if (service_type, bay) in seen:
+			continue
+		seen.add((service_type, bay))
+		warnings.append(f"งาน {service_type} ต้องใช้หลุมซ่อม แต่ช่องจอด {bay} ไม่มีหลุม")
+
+	return warnings
+
+
+@frappe.whitelist()
+def check_bay_conflicts(service_order, service_bay=None, row_bays=None):
+	"""ตรวจช่องจอดล่วงหน้าก่อนตั้งค่าจริง เพื่อให้ฝั่ง client ขึ้น confirm ได้
+
+	ทับค่าที่กำลังจะตั้งลงบนเอกสารในหน่วยความจำแล้วค่อยตรวจ จะได้เตือนตรงกับผลลัพธ์
+	ที่จะเกิดขึ้นจริง ไม่ใช่เตือนจากค่าที่บันทึกไว้เดิม
+
+	row_bays: dict ของ {ชื่อแถว: ช่องจอด} สำหรับกรณีเปลี่ยนช่องจอดรายแถว
+	ใช้สิทธิ์ read ก็พอ เพราะไม่ได้เขียนอะไร และไม่ throw — คืน warnings ให้ตัดสินใจต่อ
+	"""
+	import json
+
+	if isinstance(row_bays, str):
+		row_bays = json.loads(row_bays)
+
+	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("read")
+
+	if service_bay is not None:
+		doc.service_bay = service_bay or None
+
+	if row_bays:
+		rows = {row.name: row for row in doc.service_types}
+		for row_name, bay in row_bays.items():
+			row = rows.get(row_name)
+			if row:
+				row.service_bay = bay or None
+
+	return {"warnings": get_bay_warnings(doc)}
+
+
+def select_requisition_rows(doc, service_row):
+	"""อะไหล่ที่ควรอยู่ในใบเบิกของงานรายการหนึ่ง
+
+	จับคู่ด้วย "ค่า" service_type (และ service_package ถ้าแถวงานมี) ไม่ใช่ตัวแถวงาน
+	เพราะแถวอะไหล่เก็บแค่ provenance สองฟิลด์นี้ ไม่ได้ link กลับมาที่แถวงานโดยตรง
+
+	ข้อจำกัดที่ตามมา: ถ้าใบงานมีงานประเภทเดียวกัน (+แพ็คเกจเดียวกัน) หลายแถว
+	ทุกแถวจะแชร์ pool อะไหล่ก้อนเดียวกัน — ใครกดสร้างใบเบิกก่อนได้ไปทั้งหมด
+	แก้จริงต้องเพิ่ม link ระดับแถวลงในแถวอะไหล่ (ยังไม่ทำในรอบนี้)
+	"""
+	if not service_row.service_type:
+		return []
+
+	rows = []
+	for item in doc.service_items:
+		if item.material_issue:
+			continue
+		if item.service_type != service_row.service_type:
+			continue
+		if service_row.service_package and item.service_package != service_row.service_package:
+			continue
+		rows.append(item)
+
+	return rows
 
 
 def build_material_issue_line(item, settings):
