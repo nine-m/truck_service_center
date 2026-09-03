@@ -15,8 +15,8 @@ from truck_service_center.truck_service_center.doctype.service_order.service_ord
 	receive_vehicle,
 )
 
-# ช่องช่างผู้รับผิดชอบทั้ง 4 ช่องของ Service Order
-TECHNICIAN_FIELDS = ("technician", "technician_2", "technician_3", "technician_4")
+# ช่องช่างผู้รับผิดชอบทั้ง 10 ช่องของ Service Order (แบน ไม่ใช่ child table)
+TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
 
 # role ที่ดูแลงานช่างได้ทุกใบ ไม่ต้องถูกระบุชื่อในใบงาน
 MANAGER_ROLES = {"Technician Manager", "Service Manager", "System Manager"}

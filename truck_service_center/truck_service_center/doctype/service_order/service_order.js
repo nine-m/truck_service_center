@@ -1336,7 +1336,32 @@ function remove_orphan_service_type_items(frm) {
 	frm.refresh_field("service_items");
 }
 
-const TECHNICIAN_FIELDS = ["technician", "technician_2", "technician_3", "technician_4"];
+const TECHNICIAN_FIELDS = [
+	"technician",
+	"technician_2",
+	"technician_3",
+	"technician_4",
+	"technician_5",
+	"technician_6",
+	"technician_7",
+	"technician_8",
+	"technician_9",
+	"technician_10",
+];
+
+// ช่องช่างของแถวงาน (Service Order Service Type) — แบน 10 ช่องเหมือนกัน
+const ROW_TECHNICIAN_FIELDS = [
+	"technician_1",
+	"technician_2",
+	"technician_3",
+	"technician_4",
+	"technician_5",
+	"technician_6",
+	"technician_7",
+	"technician_8",
+	"technician_9",
+	"technician_10",
+];
 
 function set_technician_filter(frm) {
 	// ตั้งค่า filter สำหรับช่างผู้รับผิดชอบ ให้แสดงเฉพาะผู้ใช้ที่มีบทบาท Technician

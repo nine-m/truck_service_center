@@ -3,7 +3,7 @@
 
 """ประสิทธิภาพช่าง — สรุปจาก Service Order ที่ submit แล้ว
 
-ใบงานหนึ่งมีช่างได้สูงสุด 4 คน (technician..technician_4) — ใบงานที่ทำร่วมกัน
+ใบงานหนึ่งมีช่างได้สูงสุด 10 คน (technician..technician_10) — ใบงานที่ทำร่วมกัน
 จะถูกนับให้ช่างทุกคนเต็มใบ (จำนวนงาน/ชั่วโมง/ยอดเงิน ไม่ได้หารเฉลี่ย)
 ประสิทธิภาพ = เวลาประเมิน / เวลาจริง * 100 (เกิน 100% คือทำเสร็จเร็วกว่าประเมิน)
 """
@@ -11,7 +11,7 @@
 import frappe
 from frappe.utils import flt
 
-TECHNICIAN_FIELDS = ("technician", "technician_2", "technician_3", "technician_4")
+TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
 
 
 def execute(filters=None):
