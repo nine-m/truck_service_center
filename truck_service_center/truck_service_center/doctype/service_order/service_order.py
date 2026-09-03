@@ -1135,6 +1135,12 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
 	if not stock_entry.items:
 		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
 
+	# ใบเบิกที่อะไหล่ทุกแถวมาจากประเภทบริการเดียว (เช่นใบเบิกรายงานจากพอร์ทัล)
+	# ระบุที่หัวใบให้ดูออกทันทีว่าเบิกให้งานไหน — คละหลายงานให้เว้นว่างไว้ดูรายบรรทัด
+	line_service_types = {item.service_type for item in items_added if item.service_type}
+	if len(line_service_types) == 1:
+		stock_entry.custom_service_type = next(iter(line_service_types))
+
 	stock_entry.insert(ignore_permissions=ignore_permissions)
 
 	# อัพเดท Material Issue reference ใน Service Order Items
@@ -1301,6 +1307,8 @@ def build_material_issue_line(item, settings):
 		"basic_rate": item.rate,
 		# เก็บ name ของแถวเพื่อ link กลับ — ห้ามใช้ index เพราะเลื่อนได้เมื่อมีการลบแถว
 		"custom_service_order_item": item.name,
+		# ที่มาของอะไหล่ — ว่างได้ถ้าเป็นแถวที่เพิ่มเองไม่ผูกประเภทบริการ
+		"custom_service_type": item.service_type,
 	}
 
 
