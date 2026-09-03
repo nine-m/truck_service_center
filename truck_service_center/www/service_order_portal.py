@@ -21,6 +21,9 @@ PAGE_LIMIT = 50
 # แสดงเฉพาะงานที่ยังไม่จบ ช่างจะได้เห็นแต่สิ่งที่ต้องลงมือทำ
 OPEN_STATUSES = ("Draft", "In Progress", "On Hold")
 
+# หัวหน้าช่างเห็นงานที่ปิดแล้วแต่รถยังรอส่งมอบด้วย — พ้นมือช่างแต่ยังอยู่ในความดูแลของหัวหน้า
+MANAGER_STATUSES = (*OPEN_STATUSES, "Ready for Delivery")
+
 # สีสถานะให้ตรงกับ list view บน desk (service_order_list.js)
 # หมายเหตุ: desk ใช้ "gray" แต่ es-badge บนเว็บรู้จักเฉพาะ "grey" (สะกดแบบอังกฤษ)
 STATUS_THEMES = {
@@ -76,9 +79,9 @@ def get_context(context):
 
 
 def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
-	"""ใบสั่งงานที่ยังไม่จบ ปกติเฉพาะใบที่ `user` เป็นช่างผู้รับผิดชอบ (ช่องใดช่องหนึ่งใน 4 ช่อง)
+	"""ใบสั่งงานที่ยังไม่จบ ปกติเฉพาะใบที่ `user` เป็นช่างผู้รับผิดชอบ (ช่องใดช่องหนึ่งใน 10 ช่อง)
 
-	all_jobs=True สำหรับหัวหน้าช่าง/ผู้จัดการ — คืนทุกใบที่ยังไม่จบ
+	all_jobs=True สำหรับหัวหน้าช่าง/ผู้จัดการ — คืนทุกใบที่ยังไม่จบ รวมงานรอส่งมอบรถ
 
 	ใช้ frappe.get_all (ignore_permissions=True) โดยเจตนา — ขอบเขตความปลอดภัยคือ
 	or_filters ที่ผูกกับ frappe.session.user ซึ่ง request แก้ไขไม่ได้
@@ -97,7 +100,7 @@ def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
 			"priority",
 			*TECHNICIAN_FIELDS,
 		],
-		filters={"status": ["in", OPEN_STATUSES], "docstatus": ["<", 2]},
+		filters={"status": ["in", MANAGER_STATUSES if all_jobs else OPEN_STATUSES], "docstatus": ["<", 2]},
 		# or_filters ถูกประกอบเป็นวงเล็บก้อนเดียว (grouped_or_conditions ใน db_query.py)
 		# จึงได้ ... AND (technician=u OR technician_2=u OR ...)
 		or_filters=None if all_jobs else {fieldname: user for fieldname in TECHNICIAN_FIELDS},
