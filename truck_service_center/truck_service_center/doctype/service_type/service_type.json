@@ -20,6 +20,7 @@
   "details_tab",
   "service_details_section",
   "default_duration",
+  "requires_pit",
   "labor_rate",
   "spare_parts_section",
   "items",
@@ -103,6 +104,12 @@
    "precision": 2
   },
   {
+   "description": "งานนี้ต้องทำในช่องจอดที่มีหลุมซ่อม (เช่น เปลี่ยนถ่ายของเหลว งานใต้ท้องรถ)",
+   "fieldname": "requires_pit",
+   "fieldtype": "Check",
+   "label": "ต้องใช้หลุมซ่อม"
+  },
+  {
    "fieldname": "labor_rate",
    "fieldtype": "Currency",
    "label": "ค่าแรง/ค่าบริการ",
@@ -167,7 +174,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-09-03 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",
