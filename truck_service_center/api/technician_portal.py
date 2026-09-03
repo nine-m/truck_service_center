@@ -35,8 +35,9 @@ FUEL_LEVELS = ("หมด", "1/4", "ครึ่ง", "3/4", "เต็ม")
 # เปลี่ยนสถานะได้เฉพาะเส้นทางเหล่านี้ (Draft → In Progress ต้องผ่านการรับรถ)
 ALLOWED_TRANSITIONS = {
 	"Draft": {"In Progress"},
-	"In Progress": {"On Hold", "Completed"},
+	"In Progress": {"On Hold", "Ready for Delivery"},
 	"On Hold": {"In Progress"},
+	"Ready for Delivery": set(),
 	"Completed": set(),
 	"Cancelled": set(),
 }
@@ -332,7 +333,7 @@ def _validate_completion(doc):
 	"""ข้อมูลที่ช่างต้องบันทึกให้ครบก่อนปิดงาน — รวบฟ้องทีเดียวจะได้ไม่ต้องแก้หลายรอบ
 
 	เวลาทำงานจริงเป็นเงื่อนไข submit อยู่แล้ว (Service Order.before_submit) แต่ต้องดัก
-	ตั้งแต่ปิดงาน เพราะ Completed หลุดจาก EDITABLE_STATUSES ช่างจึงกลับมาแก้ไม่ได้อีก
+	ตั้งแต่ปิดงาน เพราะ Ready for Delivery หลุดจาก EDITABLE_STATUSES ช่างจึงกลับมาแก้ไม่ได้อีก
 	ส่วนน้ำมันนำส่งเป็นคู่ของน้ำมันรับเข้าที่ receive_vehicle บังคับไว้ตอนรับรถ
 
 	งานทุกรายการต้องกดจบแล้ว เพราะเวลาจบเป็นตัวคำนวณ actual_time ให้เอง
@@ -364,7 +365,7 @@ def set_status(service_order, status):
 	Draft → In Progress ส่งต่อให้ receive_vehicle ของ controller เดิม
 	เพื่อให้ยัง stamp ผู้รับรถ/เวลา และบังคับกรอกน้ำมันรับเข้าเหมือนทำผ่าน desk
 
-	→ Completed ต้องผ่าน _validate_completion ก่อน (ด่านจริง — ฝั่งหน้าเว็บเตือนให้
+	→ Ready for Delivery (ปิดงาน) ต้องผ่าน _validate_completion ก่อน (ด่านจริง — ฝั่งหน้าเว็บเตือนให้
 	เฉย ๆ) ส่วนเลขไมล์ที่ยังไม่อัปเดตเป็นแค่คำเตือน จึงถามยืนยันที่ฝั่งหน้าเว็บอย่างเดียว
 	"""
 	doc = _get_editable_job(service_order)
@@ -375,7 +376,7 @@ def set_status(service_order, status):
 			title=_("ไม่สามารถเปลี่ยนสถานะได้"),
 		)
 
-	if status == "Completed":
+	if status == "Ready for Delivery":
 		_validate_completion(doc)
 
 	if doc.status == "Draft" and status == "In Progress":

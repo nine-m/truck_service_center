@@ -31,7 +31,7 @@ frappe.query_reports["Vehicle Service History"] = {
 			fieldname: "status",
 			label: "สถานะ",
 			fieldtype: "Select",
-			options: "\nDraft\nIn Progress\nCompleted\nCancelled\nOn Hold",
+			options: "\nDraft\nIn Progress\nReady for Delivery\nCompleted\nCancelled\nOn Hold",
 		},
 	],
 };

@@ -37,7 +37,7 @@ no_cache = 1
 STATUS_ACTIONS = {
 	"In Progress": ("เริ่มงาน / ทำงานต่อ", "primary"),
 	"On Hold": ("พักงาน", "secondary"),
-	"Completed": ("ปิดงาน", "success"),
+	"Ready for Delivery": ("ปิดงาน (รอส่งมอบรถ)", "success"),
 }
 
 # ปุ่มเปลี่ยนสถานะจาก Draft สื่อความหมายว่า "รับรถ" มากกว่า "เริ่มงาน"

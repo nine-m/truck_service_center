@@ -123,7 +123,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "สถานะ",
-   "options": "Draft\nIn Progress\nCompleted\nCancelled\nOn Hold",
+   "options": "Draft\nIn Progress\nReady for Delivery\nCompleted\nCancelled\nOn Hold",
    "reqd": 1
   },
   {
@@ -680,7 +680,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-03 12:30:00.000000",
+ "modified": "2026-09-03 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

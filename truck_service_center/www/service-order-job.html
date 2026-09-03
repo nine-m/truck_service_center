@@ -385,7 +385,7 @@
 	}
 
 	function onStatus(btn) {
-		if (btn.dataset.value === "Completed" && !confirmComplete()) { return; }
+		if (btn.dataset.value === "Ready for Delivery" && !confirmComplete()) { return; }
 		call("set_status", { status: btn.dataset.value }, btn, function () {
 			window.location.reload();
 		});

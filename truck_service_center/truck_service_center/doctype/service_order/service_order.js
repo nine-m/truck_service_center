@@ -124,6 +124,8 @@ frappe.ui.form.on("Service Order", {
 		// แสดงสถานะด้วยสี
 		if (frm.doc.status === "Completed") {
 			frm.dashboard.add_indicator(__("Status: Completed"), "green");
+		} else if (frm.doc.status === "Ready for Delivery") {
+			frm.dashboard.add_indicator(__("Status: Ready for Delivery"), "blue");
 		} else if (frm.doc.status === "In Progress") {
 			frm.dashboard.add_indicator(__("Status: In Progress"), "orange");
 		} else if (frm.doc.status === "On Hold") {

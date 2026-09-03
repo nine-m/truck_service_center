@@ -30,7 +30,8 @@ PARENT_TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 
 # สถานะที่ถือว่าใบงานยัง "เปิด" อยู่ — ใช้หาว่าช่องจอดถูกใบอื่นใช้ค้างไว้หรือเปล่า
 # ประกาศที่นี่ ไม่ import EDITABLE_STATUSES จาก technician_portal เพราะฝั่งนั้น
 # import receive_vehicle จากไฟล์นี้อยู่แล้ว (จะกลายเป็น circular import)
-OPEN_STATUSES = ("Draft", "In Progress", "On Hold")
+# รวม Ready for Delivery ด้วย — รถที่ปิดงานแล้วแต่ยังไม่ส่งมอบยังจอดกินช่องจอดอยู่
+OPEN_STATUSES = ("Draft", "In Progress", "On Hold", "Ready for Delivery")
 
 
 def get_default_selling_rate(item_code, price_list=None):
@@ -90,6 +91,19 @@ class ServiceOrder(Document):
 		old_status = self.get_doc_before_save()
 		if old_status and old_status.status == "In Progress" and self.status == "Draft":
 			frappe.throw("ไม่สามารถย้อนสถานะจาก In Progress กลับเป็น Draft ได้", title="ไม่สามารถเปลี่ยนสถานะได้")
+
+		# Completed เกิดจากการ submit เท่านั้น (before_submit เป็นคน set หลัง validate ผ่านแล้ว)
+		# ห้ามเลือกเองระหว่างยังเป็น draft — จบงานช่างให้ใช้ Ready for Delivery
+		if (
+			self.docstatus == 0
+			and self.status == "Completed"
+			and old_status
+			and old_status.status != "Completed"
+		):
+			frappe.throw(
+				"สถานะ Completed เกิดจากการ submit เอกสารเท่านั้น — งานที่ช่างทำเสร็จแล้วให้ใช้สถานะ Ready for Delivery (รอส่งมอบรถ)",
+				title="ไม่สามารถเปลี่ยนสถานะได้",
+			)
 
 	def stamp_receive_on_progress(self):
 		"""ถือว่าการเปลี่ยนสถานะเป็น In Progress คือการรับรถ และบันทึกเวลานั้นไว้

@@ -26,6 +26,7 @@ OPEN_STATUSES = ("Draft", "In Progress", "On Hold")
 STATUS_THEMES = {
 	"Draft": "red",
 	"In Progress": "orange",
+	"Ready for Delivery": "blue",
 	"Completed": "green",
 	"Cancelled": "grey",
 	"On Hold": "yellow",
@@ -34,6 +35,7 @@ STATUS_THEMES = {
 STATUS_LABELS = {
 	"Draft": "ร่าง",
 	"In Progress": "กำลังดำเนินการ",
+	"Ready for Delivery": "รอส่งมอบรถ",
 	"Completed": "เสร็จสิ้น",
 	"Cancelled": "ยกเลิก",
 	"On Hold": "พักงาน",
