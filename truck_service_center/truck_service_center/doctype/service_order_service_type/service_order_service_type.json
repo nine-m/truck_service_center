@@ -16,7 +16,23 @@
   "repair_position",
   "repair_cause",
   "remark",
-  "service_package"
+  "service_package",
+  "service_bay",
+  "time_section",
+  "start_time",
+  "end_time",
+  "technician_row_section",
+  "technician_1",
+  "technician_2",
+  "technician_3",
+  "technician_4",
+  "technician_5",
+  "column_break_row_tech",
+  "technician_6",
+  "technician_7",
+  "technician_8",
+  "technician_9",
+  "technician_10"
  ],
  "fields": [
   {
@@ -103,12 +119,108 @@
    "label": "จากแพ็คเกจ",
    "options": "Service Package",
    "read_only": 1
+  },
+  {
+   "fieldname": "service_bay",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ช่องจอด",
+   "options": "Service Bay",
+   "description": "เว้นว่างไว้จะใช้ช่องจอดหลักของใบงาน"
+  },
+  {
+   "fieldname": "time_section",
+   "fieldtype": "Section Break",
+   "label": "เวลาทำงาน"
+  },
+  {
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดเริ่มงานในพอร์ทัล",
+   "fieldname": "start_time",
+   "fieldtype": "Datetime",
+   "label": "เวลาเริ่ม",
+   "read_only": 1
+  },
+  {
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดจบงานในพอร์ทัล",
+   "fieldname": "end_time",
+   "fieldtype": "Datetime",
+   "label": "เวลาจบ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "technician_row_section",
+   "fieldtype": "Section Break",
+   "label": "ช่างผู้รับผิดชอบงานนี้"
+  },
+  {
+   "fieldname": "technician_1",
+   "fieldtype": "Link",
+   "label": "ช่าง 1",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_2",
+   "fieldtype": "Link",
+   "label": "ช่าง 2",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_3",
+   "fieldtype": "Link",
+   "label": "ช่าง 3",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_4",
+   "fieldtype": "Link",
+   "label": "ช่าง 4",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_5",
+   "fieldtype": "Link",
+   "label": "ช่าง 5",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_row_tech",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "technician_6",
+   "fieldtype": "Link",
+   "label": "ช่าง 6",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_7",
+   "fieldtype": "Link",
+   "label": "ช่าง 7",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_8",
+   "fieldtype": "Link",
+   "label": "ช่าง 8",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_9",
+   "fieldtype": "Link",
+   "label": "ช่าง 9",
+   "options": "User"
+  },
+  {
+   "fieldname": "technician_10",
+   "fieldtype": "Link",
+   "label": "ช่าง 10",
+   "options": "User"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-02-26 10:00:00.000000",
+ "modified": "2026-09-03 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Service Type",
