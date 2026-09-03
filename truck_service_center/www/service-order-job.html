@@ -75,16 +75,72 @@
 			<div class="tsc-card">
 				<h2 class="tsc-card-title">งานที่ต้องทำ ({{ job.service_types | length }})</h2>
 				{% if job.service_types %}
-				<ul class="tsc-lines">
+				<ul class="tsc-jobs">
 					{% for line in job.service_types %}
-					<li>
-						<span class="tsc-line-main">{{ line.label }}</span>
+					<li class="tsc-job-row" data-state="{{ line.state }}">
+						<div class="tsc-job-row-head">
+							<span class="tsc-line-main">{{ line.label }}</span>
+							<span class="tsc-state" data-state="{{ line.state }}">{{ line.state_label }}</span>
+						</div>
 						<span class="tsc-line-sub">
 							{%- if line.position %}{{ line.position }} &middot; {% endif -%}
 							{{ line.estimated_time }} ชม.
 							{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
 						</span>
+						{% if line.start_label or line.end_label %}
+						<span class="tsc-line-sub">
+							เริ่ม {{ line.start_label or "-" }} &middot; จบ {{ line.end_label or "-" }}
+						</span>
+						{% endif %}
 						{% if line.remark %}<span class="tsc-line-note">{{ line.remark }}</span>{% endif %}
+
+						<div class="tsc-techs">
+							{% for tech in line.technicians %}
+							<span class="tsc-tech">{{ tech.label }}{% if is_manager and editable %}<button type="button"
+									class="tsc-tech-x" data-action="unassign" data-row="{{ line.name }}"
+									data-value="{{ tech.user }}" aria-label="ถอน {{ tech.label }}">&times;</button>{% endif %}</span>
+							{% else %}
+							<span class="tsc-muted tsc-tech-empty">ยังไม่มีช่าง</span>
+							{% endfor %}
+						</div>
+
+						{% if is_manager and editable %}
+						<div class="tsc-row-controls">
+							<select class="tsc-select" data-action="assign" data-row="{{ line.name }}">
+								<option value="">+ เพิ่มช่าง…</option>
+								{% for option in technician_options %}
+								<option value="{{ option.user }}">{{ option.label }}</option>
+								{% endfor %}
+							</select>
+							<select class="tsc-select" data-action="row-bay" data-row="{{ line.name }}">
+								<option value="">— ใช้ช่องจอดหลัก —</option>
+								{% for bay in bays %}
+								<option value="{{ bay.name }}" {% if line.service_bay == bay.name %}selected{% endif %}>
+									{{ bay.bay_name }}{% if bay.has_pit %} (มีหลุม){% endif %}
+								</option>
+								{% endfor %}
+							</select>
+						</div>
+						{% elif line.service_bay %}
+						<span class="tsc-line-sub">ช่องจอด {{ line.service_bay }}</span>
+						{% endif %}
+
+						{% if editable %}
+						<div class="tsc-row-actions">
+							{% if line.can_start %}
+							<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
+								data-action="start" data-row="{{ line.name }}">เริ่มงาน</button>
+							{% endif %}
+							{% if line.can_finish %}
+							<button type="button" class="tsc-btn tsc-btn-success tsc-btn-sm"
+								data-action="finish" data-row="{{ line.name }}">จบงาน</button>
+							{% endif %}
+							{% if is_manager and line.state != "pending" %}
+							<button type="button" class="tsc-btn tsc-btn-secondary tsc-btn-sm"
+								data-action="reset" data-row="{{ line.name }}">เริ่มใหม่</button>
+							{% endif %}
+						</div>
+						{% endif %}
 					</li>
 					{% endfor %}
 				</ul>
@@ -95,19 +151,30 @@
 
 			<div class="tsc-card">
 				<h2 class="tsc-card-title">อะไหล่ที่ใช้ ({{ job.parts | length }})</h2>
-				{% if job.parts %}
-				<ul class="tsc-lines">
-					{% for line in job.parts %}
-					<li>
-						<span class="tsc-line-main">{{ line.label }}</span>
-						<span class="tsc-line-sub">
-							{{ line.qty }} {{ line.uom }}
-							&middot; {% if line.issued %}เบิกแล้ว{% else %}ยังไม่เบิก{% endif %}
-							{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
-						</span>
-					</li>
-					{% endfor %}
-				</ul>
+				{% if job.part_groups %}
+				{% for group in job.part_groups %}
+				<div class="tsc-part-group">
+					<div class="tsc-part-group-head">
+						<span class="tsc-part-group-title">{{ group.label }}</span>
+						{% if editable and group.row_name and group.pending %}
+						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
+							data-action="requisition" data-row="{{ group.row_name }}">สร้างใบเบิก</button>
+						{% endif %}
+					</div>
+					<ul class="tsc-lines">
+						{% for line in group.parts %}
+						<li>
+							<span class="tsc-line-main">{{ line.label }}</span>
+							<span class="tsc-line-sub">
+								{{ line.qty }} {{ line.uom }}
+								&middot; {% if line.issued %}เบิกแล้ว{% elif line.material_issue %}รอ submit ใบเบิก{% else %}ยังไม่เบิก{% endif %}
+								{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
+							</span>
+						</li>
+						{% endfor %}
+					</ul>
+				</div>
+				{% endfor %}
 				{% else %}
 				<p class="tsc-muted">ยังไม่มีรายการอะไหล่</p>
 				{% endif %}
@@ -130,8 +197,23 @@
 				{% if job.status == "Draft" %}
 				<p class="tsc-hint">ต้องเลือกสถานะน้ำมันรับเข้าก่อนจึงจะรับรถได้</p>
 				{% elif job.status == "In Progress" %}
-				<p class="tsc-hint">ต้องบันทึกเวลาทำงานจริง (มากกว่า 0) และสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
+				<p class="tsc-hint">ต้องกดจบงานให้ครบทุกรายการ และบันทึกสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
 				{% endif %}
+			</div>
+			{% endif %}
+
+			{% if editable %}
+			<div class="tsc-card">
+				<h2 class="tsc-card-title">ช่องจอดหลัก</h2>
+				<select class="tsc-select tsc-select-block" data-action="main-bay">
+					<option value="">— ยังไม่ระบุ —</option>
+					{% for bay in bays %}
+					<option value="{{ bay.name }}" {% if job.service_bay == bay.name %}selected{% endif %}>
+						{{ bay.bay_name }}{% if bay.has_pit %} (มีหลุม){% endif %}
+					</option>
+					{% endfor %}
+				</select>
+				<p class="tsc-hint">งานที่ไม่ได้ระบุช่องจอดเองจะใช้ช่องจอดนี้</p>
 			</div>
 			{% endif %}
 
@@ -159,14 +241,8 @@
 
 			<div class="tsc-card">
 				<h2 class="tsc-card-title">เวลาทำงานจริง</h2>
-				<div class="tsc-stepper">
-					<button type="button" class="tsc-step" data-action="time" data-delta="-0.5"
-						{% if not editable %}disabled{% endif %} aria-label="ลด 0.5 ชั่วโมง">&minus;</button>
-					<div class="tsc-step-value"><span id="tsc-time">{{ job.actual_time }}</span> <small>ชม.</small></div>
-					<button type="button" class="tsc-step" data-action="time" data-delta="0.5"
-						{% if not editable %}disabled{% endif %} aria-label="เพิ่ม 0.5 ชั่วโมง">+</button>
-				</div>
-				<p class="tsc-hint" id="tsc-time-hint">ครั้งละ 0.5 ชม. &middot; ประมาณการไว้ {{ job.estimated_time }} ชม.</p>
+				<div class="tsc-time-value">{{ job.actual_time }} <small>ชม.</small></div>
+				<p class="tsc-hint">คำนวณอัตโนมัติจากเวลาเริ่ม-จบของงานแต่ละรายการ &middot; ประมาณการไว้ {{ job.estimated_time }} ชม.</p>
 			</div>
 
 			<div class="tsc-card">
@@ -205,7 +281,7 @@
 	var API = "truck_service_center.api.technician_portal.";
 
 	// ค่าที่ "บันทึกลงเอกสารแล้ว" — ใช้เทียบกับสิ่งที่เห็นบนจอ เพื่อกันปิดงานทั้งที่ยังบันทึกไม่ครบ
-	var savedTime = {{ job.actual_time | tojson }};
+	// เวลาทำงานจริงไม่ต้องเทียบแล้ว เพราะคำนวณฝั่ง server จากเวลาเริ่ม-จบของแต่ละงาน
 	var savedMileage = {{ job.current_mileage | tojson }};
 	// เลขไมล์ที่ผูกกับรถอยู่ = ค่าที่ระบบเติมให้ตอนสร้างใบงาน ถ้ายังเท่าเดิมแปลว่าช่างยังไม่ได้อัปเดต
 	var MILEAGE_BASELINE = {{ job.vehicle_mileage | tojson }};
@@ -244,26 +320,6 @@
 		});
 	}
 
-	// ── เวลาทำงาน: อัปเดตตัวเลขทันที แล้วรวบยอดบันทึกหลังหยุดกด 800ms
-	var timeEl = document.getElementById("tsc-time");
-	var timeHint = document.getElementById("tsc-time-hint");
-	var timeTimer = null;
-	var timeHintText = timeHint ? timeHint.textContent : "";
-
-	function onTime(btn) {
-		var next = Math.round((parseFloat(timeEl.textContent) + parseFloat(btn.dataset.delta)) * 2) / 2;
-		if (next < 0) { next = 0; }
-		timeEl.textContent = next;
-		if (timeHint) { timeHint.textContent = "กำลังบันทึก…"; }
-		clearTimeout(timeTimer);
-		timeTimer = setTimeout(function () {
-			call("set_actual_time", { hours: next }, null, function (r) {
-				savedTime = r.value;
-				if (timeHint) { timeHint.textContent = timeHintText; }
-			});
-		}, 800);
-	}
-
 	// ── ชิปหมายเหตุ: ต่อท้ายข้อความเดิม ช่างไม่ต้องพิมพ์
 	function onPreset(btn) {
 		var box = document.getElementById("tsc-remarks");
@@ -296,12 +352,6 @@
 	// ตรวจก่อนปิดงาน — เวลาทำงานจริงกับน้ำมันนำส่ง server ตรวจซ้ำใน set_status อยู่แล้ว
 	// ที่นี่มีไว้ให้ช่างรู้ตัวก่อนกด ส่วนเลขไมล์เป็นแค่คำเตือน จึงถามยืนยันที่นี่ที่เดียว
 	function confirmComplete() {
-		// เวลาทำงานรวบบันทึกแบบ debounce ถ้าตัวเลขบนจอยังไม่ตรงกับที่บันทึก ให้รอก่อน
-		if (num(timeEl.textContent) !== num(savedTime)) {
-			window.alert("กำลังบันทึกเวลาทำงานจริง กรุณารอสักครู่แล้วกดปิดงานอีกครั้ง");
-			return false;
-		}
-
 		// กันเคสพิมพ์เลขไมล์ไว้แล้วลืมกดบันทึก ค่าที่พิมพ์จะหายไปเฉย ๆ
 		var box = document.getElementById("tsc-mileage");
 		if (box && num(box.value) !== num(savedMileage)) {
@@ -310,7 +360,9 @@
 		}
 
 		var missing = [];
-		if (!(num(savedTime) > 0)) { missing.push("• เวลาทำงานจริง (ต้องมากกว่า 0 ชม.)"); }
+		// เวลาทำงานจริงกับ "งานทุกรายการต้องจบแล้ว" server ตรวจใน _validate_completion อยู่แล้ว
+		var unfinished = document.querySelectorAll('.tsc-job-row:not([data-state="done"])').length;
+		if (unfinished) { missing.push("• กดจบงานให้ครบทุกรายการ (ยังไม่จบ " + unfinished + " รายการ)"); }
 		if (!document.querySelector('[data-group="fuel-out"] .is-active')) {
 			missing.push("• สถานะน้ำมันนำส่ง");
 		}
@@ -336,13 +388,91 @@
 		});
 	}
 
+	// ── งานรายรายการ: เริ่ม / จบ / เริ่มใหม่ / ถอนช่าง / สร้างใบเบิก
+	function reloadAfter(method, args, btn) {
+		call(method, args, btn, function () { window.location.reload(); });
+	}
+
+	function onRowAction(btn) {
+		var row = btn.dataset.row;
+		switch (btn.dataset.action) {
+			case "start":  reloadAfter("start_service", { row_name: row }, btn); break;
+			case "finish": reloadAfter("finish_service", { row_name: row }, btn); break;
+			case "reset":
+				if (window.confirm("ล้างเวลาเริ่ม-จบของงานนี้ เพื่อเริ่มใหม่?")) {
+					reloadAfter("reset_service", { row_name: row }, btn);
+				}
+				break;
+			case "unassign":
+				if (window.confirm("ถอนช่างคนนี้ออกจากงานนี้?")) {
+					reloadAfter("unassign_technician", { row_name: row, user: btn.dataset.value }, btn);
+				}
+				break;
+			case "requisition":
+				if (window.confirm("ตรวจสอบรายการอะไหล่ถูกต้องแล้วใช่หรือไม่?")) {
+					reloadAfter("create_service_requisition", { row_name: row }, btn);
+				}
+				break;
+		}
+	}
+
+	// ── ช่องจอด: เตือนก่อนถ้าชนกับใบอื่น หรืองานต้องใช้หลุมแต่ช่องจอดไม่มีหลุม
+	function confirmBay(args, onOk) {
+		frappe.call({
+			method: "truck_service_center.truck_service_center.doctype.service_order.service_order.check_bay_conflicts",
+			args: Object.assign({ service_order: JOB }, args),
+			callback: function (r) {
+				var warnings = (r && r.message && r.message.warnings) || [];
+				if (warnings.length && !window.confirm(warnings.join("\n") + "\n\nยืนยันใช้ช่องจอดนี้?")) {
+					window.location.reload();
+					return;
+				}
+				onOk();
+			}
+		});
+	}
+
+	function onMainBay(select) {
+		var value = select.value;
+		confirmBay({ service_bay: value }, function () {
+			call("set_main_bay", { service_bay: value }, null, function () { window.location.reload(); });
+		});
+	}
+
+	function onRowBay(select) {
+		var row = select.dataset.row;
+		var value = select.value;
+		var rowBays = {};
+		rowBays[row] = value;
+		confirmBay({ row_bays: JSON.stringify(rowBays) }, function () {
+			call("set_service_bay", { row_name: row, service_bay: value }, null, function () {
+				window.location.reload();
+			});
+		});
+	}
+
+	function onAssign(select) {
+		if (!select.value) { return; }
+		reloadAfter("assign_technician", { row_name: select.dataset.row, user: select.value }, null);
+	}
+
+	document.addEventListener("change", function (event) {
+		var select = event.target.closest("select[data-action]");
+		if (!select || select.disabled) { return; }
+
+		switch (select.dataset.action) {
+			case "main-bay": onMainBay(select); break;
+			case "row-bay":  onRowBay(select); break;
+			case "assign":   onAssign(select); break;
+		}
+	});
+
 	document.addEventListener("click", function (event) {
 		var btn = event.target.closest("[data-action]");
-		if (!btn || btn.disabled) { return; }
+		if (!btn || btn.disabled || btn.tagName === "SELECT") { return; }
 
 		switch (btn.dataset.action) {
 			case "fuel":    onFuel(btn); break;
-			case "time":    onTime(btn); break;
 			case "preset":  onPreset(btn); break;
 			case "status":  onStatus(btn); break;
 			case "refresh": btn.disabled = true; window.location.reload(); break;
@@ -350,6 +480,7 @@
 			case "remarks":
 				call("set_remarks", { remarks: document.getElementById("tsc-remarks").value }, btn);
 				break;
+			default: onRowAction(btn); break;
 		}
 	});
 })();
@@ -418,7 +549,7 @@
 	.tsc-btn-success { background: #158947; border-color: #158947; color: #fff; }
 	.tsc-btn-secondary { background: var(--subtle-fg, #f4f5f6); }
 	.tsc-btn-block { width: 100%; margin-top: 0.75rem; }
-	.tsc-btn:disabled, .tsc-choice:disabled, .tsc-step:disabled, .tsc-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+	.tsc-btn:disabled, .tsc-choice:disabled, .tsc-chip:disabled { opacity: 0.45; cursor: not-allowed; }
 	.is-busy { opacity: 0.6; }
 
 	.tsc-stack { display: grid; gap: 0.5rem; }
@@ -436,15 +567,9 @@
 		color: #fff; font-weight: 600;
 	}
 
-	/* ตัวนับเวลาทำงาน */
-	.tsc-stepper { display: grid; grid-template-columns: 64px 1fr 64px; gap: 0.5rem; align-items: center; }
-	.tsc-step {
-		min-height: 56px; font-size: 1.5rem; font-weight: 600;
-		border: 1px solid var(--border-color); border-radius: 8px;
-		background: var(--card-bg, #fff); cursor: pointer;
-	}
-	.tsc-step-value { text-align: center; font-size: 1.75rem; font-weight: 700; }
-	.tsc-step-value small { font-size: 0.875rem; font-weight: 400; color: var(--text-muted); }
+	/* เวลาทำงานจริง — คำนวณจากเวลาเริ่ม-จบรายงาน จึงเป็นตัวเลขอ่านอย่างเดียว */
+	.tsc-time-value { text-align: center; font-size: 1.75rem; font-weight: 700; }
+	.tsc-time-value small { font-size: 0.875rem; font-weight: 400; color: var(--text-muted); }
 
 	.tsc-hint { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--text-muted); text-align: center; }
 
@@ -493,6 +618,55 @@
 	.tsc-refresh-icon { display: inline-block; line-height: 1; font-size: 1.05rem; }
 	.tsc-refresh:disabled .tsc-refresh-icon { animation: tsc-spin 0.8s linear infinite; }
 	@keyframes tsc-spin { to { transform: rotate(360deg); } }
+	/* ── งานรายรายการ: สถานะ ช่าง ช่องจอด และปุ่มเริ่ม/จบ ── */
+	.tsc-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+	.tsc-job-row { display: grid; gap: 0.3rem; }
+	.tsc-job-row + .tsc-job-row { border-top: 1px solid var(--border-color); padding-top: 1rem; }
+	.tsc-job-row-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+
+	.tsc-state {
+		flex-shrink: 0; padding: 0.1rem 0.5rem; font-size: 0.75rem; font-weight: 600;
+		line-height: 1.6; border-radius: 999px; border: 1px solid var(--border-color);
+		background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-state[data-state="running"] { background: #fff3cd; border-color: #ffe08a; }
+	.tsc-state[data-state="done"] { background: #d8f0e0; border-color: #a9dcbe; }
+
+	.tsc-techs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
+	.tsc-tech {
+		display: inline-flex; align-items: center; gap: 0.25rem;
+		padding: 0.15rem 0.5rem; font-size: 0.8125rem; line-height: 1.6;
+		border-radius: 999px; border: 1px solid var(--border-color); background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-tech-x {
+		border: 0; background: none; cursor: pointer; padding: 0 0.1rem;
+		font-size: 1rem; line-height: 1; color: var(--text-muted);
+	}
+	.tsc-tech-empty { font-size: 0.8125rem; }
+
+	.tsc-row-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.375rem; margin-top: 0.4rem; }
+	.tsc-row-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.4rem; }
+	.tsc-btn-sm { min-height: 40px; padding: 0.4rem 0.9rem; font-size: 0.875rem; }
+
+	.tsc-select {
+		min-height: 44px; padding: 0.4rem 0.6rem; font-size: 0.9375rem; width: 100%;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--card-bg, #fff); cursor: pointer;
+	}
+	.tsc-select-block { min-height: 48px; font-size: 1rem; }
+
+	/* ── อะไหล่จัดกลุ่มใต้แต่ละงาน ── */
+	.tsc-part-group + .tsc-part-group { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+	.tsc-part-group-head {
+		display: flex; align-items: center; justify-content: space-between;
+		gap: 0.5rem; margin-bottom: 0.5rem;
+	}
+	.tsc-part-group-title { font-size: 0.875rem; font-weight: 600; }
+
+	@media (max-width: 767px) {
+		.tsc-row-controls { grid-template-columns: 1fr; }
+	}
+
 	/* ป้ายแพ็คเกจ — บอกว่าบรรทัดนี้มาจากแพ็คเกจไหน */
 	.tsc-pkg {
 		display: inline-block; padding: 0.1rem 0.45rem; margin-left: 0.15rem;
