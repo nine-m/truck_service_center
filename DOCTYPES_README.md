@@ -58,6 +58,16 @@ child table ที่ทุกเอกสารใช้เหมือนก�
 ฟิลด์: `position_code` (เช่น EL01, EN00, SU01), `position_name`, `remark`, `is_active`
 seed จาก [fixtures/repair_position_data.py](truck_service_center/fixtures/repair_position_data.py). กลุ่มรหัส: EL ไฟฟ้า, EN เครื่องยนต์, SU ช่วงล่าง, TY ยาง
 
+### Service Bay (ช่องจอดซ่อม)
+`autoname = field:bay_name`. ช่องจอดรับรถได้คันเดียว บางช่องมีหลุมสำหรับงานเปลี่ยนถ่ายของเหลว/งานใต้ท้องรถ
+ฟิลด์: `bay_name`, `has_pit` (มีหลุมซ่อม), `is_active`, `description`
+ไม่มี seed script — สร้างเองตามหน้างานจริงของแต่ละศูนย์
+
+ผูกกับใบสั่งงาน 2 ระดับ: `Service Order.service_bay` (ช่องจอดหลัก) และ `Service Order Service Type.service_bay` (รายงาน)
+แถวที่ไม่ระบุจะถูกเติมด้วยช่องจอดหลักตอน save (`apply_default_bay`) การตรวจช่องจอด **เตือนอย่างเดียว ไม่บล็อก** —
+`get_bay_warnings()` เตือนเมื่อช่องจอดหลักถูกใบงานที่ยังเปิดอยู่ใบอื่นใช้ค้าง หรือเมื่องานที่ `Service Type.requires_pit`
+ไปอยู่ในช่องจอดที่ไม่มีหลุม
+
 ### Service Appointment Slot (ช่วงเวลานัดหมาย)
 `autoname = field:slot_name`. ฟิลด์: `slot_name`, `start_time`, `end_time`, `capacity` (จำนวนคันต่อ slot), `is_active`, `description`
 seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointment_slots.py). ใช้คุมความจุการนัดผ่าน `Service Appointment.check_slot_availability()`
@@ -188,7 +198,14 @@ Role ของแอป (seed จาก `create_default_roles()` ใน [install
 | Vehicle | ทั้งหมด | create/write | read | — | — |
 | Vehicle Brand | ทั้งหมด | create/read | read | — | — |
 | Master data อื่น (Service Type/Group, Repair Position, Package, Slot) | ทั้งหมด | read | read | — | — |
+| Service Bay | ทั้งหมด | read | read | — | — |
 | Truck Service Center Settings | read/write | — | — | — | — |
+
+หมายเหตุ: `Service Bay` ให้ **Technician Manager อ่านได้ด้วย** (นอกเหนือจากตารางข้างบน) เพราะพอร์ทัลช่าง render ตัวเลือกช่องจอดฝั่ง server
+
+หมายเหตุ: role `Technician` **ไม่มีสิทธิ์สร้าง Stock Entry** — ปุ่ม "สร้างใบเบิก" ในพอร์ทัลจึงเรียก
+`create_material_issue_for_rows(..., ignore_permissions=True)` หลังผ่าน gate ของพอร์ทัลเอง (`_get_row_job`)
+และกฎ "ต้องรับรถก่อนเบิกอะไหล่" ยังถูกบังคับอยู่ภายในฟังก์ชันนั้น
 
 หมายเหตุ: การ **cancel Service Order** สงวนให้ Service Manager (Service User submit ได้แต่ยกเลิกไม่ได้) และ whitelisted endpoint ทุกตัว (เช่น `receive_vehicle`, `create_material_issue`, `create_sales_invoice_from_service_order`) มี `check_permission` ตรวจสิทธิ์ตามตารางนี้ก่อนทำงานเสมอ
 
