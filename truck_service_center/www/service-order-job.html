@@ -156,6 +156,9 @@
 				<div class="tsc-part-group">
 					<div class="tsc-part-group-head">
 						<span class="tsc-part-group-title">{{ group.label }}</span>
+						{% for issue in group.issues %}
+						<span class="tsc-pkg tsc-issue">{{ issue }}</span>
+						{% endfor %}
 						{% if editable and group.row_name and group.pending %}
 						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
 							data-action="requisition" data-row="{{ group.row_name }}">สร้างใบเบิก</button>
@@ -167,7 +170,7 @@
 							<span class="tsc-line-main">{{ line.label }}</span>
 							<span class="tsc-line-sub">
 								{{ line.qty }} {{ line.uom }}
-								&middot; {% if line.issued %}เบิกแล้ว{% elif line.material_issue %}รอ submit ใบเบิก{% else %}ยังไม่เบิก{% endif %}
+								&middot; {% if line.issued %}เบิกแล้ว &middot; {{ line.material_issue }}{% elif line.material_issue %}ใบเบิก {{ line.material_issue }} &middot; รอ submit{% else %}ยังไม่เบิก{% endif %}
 								{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
 							</span>
 						</li>
@@ -596,7 +599,7 @@
 	   ส่วนฝั่งขวาเป็น control (ปุ่มน้ำมัน 5 ช่อง, stepper, ช่องกรอก, textarea) ที่ได้ประโยชน์จากความกว้าง */
 	@media (min-width: 768px) {
 		.tsc-cols {
-			grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+			grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
 			align-items: start;
 		}
 		.tsc-col-actions { position: sticky; top: 1rem; }
@@ -658,9 +661,10 @@
 	/* ── อะไหล่จัดกลุ่มใต้แต่ละงาน ── */
 	.tsc-part-group + .tsc-part-group { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
 	.tsc-part-group-head {
-		display: flex; align-items: center; justify-content: space-between;
+		display: flex; align-items: center; flex-wrap: wrap;
 		gap: 0.5rem; margin-bottom: 0.5rem;
 	}
+	.tsc-part-group-head .tsc-btn { margin-left: auto; }
 	.tsc-part-group-title { font-size: 0.875rem; font-weight: 600; }
 
 	@media (max-width: 767px) {

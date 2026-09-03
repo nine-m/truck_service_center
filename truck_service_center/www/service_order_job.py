@@ -270,12 +270,22 @@ def _group_parts(service_types, parts):
 					parts=members,
 					# ปุ่มสร้างใบเบิกซ่อนเมื่อเบิกครบแล้ว
 					pending=sum(1 for part in members if not part.material_issue),
+					# เลขใบเบิกของกลุ่ม — ปกติมีใบเดียว แต่เบิกหลายรอบได้จึงเป็น list
+					issues=sorted({part.material_issue for part in members if part.material_issue}),
 				)
 			)
 
 	leftovers = [part for idx, part in enumerate(parts) if idx not in claimed]
 	if leftovers:
-		groups.append(frappe._dict(row_name="", label="อะไหล่อื่น ๆ", parts=leftovers, pending=0))
+		groups.append(
+			frappe._dict(
+				row_name="",
+				label="อะไหล่อื่น ๆ",
+				parts=leftovers,
+				pending=0,
+				issues=sorted({part.material_issue for part in leftovers if part.material_issue}),
+			)
+		)
 
 	return groups
 
