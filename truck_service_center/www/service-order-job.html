@@ -129,6 +129,8 @@
 				</div>
 				{% if job.status == "Draft" %}
 				<p class="tsc-hint">ต้องเลือกสถานะน้ำมันรับเข้าก่อนจึงจะรับรถได้</p>
+				{% elif job.status == "In Progress" %}
+				<p class="tsc-hint">ต้องบันทึกเวลาทำงานจริง (มากกว่า 0) และสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
 				{% endif %}
 			</div>
 			{% endif %}
@@ -145,7 +147,7 @@
 			</div>
 
 			<div class="tsc-card">
-				<h2 class="tsc-card-title">สถานะน้ำมันส่งออก</h2>
+				<h2 class="tsc-card-title">สถานะน้ำมันนำส่ง</h2>
 				<div class="tsc-choices" data-group="fuel-out">
 					{% for level in fuel_levels %}
 					<button type="button" class="tsc-choice {% if job.fuel_level_out == level %}is-active{% endif %}"
@@ -202,6 +204,12 @@
 	var JOB = {{ job.name | tojson }};
 	var API = "truck_service_center.api.technician_portal.";
 
+	// ค่าที่ "บันทึกลงเอกสารแล้ว" — ใช้เทียบกับสิ่งที่เห็นบนจอ เพื่อกันปิดงานทั้งที่ยังบันทึกไม่ครบ
+	var savedTime = {{ job.actual_time | tojson }};
+	var savedMileage = {{ job.current_mileage | tojson }};
+	// เลขไมล์ที่ผูกกับรถอยู่ = ค่าที่ระบบเติมให้ตอนสร้างใบงาน ถ้ายังเท่าเดิมแปลว่าช่างยังไม่ได้อัปเดต
+	var MILEAGE_BASELINE = {{ job.vehicle_mileage | tojson }};
+
 	function toast(message, indicator) {
 		if (window.frappe && frappe.show_alert) {
 			frappe.show_alert({ message: message, indicator: indicator || "green" }, 4);
@@ -249,7 +257,8 @@
 		if (timeHint) { timeHint.textContent = "กำลังบันทึก…"; }
 		clearTimeout(timeTimer);
 		timeTimer = setTimeout(function () {
-			call("set_actual_time", { hours: next }, null, function () {
+			call("set_actual_time", { hours: next }, null, function (r) {
+				savedTime = r.value;
 				if (timeHint) { timeHint.textContent = timeHintText; }
 			});
 		}, 800);
@@ -264,8 +273,64 @@
 		box.setSelectionRange(box.value.length, box.value.length);
 	}
 
+	// ── เลขไมล์: ช่องเดียวที่ยังต้องพิมพ์ จึงต้องกดบันทึกเอง
+	function onMileage(btn) {
+		var box = document.getElementById("tsc-mileage");
+		call("set_mileage", { mileage: box.value }, btn, function (r) {
+			savedMileage = r.value;
+			box.value = r.value;
+		});
+	}
+
+	function num(value) {
+		var parsed = parseFloat(value);
+		return isNaN(parsed) ? 0 : parsed;
+	}
+
+	// ยังไม่ได้อัปเดต = ยังว่าง หรือยังเท่ากับเลขไมล์ที่ผูกกับรถ (ค่าที่ระบบเติมให้ตอนสร้างใบงาน)
+	function mileageUnchanged() {
+		if (!savedMileage) { return true; }
+		return MILEAGE_BASELINE !== null && num(savedMileage) === num(MILEAGE_BASELINE);
+	}
+
+	// ตรวจก่อนปิดงาน — เวลาทำงานจริงกับน้ำมันนำส่ง server ตรวจซ้ำใน set_status อยู่แล้ว
+	// ที่นี่มีไว้ให้ช่างรู้ตัวก่อนกด ส่วนเลขไมล์เป็นแค่คำเตือน จึงถามยืนยันที่นี่ที่เดียว
+	function confirmComplete() {
+		// เวลาทำงานรวบบันทึกแบบ debounce ถ้าตัวเลขบนจอยังไม่ตรงกับที่บันทึก ให้รอก่อน
+		if (num(timeEl.textContent) !== num(savedTime)) {
+			window.alert("กำลังบันทึกเวลาทำงานจริง กรุณารอสักครู่แล้วกดปิดงานอีกครั้ง");
+			return false;
+		}
+
+		// กันเคสพิมพ์เลขไมล์ไว้แล้วลืมกดบันทึก ค่าที่พิมพ์จะหายไปเฉย ๆ
+		var box = document.getElementById("tsc-mileage");
+		if (box && num(box.value) !== num(savedMileage)) {
+			window.alert("เลขไมล์ที่กรอกไว้ยังไม่ได้บันทึก\nกรุณากดปุ่มบันทึกข้างช่องเลขไมล์ก่อนปิดงาน");
+			return false;
+		}
+
+		var missing = [];
+		if (!(num(savedTime) > 0)) { missing.push("• เวลาทำงานจริง (ต้องมากกว่า 0 ชม.)"); }
+		if (!document.querySelector('[data-group="fuel-out"] .is-active')) {
+			missing.push("• สถานะน้ำมันนำส่ง");
+		}
+		if (missing.length) {
+			window.alert("กรุณาบันทึกข้อมูลต่อไปนี้ก่อนปิดงาน\n" + missing.join("\n"));
+			return false;
+		}
+
+		if (mileageUnchanged()) {
+			return window.confirm(
+				"ยังไม่ได้อัปเดตเลขไมล์ของงานนี้ (ปัจจุบัน " + num(savedMileage) + " กม.)\n\n" +
+				"ยืนยันปิดงานโดยไม่เปลี่ยนเลขไมล์?"
+			);
+		}
+
+		return window.confirm("ยืนยันปิดงานนี้?");
+	}
+
 	function onStatus(btn) {
-		if (btn.dataset.value === "Completed" && !window.confirm("ยืนยันปิดงานนี้?")) { return; }
+		if (btn.dataset.value === "Completed" && !confirmComplete()) { return; }
 		call("set_status", { status: btn.dataset.value }, btn, function () {
 			window.location.reload();
 		});
@@ -281,9 +346,7 @@
 			case "preset":  onPreset(btn); break;
 			case "status":  onStatus(btn); break;
 			case "refresh": btn.disabled = true; window.location.reload(); break;
-			case "mileage":
-				call("set_mileage", { mileage: document.getElementById("tsc-mileage").value }, btn);
-				break;
+			case "mileage": onMileage(btn); break;
 			case "remarks":
 				call("set_remarks", { remarks: document.getElementById("tsc-remarks").value }, btn);
 				break;
