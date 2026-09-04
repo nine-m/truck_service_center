@@ -148,6 +148,19 @@
    "type": "Link"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "icon": "warehouse",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Service Bay",
+   "link_to": "Service Bay",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "chart-column",
@@ -243,15 +256,15 @@
    "icon": "calendar-clock",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Service Appointment Slot",
-   "link_to": "Service Appointment Slot",
+   "label": "Bay Capacity Override",
+   "link_to": "Bay Capacity Override",
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-07-02 03:29:46.383916",
+ "modified": "2026-09-04 10:30:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",
