@@ -7,6 +7,7 @@ frappe.listview_settings['Service Order'] = {
 		const status_colors = {
 			"Draft": "red",
 			"In Progress": "orange", 
+			"Ready for Delivery": "blue",
 			"Completed": "green",
 			"Cancelled": "gray",
 			"On Hold": "yellow"

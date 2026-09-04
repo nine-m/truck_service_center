@@ -323,6 +323,9 @@ frappe.ui.form.on('Service Appointment Package', {
 				let pkg = r.message;
 				let pkg_name = row.service_package;
 				let discount_pct = flt(pkg.discount_percent);
+
+				// เวลาซ่อมจริงของแพ็คเกจ — ใช้คำนวณระยะเวลานัดหมายด้านล่าง
+				row.repair_time_hours = flt(pkg.repair_time_hours);
 				
 				// เพิ่ม service types จาก package
 				(pkg.service_types || []).forEach(function(st) {
@@ -348,6 +351,7 @@ frappe.ui.form.on('Service Appointment Package', {
 					item_row.service_type = part.service_type;
 				});
 				
+				frm.refresh_field('service_packages');
 				frm.refresh_field('service_types');
 				frm.refresh_field('service_items');
 				
@@ -566,10 +570,31 @@ function bind_live_row_calc(frm, gridfield, fieldnames, recalc_row) {
 }
 
 function calculate_estimated_duration(frm) {
-	let total = 0;
+	// สูตรเดียวกับ ServiceAppointment.calculate_estimated_duration ฝั่ง python — ต้องแก้คู่กัน
+	// แพ็คเกจที่กรอกเวลาซ่อมจริง (repair_time_hours) ไว้ ใช้ค่านั้นแทนผลรวมเวลาของงานในแพ็คเกจ
+	// เพราะงานในแพ็คเกจทำขนานกันได้ ผลรวมจึงยาวเกินจริง
+	let by_package = {};
+	let loose = 0;
 	(frm.doc.service_types || []).forEach(function(row) {
-		total += flt(row.estimated_time);
+		if (row.service_package) {
+			by_package[row.service_package] = flt(by_package[row.service_package]) + flt(row.estimated_time);
+		} else {
+			loose += flt(row.estimated_time);
+		}
 	});
+
+	let total = loose;
+	(frm.doc.service_packages || []).forEach(function(row) {
+		let rows_total = flt(by_package[row.service_package]);
+		delete by_package[row.service_package];
+		total += flt(row.repair_time_hours) || rows_total;
+	});
+
+	// แถวงานที่แพ็คเกจต้นทางถูกลบไปแล้ว ยังต้องนับเวลาให้อยู่
+	Object.keys(by_package).forEach(function(key) {
+		total += flt(by_package[key]);
+	});
+
 	frm.set_value('estimated_duration', flt(total, 2));
 }
 

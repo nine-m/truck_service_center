@@ -10,7 +10,8 @@
   "package_name",
   "column_break_1",
   "package_rate",
-  "discount_percent"
+  "discount_percent",
+  "repair_time_hours"
  ],
  "fields": [
   {
@@ -55,12 +56,20 @@
    "fieldtype": "Percent",
    "in_list_view": 1,
    "label": "ส่วนลด (%)"
+  },
+  {
+   "fetch_from": "service_package.repair_time_hours",
+   "fieldname": "repair_time_hours",
+   "fieldtype": "Float",
+   "label": "เวลาซ่อมจริง (ชม.)",
+   "precision": "2",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-02-26 10:00:00.000000",
+ "modified": "2026-09-03 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Package",

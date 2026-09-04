@@ -30,6 +30,7 @@
   "column_break_2",
   "package_rate",
   "estimated_duration",
+  "repair_time_hours",
   "conditions_tab",
   "validity_section",
   "validity_days",
@@ -153,6 +154,13 @@
    "read_only": 1
   },
   {
+   "description": "เวลาซ่อมจริงแบบ wall-clock ของทั้งแพ็คเกจ (งานที่ทำขนานกันนับครั้งเดียว) — ใช้คำนวณระยะเวลานัดหมาย ต่างจาก \"ระยะเวลาการทำงาน\" ด้านบนที่เป็นผลรวมเวลาของทุกงาน",
+   "fieldname": "repair_time_hours",
+   "fieldtype": "Float",
+   "label": "เวลาซ่อมจริง (ชม.)",
+   "precision": "2"
+  },
+  {
    "fieldname": "validity_section",
    "fieldtype": "Section Break",
    "label": "เงื่อนไขการใช้งาน"
@@ -209,7 +217,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-09-03 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Package",

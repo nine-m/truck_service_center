@@ -7,6 +7,10 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from truck_service_center.api.technician_portal import _validate_completion
+from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+	get_bay_warnings,
+	select_requisition_rows,
+)
 
 
 def make_order(
@@ -339,3 +343,209 @@ class UnitTestServiceOrder(UnitTestCase):
 		so = make_order(actual_time=1.5, fuel_level_out="ครึ่ง", current_mileage=0)
 
 		_validate_completion(so)  # ต้องไม่โยน
+
+	def test_portal_completion_requires_every_service_finished(self):
+		"""ยังมีงานที่ไม่ได้กดจบ → ปิดงานไม่ได้ และต้องฟ้องชื่องานนั้น"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out="เต็ม",
+			labor_rows=[
+				{"service_type": "ST-A", "end_time": "2026-09-01 10:00:00"},
+				{"service_type": "ST-B"},
+			],
+		)
+
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			_validate_completion(so)
+
+		self.assertIn("ST-B", str(ctx.exception))
+
+	def test_portal_completion_passes_when_every_service_finished(self):
+		"""ทุกงานกดจบครบ + น้ำมันนำส่ง → ผ่าน"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out="เต็ม",
+			labor_rows=[
+				{"service_type": "ST-A", "end_time": "2026-09-01 10:00:00"},
+				{"service_type": "ST-B", "end_time": "2026-09-01 11:00:00"},
+			],
+		)
+
+		_validate_completion(so)  # ต้องไม่โยน
+
+	# ── เวลาทำงานจริงคำนวณจากเวลาเริ่ม-จบของงานแต่ละรายการ ──────────────────────
+
+	def test_actual_time_spans_earliest_start_to_latest_end(self):
+		"""เวลาจริงเป็น wall-clock: งานที่ทำขนานกันต้องไม่ถูกนับซ้ำ"""
+		so = make_order(
+			labor_rows=[
+				{"start_time": "2026-09-01 09:00:00", "end_time": "2026-09-01 11:00:00"},
+				{"start_time": "2026-09-01 10:00:00", "end_time": "2026-09-01 12:30:00"},
+			],
+		)
+
+		so.compute_actual_time()
+
+		# 09:00 → 12:30 = 3.5 ชม. (ไม่ใช่ 2 + 2.5 = 4.5)
+		self.assertEqual(so.actual_time, 3.5)
+
+	def test_actual_time_untouched_when_no_timestamps(self):
+		"""ใบเก่าที่ไม่มี timestamp เลย ค่าที่กรอกมือไว้ต้องไม่ถูกแตะ
+
+		เป็นตัวกันไม่ให้ใบเก่า submit ไม่ผ่านด่าน actual_time > 0 ใน before_submit
+		"""
+		so = make_order(actual_time=4, labor_rows=[{"service_type": "ST-A"}])
+
+		so.compute_actual_time()
+
+		self.assertEqual(so.actual_time, 4)
+
+	def test_actual_time_ignores_rows_started_but_not_finished(self):
+		"""แถวที่เริ่มแล้วยังไม่จบ ไม่นับเป็นเวลาจบ แต่ยังนับเป็นเวลาเริ่มได้"""
+		so = make_order(
+			labor_rows=[
+				{"start_time": "2026-09-01 08:00:00"},
+				{"start_time": "2026-09-01 09:00:00", "end_time": "2026-09-01 10:00:00"},
+			],
+		)
+
+		so.compute_actual_time()
+
+		# เริ่มแรกสุด 08:00 → จบท้ายสุด 10:00
+		self.assertEqual(so.actual_time, 2)
+
+	def test_actual_time_not_set_when_nothing_finished(self):
+		"""มีแต่เวลาเริ่ม ยังไม่มีใครจบ → ยังคำนวณไม่ได้ ต้องไม่ทับค่าเดิม"""
+		so = make_order(actual_time=1.5, labor_rows=[{"start_time": "2026-09-01 08:00:00"}])
+
+		so.compute_actual_time()
+
+		self.assertEqual(so.actual_time, 1.5)
+
+	# ── ช่างจากแถวงาน sync ขึ้นระดับใบงาน ──────────────────────────────────────
+
+	def test_row_technicians_fill_first_free_parent_slots(self):
+		"""ช่างจากแถวงานถูกเติมลงช่องว่างแรกของใบงาน โดยไม่ทับของเดิม"""
+		so = make_order(
+			technician="somchai@example.com",
+			labor_rows=[{"technician_1": "somsak@example.com"}],
+		)
+
+		so.sync_row_technicians_to_parent()
+
+		self.assertEqual(so.technician, "somchai@example.com")
+		self.assertEqual(so.technician_2, "somsak@example.com")
+
+	def test_row_technicians_are_deduped(self):
+		"""ช่างคนเดียวรับหลายงาน ต้องขึ้นระดับใบงานแค่ครั้งเดียว"""
+		so = make_order(
+			labor_rows=[
+				{"technician_1": "somsak@example.com", "technician_2": "manee@example.com"},
+				{"technician_1": "somsak@example.com"},
+			],
+		)
+
+		so.sync_row_technicians_to_parent()
+
+		self.assertEqual(so.technician, "somsak@example.com")
+		self.assertEqual(so.technician_2, "manee@example.com")
+		self.assertIsNone(so.technician_3)
+
+	def test_technician_already_on_parent_is_not_added_twice(self):
+		"""ช่างที่อยู่ระดับใบงานอยู่แล้ว ต้องไม่ถูกเติมซ้ำอีกช่อง"""
+		so = make_order(
+			technician_3="somsak@example.com",
+			labor_rows=[{"technician_1": "somsak@example.com"}],
+		)
+
+		so.sync_row_technicians_to_parent()
+
+		self.assertEqual(so.technician_3, "somsak@example.com")
+		self.assertIsNone(so.technician)
+
+	# ── ช่องจอด ────────────────────────────────────────────────────────────────
+
+	def test_default_bay_fills_only_empty_rows(self):
+		"""แถวที่ไม่ระบุช่องจอดได้ช่องจอดหลัก ส่วนแถวที่เจาะจงไว้แล้วไม่ถูกทับ"""
+		so = make_order(
+			service_bay="BAY-1",
+			labor_rows=[{"service_type": "ST-A"}, {"service_type": "ST-B", "service_bay": "BAY-2"}],
+		)
+
+		so.apply_default_bay()
+
+		self.assertEqual(so.service_types[0].service_bay, "BAY-1")
+		self.assertEqual(so.service_types[1].service_bay, "BAY-2")
+
+	def test_bay_warning_when_bay_busy_on_another_open_order(self):
+		"""ช่องจอดหลักถูกใบงานที่ยังเปิดอยู่ใบอื่นใช้ค้างไว้ → เตือน (ไม่บล็อก)"""
+		so = make_order(service_bay="BAY-1")
+
+		with patch("frappe.get_all", return_value=["SO-2026-00001"]):
+			warnings = get_bay_warnings(so)
+
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("BAY-1", warnings[0])
+		self.assertIn("SO-2026-00001", warnings[0])
+
+	def test_bay_warning_when_job_needs_pit_but_bay_has_none(self):
+		"""งานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่จะได้ใช้จริงไม่มีหลุม → เตือน"""
+		so = make_order(service_bay="BAY-1", labor_rows=[{"service_type": "ST-OIL"}])
+
+		# get_all ถูกเรียก 3 ครั้ง: ใบงานที่ใช้ช่องจอดนี้, service type ที่ต้องใช้หลุม, ช่องจอดที่มีหลุม
+		with patch("frappe.get_all", side_effect=[[], ["ST-OIL"], []]):
+			warnings = get_bay_warnings(so)
+
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("ST-OIL", warnings[0])
+		self.assertIn("BAY-1", warnings[0])
+
+	def test_no_bay_warning_when_pit_available(self):
+		"""ช่องจอดว่างและมีหลุมครบตามที่งานต้องการ → ไม่มีคำเตือน"""
+		so = make_order(service_bay="BAY-1", labor_rows=[{"service_type": "ST-OIL"}])
+
+		with patch("frappe.get_all", side_effect=[[], ["ST-OIL"], ["BAY-1"]]):
+			warnings = get_bay_warnings(so)
+
+		self.assertEqual(warnings, [])
+
+	# ── ใบเบิกอะไหล่รายงาน ─────────────────────────────────────────────────────
+
+	def test_requisition_rows_match_service_type(self):
+		"""เลือกเฉพาะอะไหล่ของงานนั้น ข้ามของงานอื่นและของที่เบิกไปแล้ว"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A"}],
+			item_rows=[
+				{"qty": 1, "rate": 100, "service_type": "ST-A"},
+				{"qty": 1, "rate": 200, "service_type": "ST-B"},
+				{"qty": 1, "rate": 300, "service_type": "ST-A", "material_issue": "MAT-STE-0001"},
+			],
+		)
+
+		rows = select_requisition_rows(so, so.service_types[0])
+
+		self.assertEqual([row.rate for row in rows], [100])
+
+	def test_requisition_rows_also_match_package(self):
+		"""แถวงานที่มาจากแพ็คเกจ ต้องหยิบเฉพาะอะไหล่ของแพ็คเกจเดียวกัน"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A", "service_package": "PKG-1"}],
+			item_rows=[
+				{"qty": 1, "rate": 100, "service_type": "ST-A", "service_package": "PKG-1"},
+				{"qty": 1, "rate": 200, "service_type": "ST-A", "service_package": "PKG-2"},
+				{"qty": 1, "rate": 300, "service_type": "ST-A"},
+			],
+		)
+
+		rows = select_requisition_rows(so, so.service_types[0])
+
+		self.assertEqual([row.rate for row in rows], [100])
+
+	def test_requisition_rows_empty_when_service_type_blank(self):
+		"""แถวงานที่ยังไม่เลือกประเภทบริการ จับคู่อะไหล่ไม่ได้"""
+		so = make_order(
+			labor_rows=[{}],
+			item_rows=[{"qty": 1, "rate": 100, "service_type": "ST-A"}],
+		)
+
+		self.assertEqual(select_requisition_rows(so, so.service_types[0]), [])

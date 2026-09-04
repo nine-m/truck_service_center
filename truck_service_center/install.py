@@ -17,7 +17,20 @@ CUSTOM_FIELDS = {
 			"read_only": 1,
 			"no_copy": 1,  # amend ใบเบิกแล้วต้องไม่ลากใบงานเดิมติดไปด้วย
 			"print_hide": 1,
-		}
+		},
+		{
+			"fieldname": "custom_service_type",
+			# ใบเบิกจากพอร์ทัลสร้างรายงาน (service) จึงระบุประเภทบริการที่หัวใบได้
+			# ใบเบิกจาก desk ที่รวมหลายงานจะเว้นว่าง — ดูรายละเอียดที่รายบรรทัดแทน
+			"label": "ประเภทบริการ",
+			"fieldtype": "Link",
+			"options": "Service Type",
+			"insert_after": "custom_service_order",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_standard_filter": 1,
+			"print_hide": 1,
+		},
 	],
 	"Stock Entry Detail": [
 		{
@@ -31,7 +44,18 @@ CUSTOM_FIELDS = {
 			"no_copy": 1,
 			"hidden": 1,
 			"print_hide": 1,
-		}
+		},
+		{
+			"fieldname": "custom_service_type",
+			# ที่มาของอะไหล่บรรทัดนี้ — ว่างได้ถ้าเป็นอะไหล่ที่เพิ่มเองไม่ผูกประเภทบริการ
+			"label": "ประเภทบริการ",
+			"fieldtype": "Link",
+			"options": "Service Type",
+			"insert_after": "custom_service_order_item",
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+		},
 	],
 }
 

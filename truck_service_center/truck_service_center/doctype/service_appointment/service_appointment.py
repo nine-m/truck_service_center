@@ -18,8 +18,33 @@ class ServiceAppointment(Document):
 		self.calculate_totals()
 
 	def calculate_estimated_duration(self):
-		"""คำนวณระยะเวลาโดยประมาณจาก service_types child table"""
-		total = sum(flt(row.estimated_time) for row in (self.service_types or []))
+		"""ระยะเวลานัดหมาย = เวลาซ่อมจริงของแต่ละแพ็คเกจ + เวลาของงานที่ไม่ได้มาจากแพ็คเกจ
+
+		แพ็คเกจที่กรอก repair_time_hours ไว้ (เวลาซ่อมจริงแบบ wall-clock) จะใช้ค่านั้นแทน
+		ผลรวมเวลาของงานในแพ็คเกจ เพราะงานหลายอย่างในแพ็คเกจทำขนานกันได้ ผลรวมจึงยาวเกินจริง
+		แพ็คเกจที่ยังไม่ได้กรอกจะถอยไปใช้ผลรวมเวลาของงานในแพ็คเกจนั้นตามเดิม
+
+		ใช้ .pop กันนับซ้ำ และบวกเศษที่เหลือใน by_package กลับเข้าไป เพื่อครอบคลุมกรณีที่
+		แถวแพ็คเกจถูกลบไปแล้วแต่แถวงานของมันยังอยู่
+		"""
+		by_package = {}
+		loose = 0.0
+		for row in self.service_types or []:
+			if row.service_package:
+				by_package[row.service_package] = by_package.get(row.service_package, 0.0) + flt(
+					row.estimated_time
+				)
+			else:
+				loose += flt(row.estimated_time)
+
+		total = loose
+		for row in self.service_packages or []:
+			rows_total = by_package.pop(row.service_package, 0.0)
+			total += flt(row.repair_time_hours) or rows_total
+
+		# แถวงานที่แพ็คเกจต้นทางถูกลบไปแล้ว ยังต้องนับเวลาให้อยู่
+		total += sum(by_package.values())
+
 		self.estimated_duration = flt(total, 2)
 
 	def calculate_totals(self):
@@ -28,9 +53,7 @@ class ServiceAppointment(Document):
 		# จะไม่ตรงกับค่าที่ฐานข้อมูลปัดเก็บไว้ (999.83) และทำให้ submit ไม่ผ่าน
 		# ด้วย error "Cannot Update After Submit"
 		# รวมค่าแรง
-		self.total_labor_charges = flt(
-			sum(flt(row.labor_charges) for row in (self.service_types or [])), 2
-		)
+		self.total_labor_charges = flt(sum(flt(row.labor_charges) for row in (self.service_types or [])), 2)
 
 		# รวมค่าอะไหล่ (คำนวณ amount ของแต่ละรายการด้วย)
 		for item in self.service_items or []:
