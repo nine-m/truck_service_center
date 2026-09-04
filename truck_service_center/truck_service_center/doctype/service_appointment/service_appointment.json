@@ -11,6 +11,7 @@
   "status",
   "column_break_1",
   "appointment_date",
+  "appointment_time",
   "appointment_slot",
   "appointment_start",
   "appointment_end",
@@ -33,6 +34,8 @@
   "column_break_2",
   "estimated_duration",
   "assigned_technician",
+  "bay_section",
+  "bay_allocations",
   "service_packages_section",
   "service_packages",
   "service_types_section",
@@ -70,12 +73,20 @@
    "reqd": 1
   },
   {
+   "description": "ไม่บังคับ — เว้นว่างได้ถ้ายังไม่กำหนดเวลา (จะแสดงทั้งวันในปฏิทิน)",
+   "fieldname": "appointment_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "เวลานัดหมาย"
+  },
+  {
+   "depends_on": "eval:doc.appointment_slot",
+   "description": "ช่วงเวลาแบบเดิม (เลิกใช้แล้ว) — เอกสารเก่ายังแสดงค่าที่เคยเลือกไว้",
    "fieldname": "appointment_slot",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "ช่วงเวลา",
    "options": "Service Appointment Slot",
-   "reqd": 1
+   "read_only": 1
   },
   {
    "fieldname": "appointment_start",
@@ -230,6 +241,18 @@
    "options": "User"
   },
   {
+   "fieldname": "bay_section",
+   "fieldtype": "Section Break",
+   "label": "ช่องจอดซ่อม"
+  },
+  {
+   "description": "ระบบจัดให้อัตโนมัติเมื่อบันทึก แก้ไขเองได้ — กดปุ่ม 'จัด Bay ใหม่' เพื่อให้ระบบจัดใหม่",
+   "fieldname": "bay_allocations",
+   "fieldtype": "Table",
+   "label": "ช่องจอดที่จัดให้",
+   "options": "Service Appointment Bay"
+  },
+  {
    "fieldname": "service_packages_section",
    "fieldtype": "Section Break",
    "label": "แพ็คเกจบริการ"
@@ -342,7 +365,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-09-04 10:15:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment",
