@@ -18,10 +18,14 @@ frappe.views.calendar["Service Appointment"] = {
 		"truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_calendar_events",
 	order_by: "appointment_date asc",
 	prepare_events(events) {
-		// Force timed events when both datetimes are present; otherwise render as all-day.
+		// นัดที่ระบุเวลาไว้ = event มีเวลา ส่วนนัดที่ไม่ระบุเวลา (all_day) = ทั้งวัน
+		// ต้องดู all_day ด้วย เพราะนัดที่ไม่ระบุเวลาจะมี start = end = เที่ยงคืนของวันนั้น
+		// ซึ่งถ้าดูแค่ว่ามีค่าไหม จะกลายเป็น event ยาว 0 นาทีตอนเที่ยงคืน
 		const basePrepare = frappe.views.Calendar.prototype.prepare_events;
 		const normalized = (events || []).map((event) => {
-			const hasTimeRange = Boolean(event.appointment_start && event.appointment_end);
+			const hasTimeRange = Boolean(
+				event.appointment_start && event.appointment_end && !cint(event.all_day)
+			);
 			event.__has_time_range = hasTimeRange;
 			if (!hasTimeRange) {
 				event.all_day = 1;

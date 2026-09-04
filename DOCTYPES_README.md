@@ -13,8 +13,8 @@ Truck Service Center เป็นแอป Frappe (ต้องติดตั�
 เอกสารธุรกรรม 3 ตัวต่อกันเป็น pipeline และใช้โครงสร้าง child table ชุดเดียวกัน:
 
 ```
-Service Appointment (APT-.YYYY.-)   ── on_submit ──▶  Service Order (SO-.YYYY.-)  ◀── สร้างจาก ──  Repair Quotation (RQ-.YYYY.-)
-   (นัดหมาย, ผูก slot)                                  (เอกสารหลัก, ตัดสต็อก/ออกบิล)              (ใบเสนอราคา)
+Service Appointment (APT-.YYYY.-)   ── ปุ่มสร้าง ──▶  Service Order (SO-.YYYY.-)  ◀── สร้างจาก ──  Repair Quotation (RQ-.YYYY.-)
+   (นัดหมาย, จองชั่วโมงช่องจอด)                          (เอกสารหลัก, ตัดสต็อก/ออกบิล)              (ใบเสนอราคา)
 ```
 
 child table ที่ทุกเอกสารใช้เหมือนกัน:
@@ -60,29 +60,51 @@ seed จาก [fixtures/repair_position_data.py](truck_service_center/fixtures/
 
 ### Service Bay (ช่องจอดซ่อม)
 `autoname = field:bay_name`. ช่องจอดรับรถได้คันเดียว บางช่องมีหลุมสำหรับงานเปลี่ยนถ่ายของเหลว/งานใต้ท้องรถ
-ฟิลด์: `bay_name`, `has_pit` (มีหลุมซ่อม), `is_active`, `description`
-ไม่มี seed script — สร้างเองตามหน้างานจริงของแต่ละศูนย์
+ฟิลด์: `bay_name`, `has_pit` (มีหลุมซ่อม), `daily_capacity_hours` (ชั่วโมงรับงานต่อวัน, default 8), `is_active`, `description`
+ไม่มี seed script — สร้างเองตามหน้างานจริงของแต่ละศูนย์ (patch `set_bay_capacity_defaults` เติม 8 ชม. ให้แถวเดิมที่ยังว่าง)
+
+`daily_capacity_hours` คือฐานของการจองนัดหมายทั้งระบบ (ดู Service Appointment) — เกินจากนี้ถือเป็น OT ระบบเตือนแต่ไม่ห้ามจอง
 
 ผูกกับใบสั่งงาน 2 ระดับ: `Service Order.service_bay` (ช่องจอดหลัก) และ `Service Order Service Type.service_bay` (รายงาน)
 แถวที่ไม่ระบุจะถูกเติมด้วยช่องจอดหลักตอน save (`apply_default_bay`) การตรวจช่องจอด **เตือนอย่างเดียว ไม่บล็อก** —
 `get_bay_warnings()` เตือนเมื่อช่องจอดหลักถูกใบงานที่ยังเปิดอยู่ใบอื่นใช้ค้าง หรือเมื่องานที่ `Service Type.requires_pit`
 ไปอยู่ในช่องจอดที่ไม่มีหลุม
 
-### Service Appointment Slot (ช่วงเวลานัดหมาย)
+### Bay Capacity Override (ปรับชั่วโมงรับงานรายวัน)
+`autoname = format:BCO-{override_date}-{####}`. ฟิลด์: `override_date`, `service_bay` (**เว้นว่าง = มีผลทุกช่องจอด**), `capacity_hours` (**0 = ปิดทำการ**), `reason`
+ใช้ลดชั่วโมงรับงาน ปิดทำการเฉพาะวัน หรือ**เปิดวันหยุดประจำสัปดาห์**ก็ได้ (ใส่ค่ามากกว่า 0)
+ลำดับความสำคัญ: override ที่ระบุช่องจอด > override ที่เว้นช่องจอดว่าง > `daily_capacity_hours` คูณตัวคูณของโหมดวันใน Settings
+วันที่ + ช่องจอดเดียวกันมีได้ใบเดียว (รวมคู่ที่เว้นช่องจอดว่าง) และ `capacity_hours` ติดลบไม่ได้
+
+### Service Appointment Slot (ช่วงเวลานัดหมาย) — legacy
 `autoname = field:slot_name`. ฟิลด์: `slot_name`, `start_time`, `end_time`, `capacity` (จำนวนคันต่อ slot), `is_active`, `description`
-seed จาก [setup_appointment_slots.py](truck_service_center/setup_appointment_slots.py). ใช้คุมความจุการนัดผ่าน `Service Appointment.check_slot_availability()`
+**เลิกใช้แล้ว** ตั้งแต่เปลี่ยนไปคุมความจุเป็นชั่วโมงต่อช่องจอด — `Service Appointment.appointment_slot` เหลือเป็นฟิลด์อ่านอย่างเดียว
+ที่โผล่เฉพาะเอกสารเก่าที่เคยเลือกไว้ doctype และ `get_slot_availability()` ยังอยู่เพื่อไม่ให้ข้อมูลเดิมหาย แต่ไม่มีอะไรเรียกใช้ในการจองอีกแล้ว
+(สคริปต์ seed `setup_appointment_slots.py` ถูกลบไปแล้ว)
 
 ---
 
 ## เอกสารธุรกรรม
 
 ### Service Appointment (ใบนัดหมาย) — submittable, `APT-.YYYY.-`
-จองคิวบริการ ผูกกับ slot และดึงข้อมูลรถ/ลูกค้าอัตโนมัติ
+จองคิวบริการ คุมความจุเป็น**ชั่วโมงต่อช่องจอดต่อวัน** และดึงข้อมูลรถ/ลูกค้าอัตโนมัติ
 
-**ฟิลด์สำคัญ:** `appointment_date`, `appointment_slot`, `appointment_start/end`, `status` (Scheduled/Confirmed/In Progress/Completed/Cancelled/No Show), `customer`, `vehicle`, `assigned_technician`, child tables (service_types/service_items/service_packages), ยอดรวม (`total_labor_charges`, `total_parts_amount`, `total_amount`), `service_order` (ลิงก์ย้อนกลับ)
+**ฟิลด์สำคัญ:** `appointment_date`, `appointment_time` (**ไม่บังคับ** — เว้นว่าง = ทั้งวันบนปฏิทิน), `appointment_start/end` + `all_day` (ใช้วาดปฏิทิน), `bay_allocations` (ตาราง `Service Appointment Bay`: ช่องจอด / ประเภทงาน / ชั่วโมงที่จอง), `estimated_duration`, `status` (Scheduled/Confirmed/In Progress/Completed/Cancelled/No Show), `customer`, `vehicle`, `assigned_technician`, child tables (service_types/service_items/service_packages), ยอดรวม (`total_labor_charges`, `total_parts_amount`, `total_amount`), `service_order` (ลิงก์ย้อนกลับ), `appointment_slot` (legacy อ่านอย่างเดียว)
 
-**Methods:** `calculate_estimated_duration()`, `calculate_totals()`, `validate_appointment_datetime()`, `check_slot_availability()`, `sync_vehicle_info()`, `set_slot_datetimes()`, **`on_submit` → `create_service_order()`** (สร้าง Service Order จากใบนัด)
-**Whitelisted:** `create_service_order_from_appointment`, `get_available_slots(date)`
+**การจองแบบ bay-hour:** `estimated_duration` ถูกแยกเป็นชั่วโมงงานใต้ท้อง (`Service Type.requires_pit`) กับงานทั่วไปด้วย `split_pit_hours()`
+แล้ว `compute_allocation()` จัดให้สูงสุด 2 แถว (งานหลุมลงช่องที่มีหลุม งานทั่วไปลงช่องที่ไม่มีหลุมก่อน) — **จัดให้เฉพาะตอนตารางยังว่าง**
+เหมือน `apply_default_bay` ของใบสั่งงาน ค่าที่แก้มือไว้จะไม่ถูกทับ กดปุ่ม **"จัด Bay ใหม่"** เพื่อจัดใหม่แบบตั้งใจ
+ความจุที่มีผลจริงมาจาก `daily_capacity_hours` ของช่องจอด คูณโหมดวันใน Settings (เต็มวัน 1 / ครึ่งวัน 0.5 / หยุด 0) แล้ว `Bay Capacity Override` ทับได้อีกชั้น
+**ทุกเคสเตือนอย่างเดียว ไม่บล็อก** (`build_capacity_warnings()` — OT รายช่อง, งานยาวข้ามวัน, วันหยุด, ปิดด้วย override, งานหลุมบนช่องไม่มีหลุม, ตารางไม่ตรงกับระยะเวลา)
+ฝั่ง desk มี `frappe.confirm` ก่อนบันทึกเมื่อมีคำเตือน ส่วนฝั่ง server msgprint เสมอเพื่อให้ path API เห็นด้วย
+
+**ไม่ backfill นัดเก่า:** นัดที่สร้างก่อนระบบนี้ไม่มีแถวช่องจอด ชั่วโมงที่จองแล้วของวันนั้นจึงนับต่ำกว่าจริง จนกว่าจะเปิดใบนั้นแล้วกด "จัด Bay ใหม่"
+
+**Methods:** `calculate_estimated_duration()`, `calculate_totals()`, `validate_appointment_datetime()`, `sync_vehicle_info()`, `set_appointment_datetimes()`, `allocate_bays()`, `warn_capacity_issues()`, `create_service_order()` (ส่งช่องจอดหลัก + ช่องจอดรายแถวไปให้ใบสั่งงานด้วย)
+**Module-level (pure, เทสต์ได้ไม่ต้อง mock):** `resolve_bay_caps()`, `availability_status()`, `split_pit_hours()`, `compute_allocation()`, `build_capacity_warnings()` + IO wrapper `get_bay_availability()`
+**Whitelisted:** `create_service_order_from_appointment`, `get_bay_day_status(date, exclude_appointment)`, `check_appointment_capacity(doc)` (ไม่เขียนอะไรลง DB)
+
+> **on_submit ไม่ได้สร้าง Service Order** — ต้องกดปุ่ม "Create Service Order" บนใบนัดที่ submit แล้วเอง (`on_submit` แค่ตั้งสถานะเป็น Confirmed)
 
 ### Service Order (ใบสั่งงานบริการ) — submittable, `SO-.YYYY.-` ⭐ เอกสารหลัก
 หัวใจของระบบ จัดการงานซ่อม ตัดสต็อกอะไหล่ และออกใบแจ้งหนี้
@@ -167,7 +189,7 @@ Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น
 (โครงสร้างเมนูแก้ที่ doctype *Workspace Sidebar* — ดู [CLAUDE.md](CLAUDE.md) หัวข้อ Workspace & Sidebar)
 
 - **เพิ่มรถ:** Vehicle → New
-- **นัดหมาย:** Service Appointment → New (เลือก slot + รถ) → Submit จะสร้าง Service Order ให้
+- **นัดหมาย:** Service Appointment → New (เลือกวันที่ + รถ, เวลาไม่บังคับ) → Submit แล้วกดปุ่ม "Create Service Order"
 - **เปิดใบสั่งงาน:** Service Order → New หรือสร้างจาก Appointment/Quotation
 - **เสนอราคา:** Repair Quotation → New → เมื่อรับงานกด สร้าง Service Order
 - **แพ็คเกจ:** Service Package → New
@@ -198,6 +220,7 @@ Role ของแอป (seed จาก `create_default_roles()` ใน [install
 | Vehicle | ทั้งหมด | create/write | read | — | — |
 | Vehicle Brand | ทั้งหมด | create/read | read | — | — |
 | Master data อื่น (Service Type/Group, Repair Position, Package, Slot) | ทั้งหมด | read | read | — | — |
+| Bay Capacity Override | ทั้งหมด | create/write | read | read | read |
 | Service Bay | ทั้งหมด | read | read | — | — |
 | Truck Service Center Settings | read/write | — | — | — | — |
 
