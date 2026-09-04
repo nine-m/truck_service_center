@@ -36,6 +36,15 @@
   "wht_account",
   "column_break_wht_settings",
   "default_wht_rate",
+  "scheduling_section",
+  "work_day_monday",
+  "work_day_tuesday",
+  "work_day_wednesday",
+  "work_day_thursday",
+  "column_break_scheduling",
+  "work_day_friday",
+  "work_day_saturday",
+  "work_day_sunday",
   "notification_settings_section",
   "enable_expiry_notifications",
   "expiry_notice_days",
@@ -200,6 +209,65 @@
    "description": "เทมเพลตภาษีสำหรับราคารวม VAT (ราคาสินค้ารวม VAT แล้ว, included_in_print_rate = Yes)"
   },
   {
+   "description": "กำหนดโหมดของแต่ละวันในสัปดาห์ ใช้ร่วมกันทุกช่องจอด — ครึ่งวัน = ครึ่งหนึ่งของชั่วโมงรับงานต่อวันของแต่ละช่องจอด, หยุด = ไม่รับงาน (ยังจองได้แต่ระบบจะเตือน) ปรับรายวันได้ที่ Bay Capacity Override",
+   "fieldname": "scheduling_section",
+   "fieldtype": "Section Break",
+   "label": "วันทำการ (ตารางนัดหมาย)"
+  },
+  {
+   "default": "เต็มวัน",
+   "fieldname": "work_day_monday",
+   "fieldtype": "Select",
+   "label": "จันทร์",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "default": "เต็มวัน",
+   "fieldname": "work_day_tuesday",
+   "fieldtype": "Select",
+   "label": "อังคาร",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "default": "เต็มวัน",
+   "fieldname": "work_day_wednesday",
+   "fieldtype": "Select",
+   "label": "พุธ",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "default": "เต็มวัน",
+   "fieldname": "work_day_thursday",
+   "fieldtype": "Select",
+   "label": "พฤหัสบดี",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "column_break_scheduling",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "เต็มวัน",
+   "fieldname": "work_day_friday",
+   "fieldtype": "Select",
+   "label": "ศุกร์",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "default": "ครึ่งวัน",
+   "fieldname": "work_day_saturday",
+   "fieldtype": "Select",
+   "label": "เสาร์",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "default": "หยุด",
+   "fieldname": "work_day_sunday",
+   "fieldtype": "Select",
+   "label": "อาทิตย์",
+   "options": "เต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
    "fieldname": "notification_settings_section",
    "fieldtype": "Section Break",
    "label": "การแจ้งเตือนอัตโนมัติ"
@@ -263,7 +331,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-08-06 05:17:51.919389",
+ "modified": "2026-09-04 10:05:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",
