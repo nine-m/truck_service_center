@@ -9,6 +9,7 @@
  "field_order": [
   "bay_name",
   "has_pit",
+  "daily_capacity_hours",
   "column_break_1",
   "is_active",
   "section_break_2",
@@ -29,6 +30,15 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "มีหลุมซ่อม"
+  },
+  {
+   "default": "8",
+   "description": "กำลังรับงานของช่องจอดต่อวัน (ชม.) — เกินจากนี้ถือเป็น OT ระบบจะเตือนแต่ไม่ห้ามจอง",
+   "fieldname": "daily_capacity_hours",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "ชั่วโมงรับงานต่อวัน",
+   "precision": "1"
   },
   {
    "fieldname": "column_break_1",
@@ -53,7 +63,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-03 09:00:00.000000",
+ "modified": "2026-09-04 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Bay",

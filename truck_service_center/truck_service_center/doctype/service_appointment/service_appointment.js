@@ -87,6 +87,22 @@ frappe.ui.form.on('Service Appointment', {
 
 		// ตั้งค่า filter สำหรับช่างที่มอบหมาย
 		set_technician_filter(frm);
+
+		// ตั้งค่า filter สำหรับช่องจอดในตารางช่องจอดที่จัดให้
+		set_bay_filter(frm);
+
+		// ปุ่มให้ระบบจัดช่องจอดใหม่ (ล้างของเดิมทิ้งแล้วจัดใหม่)
+		if (frm.doc.docstatus === 0) {
+			frm.add_custom_button(__('จัด Bay ใหม่'), function() {
+				reallocate_bays(frm);
+			});
+		}
+	},
+
+	before_save: function(frm) {
+		// เตือน + ขอคำยืนยันก่อนบันทึกเมื่อจะใช้เกินความจุของช่องจอด
+		// ต้อง reject promise เท่านั้นถึงจะหยุดการบันทึกได้ (return false ไม่มีผล)
+		return confirm_capacity_before_save(frm);
 	},
 
 	customer: function(frm) {
@@ -168,19 +184,9 @@ frappe.ui.form.on('Service Appointment', {
 	},
 	
 	appointment_date: function(frm) {
-		// แสดงช่วงเวลาว่างพร้อม available seats
+		// แสดงสถานะช่องจอดของวันที่เลือก (ชั่วโมงที่จองแล้ว / ที่รับได้)
 		if (frm.doc.appointment_date) {
-			show_available_slots(frm);
-		}
-		
-		// ตั้ง filter slot ที่ยังมีที่ว่าง
-		set_slot_filter(frm);
-	},
-	
-	appointment_slot: function(frm) {
-		// แสดง capacity ของ slot ที่เลือก
-		if (frm.doc.appointment_slot && frm.doc.appointment_date) {
-			show_slot_info(frm);
+			show_bay_status(frm);
 		}
 	},
 	
@@ -219,93 +225,178 @@ function set_vehicle_filter(frm) {
 	}
 }
 
-function show_available_slots(frm) {
+function set_bay_filter(frm) {
+	frm.set_query('service_bay', 'bay_allocations', function() {
+		return {
+			filters: { 'is_active': 1 }
+		};
+	});
+}
+
+function bay_status_badge(status) {
+	let classes = {
+		'ว่าง': 'badge-success',
+		'ใกล้เต็ม': 'badge-warning',
+		'เต็ม': 'badge-danger',
+		'ปิดทำการ': 'badge-secondary'
+	};
+	return classes[status] || 'badge-secondary';
+}
+
+function show_bay_status(frm) {
 	if (!frm.doc.appointment_date) return;
 	
 	frappe.call({
-		method: 'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_available_slots',
+		method: 'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_bay_day_status',
 		args: {
-			date: frm.doc.appointment_date
+			date: frm.doc.appointment_date,
+			exclude_appointment: frm.is_new() ? null : frm.doc.name
 		},
 		callback: function(r) {
-			if (r.message && r.message.length > 0) {
-				// สร้าง HTML table แสดง slots (คลิกแถวเพื่อเลือกช่วงเวลา)
-				let html = '<p class="text-muted" style="margin-bottom: 5px;">คลิกช่วงเวลาที่ต้องการเพื่อเลือก</p>';
+			if (!r.message) return;
+			let data = r.message;
+			let html = '';
+			
+			if (data.day_closed) {
+				html += '<p class="text-danger"><b>วันนี้ปิดทำการทุกช่องจอด — จองได้แต่จะถือเป็นงาน OT</b></p>';
+			}
+			if (data.day_note) {
+				html += `<p class="text-muted">${frappe.utils.escape_html(data.day_note)}</p>`;
+			}
+			
+			if (!data.bays || !data.bays.length) {
+				html += '<p class="text-muted">ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน</p>';
+			} else {
 				html += '<table class="table table-bordered" style="margin-top: 5px;">';
-				html += '<thead><tr><th>ช่วงเวลา</th><th>เวลา</th><th>ว่าง/ทั้งหมด</th></tr></thead>';
+				html += '<thead><tr><th>ช่องจอด</th><th>หลุมซ่อม</th><th>จองแล้ว/รับได้ (ชม.)</th><th>สถานะ</th></tr></thead>';
 				html += '<tbody>';
-
-				r.message.forEach(function(slot) {
-					let badge_class = slot.available > 0 ? 'badge-success' : 'badge-danger';
-					html += `<tr class="slot-row" data-slot="${frappe.utils.escape_html(slot.slot)}" style="cursor: pointer;">`;
-					html += `<td><strong>${slot.slot_name}</strong></td>`;
-					html += `<td>${slot.start_time} - ${slot.end_time}</td>`;
-					html += `<td><span class="badge ${badge_class}">${slot.available}/${slot.capacity}</span></td>`;
+				data.bays.forEach(function(bay) {
+					html += '<tr>';
+					html += `<td><strong>${frappe.utils.escape_html(bay.bay_name || bay.bay)}</strong></td>`;
+					html += `<td>${bay.has_pit ? 'มี' : '-'}</td>`;
+					html += `<td>${flt(bay.booked, 2)} / ${flt(bay.cap, 2)}</td>`;
+					html += `<td><span class="badge ${bay_status_badge(bay.status)}">${frappe.utils.escape_html(bay.status)}</span></td>`;
 					html += '</tr>';
 				});
-
 				html += '</tbody></table>';
-
-				// แสดงผลใน dialog
-				let d = new frappe.ui.Dialog({
-					title: __('Available Time Slots - {0}', [frm.doc.appointment_date]),
-					fields: [
-						{
-							fieldtype: 'HTML',
-							options: html
-						}
-					],
-					size: 'small'
-				});
-				d.show();
-
-				// คลิกแถวเพื่อเลือก slot แล้วใส่ลงช่องช่วงเวลาให้อัตโนมัติ
-				d.$wrapper.find('.slot-row').on('click', function() {
-					let slot_name = $(this).data('slot');
-					d.hide();
-					frm.set_value('appointment_slot', slot_name);
-				}).hover(
-					function() { $(this).addClass('active'); },
-					function() { $(this).removeClass('active'); }
-				);
-			} else {
-				frappe.msgprint(__('No available slots for this date'));
+				html += '<p class="text-muted">ระบบจะจัดช่องจอดให้อัตโนมัติตอนบันทึก แก้ไขเองได้ในตาราง "ช่องจอดที่จัดให้"</p>';
 			}
+			
+			let d = new frappe.ui.Dialog({
+				title: __('สถานะช่องจอด — {0}', [frm.doc.appointment_date]),
+				fields: [
+					{
+						fieldtype: 'HTML',
+						options: html
+					}
+				],
+				size: 'small'
+			});
+			d.show();
 		}
 	});
 }
 
-function set_slot_filter(frm) {
-	if (frm.doc.appointment_date) {
-		frm.set_query('appointment_slot', function() {
-			return {
-				filters: {
-					'is_active': 1
-				}
-			};
-		});
-	}
+function capacity_warning_html(warnings) {
+	return warnings.map(function(warning) {
+		return frappe.utils.escape_html(warning);
+	}).join('<br>');
 }
 
-function show_slot_info(frm) {
-	frappe.call({
-		method: 'truck_service_center.truck_service_center.doctype.service_appointment_slot.service_appointment_slot.get_slot_availability',
+function check_appointment_capacity(frm) {
+	return frappe.call({
+		method: 'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.check_appointment_capacity',
 		args: {
-			date: frm.doc.appointment_date,
-			slot: frm.doc.appointment_slot
-		},
-		callback: function(r) {
-			if (r.message && r.message.length > 0) {
-				let slot = r.message[0];
-				let message = `${slot.slot_name}: ${slot.start_time}-${slot.end_time} | ว่าง: ${slot.available}/${slot.capacity} คัน`;
-				let indicator = slot.available > 0 ? 'green' : 'red';
-				
-				frappe.show_alert({
-					message: message,
-					indicator: indicator
-				}, 5);
-			}
+			doc: JSON.stringify(frm.doc)
 		}
+	});
+}
+
+function clear_bay_allocations(frm) {
+	frm.doc.bay_allocations = [];
+	frm.refresh_field('bay_allocations');
+}
+
+function reallocate_bays(frm) {
+	if (!frm.doc.appointment_date) {
+		frappe.msgprint(__('กรุณาระบุวันที่นัดหมายก่อน'));
+		return;
+	}
+	
+	// ต้องล้างตารางก่อนส่ง ไม่งั้นฝั่ง server จะถือว่าจัดไว้แล้วและไม่จัดใหม่ให้
+	clear_bay_allocations(frm);
+	
+	check_appointment_capacity(frm).then(function(r) {
+		if (!r.message) return;
+		let allocations = r.message.allocations || [];
+		let warnings = r.message.warnings || [];
+		
+		allocations.forEach(function(row) {
+			let child = frm.add_child('bay_allocations');
+			child.service_bay = row.service_bay;
+			child.work_type = row.work_type;
+			child.allocated_hours = row.allocated_hours;
+		});
+		frm.refresh_field('bay_allocations');
+		frm.dirty();
+		
+		if (allocations.length) {
+			frappe.show_alert({
+				message: __('จัดช่องจอดใหม่เรียบร้อย — อย่าลืมบันทึกเอกสาร'),
+				indicator: 'green'
+			});
+		} else {
+			frappe.show_alert({
+				message: __('ยังไม่มีชั่วโมงงานให้จัดช่องจอด'),
+				indicator: 'orange'
+			});
+		}
+		
+		if (warnings.length) {
+			frappe.confirm(
+				__('ตรวจพบข้อควรระวังเรื่องช่องจอด:') + '<br><br>' + capacity_warning_html(warnings) +
+					'<br><br>' + __('ต้องการใช้การจัดช่องจอดนี้หรือไม่?'),
+				function() {
+					// ยืนยัน — คงการจัดช่องจอดไว้ตามที่ระบบจัดให้
+				},
+				function() {
+					// ยกเลิก — เคลียร์ตารางกลับว่าง เพื่อให้การบันทึกครั้งถัดไปจัดใหม่เอง
+					clear_bay_allocations(frm);
+					frappe.show_alert({
+						message: __('ยกเลิกการจัดช่องจอด — ตารางถูกล้างแล้ว'),
+						indicator: 'orange'
+					});
+				}
+			);
+		}
+	});
+}
+
+function confirm_capacity_before_save(frm) {
+	if (frm.doc.docstatus !== 0 || !frm.doc.appointment_date) return;
+	
+	return check_appointment_capacity(frm).then(function(r) {
+		let warnings = (r.message && r.message.warnings) || [];
+		if (!warnings.length) return;
+		
+		return new Promise(function(resolve, reject) {
+			frappe.confirm(
+				__('ตรวจพบข้อควรระวังเรื่องความจุช่องจอด:') + '<br><br>' + capacity_warning_html(warnings) +
+					'<br><br>' + __('ต้องการบันทึกต่อหรือไม่?'),
+				function() {
+					resolve();
+				},
+				function() {
+					// return false ไม่หยุดการบันทึก ต้อง reject promise เท่านั้น
+					// (pattern เดียวกับ before_service_types_remove ใน service_order.js)
+					frappe.show_alert({
+						message: __('ยกเลิกการบันทึก'),
+						indicator: 'orange'
+					});
+					reject(new Error('capacity warnings not confirmed'));
+				}
+			);
+		});
 	});
 }
 
