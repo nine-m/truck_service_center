@@ -9,6 +9,28 @@ frappe.listview_settings["Service Appointment"] = {
 		}
 	},
 	
+	// ปฏิทินคือหน้าหลักของนัดหมาย — ซ่อนปุ่ม header ที่ไม่มีผลกับมุมมองปฏิทิน
+	// (sort ไม่มีผลเพราะปฏิทินจัดตามวันเอง, Default Layouts เป็นเรื่องคอลัมน์ของ List view)
+	// ต้องเป็น hook refresh ไม่ใช่ onload: CalendarView override setup_view เป็นค่าว่าง
+	// ทำให้ settings.onload ไม่ถูกเรียกบนปฏิทิน แต่ settings.refresh ยังถูกเรียกผ่าน BaseList.refresh
+	refresh(listview) {
+		if (listview.view_name !== "Calendar") {
+			return;
+		}
+		listview.page.wrapper.find(".sort-selector").hide();
+		// เมนู layout ถูกสร้าง async หลังโหลด list_layout bundle — รอ promise ของมันก่อนค่อยซ่อน
+		const hide_layout_menu = () => {
+			const selector = `.inner-group-button[data-label="${encodeURIComponent(
+				__("Default Layouts")
+			)}"]`;
+			listview.page.wrapper.find(selector).hide();
+		};
+		if (listview.list_filter && listview.list_filter.setup_promise) {
+			listview.list_filter.setup_promise.then(hide_layout_menu);
+		}
+		hide_layout_menu();
+	},
+
 	add_fields: ["status", "docstatus"],
 	
 	get_indicator(doc) {
