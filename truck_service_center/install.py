@@ -96,6 +96,16 @@ DEFAULT_ROLE_PROFILES = {
 	"Technician": ["Technician"],
 	# หัวหน้าช่างทำงานช่างด้วย จึงได้ Technician ติดไปด้วย ไม่ใช่แค่สิทธิ์ดูทุกใบ
 	"Technician Manager": ["Technician", "Technician Manager"],
+	# role ของแอปให้สิทธิ์เฉพาะ doctype ของแอปเท่านั้น ธุรการที่มีแค่ "Service User"
+	# จะเปิดใบสั่งงานไม่ได้จริง เพราะเลือก Customer/Item ไม่ได้ (อ่านไม่ได้ตั้งแต่แรก)
+	# จึงพ่วง role ของ ERPNext ที่จำเป็นมาใน profile ให้ครบตั้งแต่ตอนสร้าง user
+	# Sales User → Customer (rwc), Item/Warehouse/UOM/Item Group/Company (r)
+	"Service User": ["Service User", "Sales User"],
+	# ผู้จัดการศูนย์ทำงานเอกสารปลายทางด้วย จึงต้องได้เพิ่มจากธุรการ:
+	# Accounts User → สร้าง Sales Invoice (create_sales_invoice เรียก insert() ตรงๆ
+	#                 ไม่ได้ ignore_permissions ต่างจากใบเบิกอะไหล่ของพอร์ทัลช่าง)
+	# Stock User    → ดู/สร้างใบเบิกอะไหล่ (Stock Entry) บน desk
+	"Service Manager": ["Service Manager", "Sales User", "Accounts User", "Stock User"],
 }
 
 
@@ -137,9 +147,15 @@ def create_default_role_profiles():
 	touched = 0
 	for profile_name, roles in DEFAULT_ROLE_PROFILES.items():
 		missing_roles = [role for role in roles if not frappe.db.exists("Role", role)]
+		# role ที่พ่วงมาจาก ERPNext อาจไม่มีบน site ที่ตัดโมดูลออก — สร้าง profile ต่อด้วย
+		# role ที่เหลือดีกว่าข้ามทั้งชุด ผู้ดูแลระบบจะได้ยังมี profile ให้เลือกตอนสร้าง user
+		available_roles = [role for role in roles if role not in missing_roles]
 		if missing_roles:
-			print(f"⚠ ข้าม Role Profile {profile_name} เพราะยังไม่มี role: {', '.join(missing_roles)}")
+			print(f"⚠ Role Profile {profile_name} ข้าม role ที่ยังไม่มี: {', '.join(missing_roles)}")
+		if not available_roles:
+			print(f"⚠ ข้าม Role Profile {profile_name} เพราะไม่มี role ที่ใช้ได้เลย")
 			continue
+		roles = available_roles
 
 		if frappe.db.exists("Role Profile", profile_name):
 			doc = frappe.get_doc("Role Profile", profile_name)

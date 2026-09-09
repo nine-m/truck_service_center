@@ -208,6 +208,20 @@ Role ของแอป (seed จาก `create_default_roles()` ใน [install
 
 และใช้ role มาตรฐานของ ERPNext เพิ่มเติม: **Stock User** (อ่าน Service Order เพื่อเบิกอะไหล่), **Accounts User** (อ่าน Service Order + Repair Quotation เพื่อออกบิล)
 
+### Role Profile (ชุด role สำเร็จรูปตอนสร้าง user)
+
+seed จาก `create_default_role_profiles()` ใน [install.py](truck_service_center/install.py) — เลือกได้จากฟิลด์ **Role Profiles** บนฟอร์ม User โดยไม่ต้องไล่ติ๊ก role ทีละตัว
+
+| Role Profile | role ที่ได้ | ทำไมต้องพ่วง role ของ ERPNext |
+|---|---|---|
+| **Service User** | Service User, Sales User | role ของแอปให้สิทธิ์เฉพาะ doctype ของแอป ธุรการที่มีแค่ `Service User` เปิดใบสั่งงานไม่ได้จริงเพราะอ่าน Customer/Item ไม่ได้ |
+| **Service Manager** | Service Manager, Sales User, Accounts User, Stock User | ผู้จัดการกดออก Sales Invoice เอง (`create_sales_invoice` เรียก `insert()` ตรงๆ ไม่ได้ `ignore_permissions`) และดู/สร้างใบเบิกอะไหล่บน desk |
+| **Technician** | Technician | ใบเบิกจากพอร์ทัลใช้ `ignore_permissions=True` จึงไม่ต้องมี Stock User |
+| **Technician Manager** | Technician, Technician Manager | หัวหน้าช่างทำงานช่างด้วย ไม่ใช่แค่สิทธิ์ดูทุกใบ |
+
+> **user ใหม่ที่ไม่ได้รับ role ของแอปเลยจะมองไม่เห็นหน้าหลักของศูนย์บริการ** — frappe ตอบ `"No App"` ตอนล็อกอินแล้วส่งไป `/me` เพราะ workspace จะโผล่ก็ต่อเมื่อโมดูล `Truck Service Center` อยู่ใน `allow_modules` ซึ่งไล่มาจาก doctype ที่ user อ่านได้ อาการนี้ไม่ได้เกิดกับ Administrator/System Manager จึงมักไม่เจอตอนทดสอบ
+
+
 > บทบาท **Technician** ยังใช้กรองรายชื่อในฟิลด์ช่างด้วย — `Service Order.technician`…`technician_4`, `Service Appointment.assigned_technician` และฟิลเตอร์ของรายงาน Technician Performance เป็น `Link → User` ที่ set_query ไปยัง `truck_service_center.queries.technician_query` ซึ่งแสดงเฉพาะ user ที่มีบทบาทนี้ (ตัด Administrator/Guest และ user ที่ถูกปิดใช้งานออก) **ต้องกำหนดบทบาท Technician ให้ช่างก่อน จึงจะเลือกได้** ถ้ายังไม่มีใครได้รับบทบาทนี้เลย ระบบจะถอยไปแสดง system user ทั้งหมดเพื่อไม่ให้ dropdown ว่าง
 
 ### Permission matrix (สรุป)
