@@ -19,6 +19,21 @@ CUSTOM_FIELDS = {
 			# ช่องค้นหาบนหัว list ของ Stock Entry — คำถามที่ถามบ่อยที่สุดคือ
 			# "ใบสั่งงานนี้เบิกอะไหล่ไปแล้วบ้าง" จึงต้องกรองด้วยเลขใบงานได้ตรง ๆ
 			"in_standard_filter": 1,
+			"in_list_view": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "custom_service_order_owner",
+			# เก็บเป็น "ชื่อ" ไม่ใช่ Link → User เพราะคอลัมน์นี้มีไว้ให้คนอ่าน
+			# frappe render Link → User เป็น user id (User ไม่ได้เปิด show_title_field_in_link)
+			# ค่าถูกเขียนตอนสร้างใบเบิก (create_material_issue_for_rows) เป็น snapshot
+			# ถ้าผู้ใช้เปลี่ยนชื่อทีหลัง ใบเก่าจะยังเป็นชื่อเดิม ซึ่งตรงกับความหมายของเอกสาร
+			"label": "ผู้เปิดใบสั่งงาน",
+			"fieldtype": "Data",
+			"insert_after": "custom_service_order",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
 			"print_hide": 1,
 		},
 		{

@@ -46,6 +46,21 @@ class TestStockEntryCustomFields(IntegrationTestCase):
 
 		self.assertTrue(field.read_only)
 
+	def test_service_order_is_a_list_view_column(self):
+		"""เลขใบสั่งงานต้องขึ้นเป็นคอลัมน์ในหน้ารายการ ไม่ต้องเปิดทีละใบเพื่อดู"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_service_order")
+
+		self.assertTrue(field.in_list_view, "custom_service_order ไม่ได้อยู่ในคอลัมน์หน้ารายการ")
+
+	def test_service_order_owner_is_a_list_view_column(self):
+		"""ผู้เปิดใบสั่งงานต้องขึ้นเป็นคอลัมน์ และเป็น Data (เก็บชื่อ ไม่ใช่ user id)"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_service_order_owner")
+
+		self.assertIsNotNone(field, "ไม่พบฟิลด์ custom_service_order_owner บน Stock Entry")
+		self.assertTrue(field.in_list_view)
+		self.assertEqual(field.fieldtype, "Data")
+		self.assertTrue(field.read_only)
+
 	def test_filtering_by_service_order_returns_only_its_issues(self):
 		"""กรองแล้วต้องได้เฉพาะใบเบิกของใบสั่งงานนั้น"""
 		linked = frappe.get_all(

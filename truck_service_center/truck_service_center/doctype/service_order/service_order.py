@@ -1125,6 +1125,7 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
 	stock_entry.set_posting_time = 1
 	stock_entry.posting_date = frappe.utils.today()
 	stock_entry.custom_service_order = doc.name  # Link กลับไป Service Order
+	stock_entry.custom_service_order_owner = get_service_order_owner_label(doc.owner)
 
 	items_added = []
 
@@ -1329,6 +1330,17 @@ def select_unclaimed_requisition_rows(doc):
 		)
 
 	return [item for item in doc.service_items if not item.material_issue and not is_claimable(item)]
+
+
+def get_service_order_owner_label(owner):
+	"""ชื่อผู้เปิดใบสั่งงาน สำหรับคอลัมน์บนหน้ารายการใบเบิก
+
+	ถอยไปใช้ user id เมื่อยังไม่ได้ตั้งชื่อเต็ม จะได้ไม่เหลือช่องว่างที่ดูเหมือนข้อมูลหาย
+	"""
+	if not owner:
+		return None
+
+	return frappe.db.get_value("User", owner, "full_name") or owner
 
 
 def build_material_issue_line(item, settings):
