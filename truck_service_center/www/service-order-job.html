@@ -159,7 +159,7 @@
 						{% for issue in group.issues %}
 						<span class="tsc-pkg tsc-issue">{{ issue }}</span>
 						{% endfor %}
-						{% if editable and group.row_name and group.pending %}
+						{% if editable and group.pending %}
 						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
 							data-action="requisition" data-row="{{ group.row_name }}">สร้างใบเบิก</button>
 						{% endif %}
@@ -200,7 +200,7 @@
 				{% if job.status == "Draft" %}
 				<p class="tsc-hint">ต้องเลือกสถานะน้ำมันรับเข้าก่อนจึงจะรับรถได้</p>
 				{% elif job.status == "In Progress" %}
-				<p class="tsc-hint">ต้องกดจบงานให้ครบทุกรายการ และบันทึกสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
+				<p class="tsc-hint">ต้องกดจบงานให้ครบทุกรายการ สร้างใบเบิกอะไหล่ให้ครบ และบันทึกสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
 				{% endif %}
 			</div>
 			{% endif %}
@@ -288,6 +288,8 @@
 	var savedMileage = {{ job.current_mileage | tojson }};
 	// เลขไมล์ที่ผูกกับรถอยู่ = ค่าที่ระบบเติมให้ตอนสร้างใบงาน ถ้ายังเท่าเดิมแปลว่าช่างยังไม่ได้อัปเดต
 	var MILEAGE_BASELINE = {{ job.vehicle_mileage | tojson }};
+	// อะไหล่ที่ยังไม่มีใบเบิก ณ ตอน render — เตือนก่อนกดปิดงาน (server ตรวจซ้ำใน set_status)
+	var UNISSUED_PARTS = {{ job.unissued_parts | tojson }};
 
 	function toast(message, indicator) {
 		if (window.frappe && frappe.show_alert) {
@@ -368,6 +370,10 @@
 		if (unfinished) { missing.push("• กดจบงานให้ครบทุกรายการ (ยังไม่จบ " + unfinished + " รายการ)"); }
 		if (!document.querySelector('[data-group="fuel-out"] .is-active')) {
 			missing.push("• สถานะน้ำมันนำส่ง");
+		}
+		// ใบเบิกสร้างแล้วหน้าจะ reload เสมอ ค่าที่ render มาจึงยังตรงกับเอกสาร
+		if (UNISSUED_PARTS && UNISSUED_PARTS.length) {
+			missing.push("• สร้างใบเบิกอะไหล่ให้ครบ (ยังไม่ได้เบิก " + UNISSUED_PARTS.join(", ") + ")");
 		}
 		if (missing.length) {
 			window.alert("กรุณาบันทึกข้อมูลต่อไปนี้ก่อนปิดงาน\n" + missing.join("\n"));

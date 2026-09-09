@@ -10,7 +10,26 @@ from truck_service_center.api.technician_portal import _validate_completion
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	get_bay_warnings,
 	select_requisition_rows,
+	select_unclaimed_requisition_rows,
 )
+from truck_service_center.www.service_order_job import _build_parts, _group_parts
+
+
+def stub_db_get_value(stock_items=(), submitted_issues=()):
+	"""แทน frappe.db.get_value เฉพาะการค้นที่ collect_material_issue_problems เรียก
+
+	คืน docstatus 0 (Draft) ให้ใบเบิกที่ไม่ได้ระบุว่า submit แล้ว — ตรงกับใบเบิกที่
+	พอร์ทัลสร้าง ซึ่งถูก insert เป็น Draft เสมอ
+	"""
+
+	def _get_value(doctype, name, fieldname=None, *args, **kwargs):
+		if doctype == "Item":
+			return 1 if name in stock_items else 0
+		if doctype == "Stock Entry":
+			return 1 if name in submitted_issues else 0
+		return None
+
+	return _get_value
 
 
 def make_order(
@@ -372,6 +391,162 @@ class UnitTestServiceOrder(UnitTestCase):
 		)
 
 		_validate_completion(so)  # ต้องไม่โยน
+
+	def test_portal_completion_requires_material_issue(self):
+		"""ปิดงานไม่ได้ถ้าอะไหล่ยังไม่ได้เบิก — ของออกจากคลังไม่ครบ และปิดแล้วช่างเบิกเองไม่ได้อีก"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out="เต็ม",
+			item_rows=[{"item_code": "PART-A", "item_name": "ไส้กรองน้ำมัน", "qty": 1, "rate": 100}],
+		)
+
+		with patch("frappe.db.get_value", side_effect=stub_db_get_value(stock_items={"PART-A"})):
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				_validate_completion(so)
+
+		self.assertIn("ไส้กรองน้ำมัน", str(ctx.exception))
+
+	def test_portal_completion_accepts_draft_material_issue(self):
+		"""ใบเบิกที่ยังเป็น Draft ต้องผ่าน — ช่าง submit Stock Entry ไม่ได้ ผู้จัดการ submit ทีหลัง"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out="เต็ม",
+			item_rows=[
+				{
+					"item_code": "PART-A",
+					"item_name": "ไส้กรองน้ำมัน",
+					"qty": 1,
+					"rate": 100,
+					"material_issue": "MAT-STE-0001",
+				}
+			],
+		)
+
+		with patch("frappe.db.get_value", side_effect=stub_db_get_value(stock_items={"PART-A"})):
+			_validate_completion(so)  # ต้องไม่โยน
+
+	def test_portal_completion_ignores_non_stock_items(self):
+		"""ค่าบริการ/ของนอกสต็อกไม่มีใบเบิกและเบิกไม่ได้ ต้องไม่ไปขวางการปิดงาน"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out="เต็ม",
+			item_rows=[{"item_code": "SERVICE-FEE", "item_name": "ค่าบริการ", "qty": 1, "rate": 300}],
+		)
+
+		with patch("frappe.db.get_value", side_effect=stub_db_get_value(stock_items=set())):
+			_validate_completion(so)  # ต้องไม่โยน
+
+	def test_portal_completion_reports_unissued_parts_with_other_gaps(self):
+		"""ขาดหลายอย่างต้องฟ้องพร้อมกัน ช่างจะได้เก็บงานรอบเดียวจบ"""
+		so = make_order(
+			actual_time=2,
+			fuel_level_out=None,
+			item_rows=[{"item_code": "PART-A", "item_name": "ไส้กรองน้ำมัน", "qty": 1, "rate": 100}],
+		)
+
+		with patch("frappe.db.get_value", side_effect=stub_db_get_value(stock_items={"PART-A"})):
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				_validate_completion(so)
+
+		message = str(ctx.exception)
+		self.assertIn("น้ำมันนำส่ง", message)
+		self.assertIn("ใบเบิกอะไหล่", message)
+
+	# ── สถานะใบเบิกที่พอร์ทัลใช้ render (service_order_job) ─────────────────────
+
+	def test_portal_view_flags_only_unissued_stock_parts(self):
+		"""needs_issue ต้องเป็นจริงเฉพาะสินค้าคงคลังที่ยังไม่มีใบเบิก"""
+		so = make_order(
+			item_rows=[
+				{"item_code": "PART-A", "item_name": "ไส้กรองน้ำมัน", "qty": 1, "rate": 100},
+				{
+					"item_code": "PART-B",
+					"item_name": "ผ้าเบรก",
+					"qty": 1,
+					"rate": 200,
+					"material_issue": "MAT-STE-0001",
+				},
+				{"item_code": "SERVICE-FEE", "item_name": "ค่าบริการ", "qty": 1, "rate": 300},
+			],
+		)
+
+		with patch("frappe.get_all", return_value=["PART-A", "PART-B"]):
+			parts = _build_parts(so)
+
+		self.assertEqual([part.needs_issue for part in parts], [True, False, False])
+
+	# ── กลุ่ม "อะไหล่อื่น ๆ" ต้องเบิกได้ ไม่งั้นปิดงานไม่ได้ตลอดไป ────────────────
+
+	def test_unclaimed_rows_are_parts_no_service_row_can_requisition(self):
+		"""อะไหล่ที่ไม่มี service_type ไม่มีปุ่มรายงานไหนเบิกให้ได้ ต้องตกมากลุ่มนี้"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A"}],
+			item_rows=[
+				{"item_code": "PART-A", "service_type": "ST-A"},
+				{"item_code": "PART-B"},
+			],
+		)
+
+		rows = select_unclaimed_requisition_rows(so)
+
+		self.assertEqual([row.item_code for row in rows], ["PART-B"])
+
+	def test_unclaimed_rows_skip_already_issued(self):
+		"""เบิกไปแล้วต้องไม่ถูกดึงมาเบิกซ้ำ"""
+		so = make_order(item_rows=[{"item_code": "PART-B", "material_issue": "MAT-STE-0001"}])
+
+		self.assertEqual(select_unclaimed_requisition_rows(so), [])
+
+	def test_unclaimed_rows_include_mismatched_package(self):
+		"""service_type ตรงแต่แพ็คเกจไม่ตรง แถวงานนั้นก็เบิกให้ไม่ได้ ต้องตกมากลุ่มนี้"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A", "service_package": "PKG-1"}],
+			item_rows=[{"item_code": "PART-A", "service_type": "ST-A", "service_package": "PKG-2"}],
+		)
+
+		self.assertEqual([row.item_code for row in select_unclaimed_requisition_rows(so)], ["PART-A"])
+
+	def test_unclaimed_rows_exclude_what_a_service_row_can_take(self):
+		"""ของที่แถวงานเบิกได้อยู่แล้วต้องไม่ถูกนับซ้ำในกลุ่มอะไหล่อื่น"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-A", "service_package": "PKG-1"}],
+			item_rows=[{"item_code": "PART-A", "service_type": "ST-A", "service_package": "PKG-1"}],
+		)
+
+		self.assertEqual(select_unclaimed_requisition_rows(so), [])
+
+	def test_portal_view_shows_requisition_button_for_leftover_group(self):
+		"""กลุ่มอะไหล่อื่นต้องมีปุ่มเบิก — เดิม pending ถูกตรึงเป็น 0 ปุ่มจึงไม่เคยขึ้น"""
+		so = make_order(item_rows=[{"item_code": "PART-B", "item_name": "ผ้าเบรก", "qty": 1, "rate": 1}])
+
+		with patch("frappe.get_all", return_value=["PART-B"]):
+			parts = _build_parts(so)
+
+		groups = _group_parts([], parts)
+
+		self.assertEqual(groups[0].label, "อะไหล่อื่น ๆ")
+		self.assertEqual(groups[0].pending, 1)
+
+	def test_portal_view_hides_requisition_button_for_service_only_group(self):
+		"""กลุ่มที่มีแต่ค่าบริการต้องไม่โชว์ปุ่มสร้างใบเบิก — กดไปก็ throw ว่าไม่มีอะไรให้เบิก"""
+		so = make_order(
+			item_rows=[
+				{
+					"item_code": "SERVICE-FEE",
+					"item_name": "ค่าบริการ",
+					"qty": 1,
+					"rate": 300,
+					"service_type": "ST-A",
+				}
+			],
+		)
+
+		with patch("frappe.get_all", return_value=[]):
+			parts = _build_parts(so)
+
+		groups = _group_parts([frappe._dict(name="row1", label="ST-A", package=None)], parts)
+
+		self.assertEqual(groups[0].pending, 0)
 
 	# ── เวลาทำงานจริงคำนวณจากเวลาเริ่ม-จบของงานแต่ละรายการ ──────────────────────
 

@@ -1306,6 +1306,31 @@ def select_requisition_rows(doc, service_row):
 	return rows
 
 
+def select_unclaimed_requisition_rows(doc):
+	"""อะไหล่ที่ยังไม่ได้เบิก และไม่มีแถวงานไหนดึงไปเบิกได้
+
+	ปุ่มสร้างใบเบิกในพอร์ทัลผูกกับแถวงาน ของที่ไม่มี service_type จึงไม่มีปุ่มไหนเบิกให้ได้
+	— ทั้งอะไหล่ที่ช่างเพิ่มเอง และแถวเก่าที่สร้างก่อนแอปมีฟิลด์ provenance (จงใจไม่ backfill)
+	พอการปิดงานบังคับให้เบิกครบ ของกลุ่มนี้จะกลายเป็นทางตัน จึงต้องมีทางเบิกเป็นก้อนเดียว
+
+	เกณฑ์เป็นด้านกลับของ select_requisition_rows: แถวไหน "มีงานที่จับคู่ได้" ก็ไม่ใช่ของกลุ่มนี้
+	"""
+	row_keys = {
+		(row.service_type, row.service_package or None) for row in doc.service_types if row.service_type
+	}
+
+	def is_claimable(item):
+		if not item.service_type:
+			return False
+		return any(
+			item.service_type == service_type
+			and (not service_package or item.service_package == service_package)
+			for service_type, service_package in row_keys
+		)
+
+	return [item for item in doc.service_items if not item.material_issue and not is_claimable(item)]
+
+
 def build_material_issue_line(item, settings):
 	"""แปลงแถวอะไหล่ในใบสั่งงานเป็นบรรทัดของ Stock Entry
 

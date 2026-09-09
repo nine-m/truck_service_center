@@ -171,6 +171,9 @@ def _build_job_view(doc, is_manager=False):
 		# ห้ามตั้งชื่อ key ว่า items — frappe._dict เป็น dict ทำให้ job.items ไปเจอเมธอด dict.items
 		parts=parts,
 		part_groups=_group_parts(service_types, parts),
+		# ชื่ออะไหล่ที่ยังไม่มีใบเบิก — หน้าเว็บใช้เตือนก่อนกดปิดงาน ด่านจริงคือ
+		# _validate_completion ฝั่ง server
+		unissued_parts=[part.label for part in parts if part.needs_issue],
 	)
 
 
@@ -222,8 +225,21 @@ def _build_service_rows(doc, is_manager):
 	return rows
 
 
+def _stock_item_codes(doc):
+	"""item_code ของอะไหล่ที่เป็นสินค้าคงคลัง — ดึงทีเดียวกัน N+1 ตอน render หลายแถว"""
+	codes = {row.item_code for row in doc.service_items if row.item_code}
+	if not codes:
+		return set()
+
+	return set(
+		frappe.get_all("Item", filters={"name": ["in", list(codes)], "is_stock_item": 1}, pluck="name")
+	)
+
+
 def _build_parts(doc):
 	"""แถวอะไหล่ + provenance ที่ใช้จัดกลุ่มใต้แต่ละงาน และสถานะใบเบิกที่ถูกต้อง"""
+	stock_items = _stock_item_codes(doc)
+
 	return [
 		frappe._dict(
 			label=row.item_name or row.item_code,
@@ -235,6 +251,9 @@ def _build_parts(doc):
 			# "Issued" ที่เคยใช้อยู่จึงไม่เคยเป็นจริงเลย ป้าย "เบิกแล้ว" จึงไม่เคยขึ้น
 			issued=(row.material_issue_status or "") == "Submitted",
 			material_issue=row.material_issue or "",
+			# เฉพาะสินค้าคงคลังที่ต้องมีใบเบิก — ชุดเดียวกับที่ collect_material_issue_problems
+			# กันไว้ตอน submit ค่าบริการ/อะไหล่นอกสต็อกไม่ต้องเบิกและเบิกไม่ได้ด้วย
+			needs_issue=row.item_code in stock_items and not row.material_issue,
 		)
 		for row in doc.service_items
 	]
@@ -268,8 +287,9 @@ def _group_parts(service_types, parts):
 					row_name=row.name,
 					label=row.label,
 					parts=members,
-					# ปุ่มสร้างใบเบิกซ่อนเมื่อเบิกครบแล้ว
-					pending=sum(1 for part in members if not part.material_issue),
+					# ปุ่มสร้างใบเบิกซ่อนเมื่อไม่เหลืออะไหล่ที่เบิกได้แล้ว — นับเฉพาะสินค้าคงคลัง
+					# ไม่งั้นกลุ่มที่มีแต่ค่าบริการจะโชว์ปุ่มที่กดแล้ว throw "ไม่มีรายการที่สามารถเบิกได้"
+					pending=sum(1 for part in members if part.needs_issue),
 					# เลขใบเบิกของกลุ่ม — ปกติมีใบเดียว แต่เบิกหลายรอบได้จึงเป็น list
 					issues=sorted({part.material_issue for part in members if part.material_issue}),
 				)
@@ -282,7 +302,9 @@ def _group_parts(service_types, parts):
 				row_name="",
 				label="อะไหล่อื่น ๆ",
 				parts=leftovers,
-				pending=0,
+				# กลุ่มนี้ก็ต้องเบิกได้ ไม่งั้นใบที่มีอะไหล่ไม่ผูกงานจะปิดงานไม่ได้เลย
+				# (create_service_requisition รับ row_name ว่างเป็นกลุ่มนี้)
+				pending=sum(1 for part in leftovers if part.needs_issue),
 				issues=sorted({part.material_issue for part in leftovers if part.material_issue}),
 			)
 		)
