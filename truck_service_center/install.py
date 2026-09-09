@@ -16,6 +16,9 @@ CUSTOM_FIELDS = {
 			"insert_after": "stock_entry_type",
 			"read_only": 1,
 			"no_copy": 1,  # amend ใบเบิกแล้วต้องไม่ลากใบงานเดิมติดไปด้วย
+			# ช่องค้นหาบนหัว list ของ Stock Entry — คำถามที่ถามบ่อยที่สุดคือ
+			# "ใบสั่งงานนี้เบิกอะไหล่ไปแล้วบ้าง" จึงต้องกรองด้วยเลขใบงานได้ตรง ๆ
+			"in_standard_filter": 1,
 			"print_hide": 1,
 		},
 		{
