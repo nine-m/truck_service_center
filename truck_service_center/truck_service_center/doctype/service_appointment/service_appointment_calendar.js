@@ -101,15 +101,15 @@ frappe.views.calendar["Service Appointment"] = {
 		// tint ต้องแปะเองด้วย เพราะ dayCellClassNames ถูกเรียกตอน render เท่านั้น
 		// cell ที่ render ไปก่อนข้อมูลมาถึงจะไม่มีวันได้ class จาก hook นั้นเลย
 		const classes = tsc_capacity_cell_class(day);
-		$el.toggleClass("tsc-cap-closed", classes.indexOf("tsc-cap-closed") !== -1);
-		$el.toggleClass("tsc-cap-full", classes.indexOf("tsc-cap-full") !== -1);
+		$el.toggleClass("tsc-cap-full-day", classes.indexOf("tsc-cap-full-day") !== -1);
 
 		// ห้ามแทนตัว cell — dateClick ของ Frappe หา td[data-date] จึงได้แค่ append ข้างใน
 		const $host = host_selector ? $el.find(host_selector).first() : $el;
 		if (!$host.length) return;
 
 		// painter ต้อง idempotent ไม่งั้นสลับเดือนไป-กลับแล้ว badge จะซ้อนกันหลายอัน
-		$host.find(".tsc-cap-badge").remove();
+		$host.find(".tsc-cap").remove();
+		if (host_selector) $host.addClass("tsc-cap-host");
 
 		// ยังไม่มีข้อมูลก็ไม่แปะอะไร กันกะพริบระหว่างรอ response
 		if (!day) return;
@@ -127,11 +127,11 @@ frappe.views.calendar["Service Appointment"] = {
 		const me = this;
 		// FullCalendar ตัดสิน dateClick จาก pointer gesture (mousedown→mouseup) ไม่ใช่ event click
 		// การ stopPropagation ตอน click จึงสายเกินไป ต้องสกัดตั้งแต่ mousedown
-		this.$wrapper.on("mousedown", ".tsc-cap-badge", function(e) {
+		this.$wrapper.on("mousedown", ".tsc-cap", function(e) {
 			e.stopPropagation();
 			e.preventDefault();
 		});
-		this.$wrapper.on("click", ".tsc-cap-badge", function(e) {
+		this.$wrapper.on("click", ".tsc-cap", function(e) {
 			e.stopPropagation();
 			e.preventDefault();
 			me.show_capacity_detail($(this).attr("data-date"));
@@ -268,49 +268,66 @@ function tsc_status_badge(status) {
 }
 
 function tsc_capacity_cell_class(day) {
-	// tint เฉพาะสองสถานะที่ต้องสะดุดตาจริงๆ ไม่ระบายทั้งปฏิทินจนลายตา
+	// ระบายพื้นหลังเฉพาะวันที่เต็มจริง ๆ — วันปิดทำการมีป้าย "ปิด" บอกอยู่แล้ว และวันอาทิตย์
+	// ถูก Frappe ระบายให้ก่อนแล้ว (.fc-theme-standard td.fc-day-sun) ถ้าระบายอีกจะทึบเกิน
 	if (!day || !day.summary) return [];
-	const summary = day.summary;
-	if (!summary.has_bays || summary.is_closed) return ["tsc-cap-closed"];
-	if (summary.status === "เต็ม") return ["tsc-cap-full"];
-	return [];
+	return day.summary.status === "เต็ม" && !day.summary.is_closed ? ["tsc-cap-full-day"] : [];
 }
+
 
 function tsc_capacity_badge_html(day, date) {
 	const summary = day.summary || {};
 	const over = flt(summary.over);
 
-	let cls;
+	// ปฏิทินหนึ่งเดือนมีสามสิบกว่าช่อง ถ้าทุกช่องเป็น pill ทึบสีเข้มจะกลายเป็นลายพราง
+	// อ่านไม่ออกว่าวันไหนต้องสนใจ จึงให้วันปกติเป็นตัวเลขจาง ๆ แล้วใส่สีเฉพาะวันที่มีปัญหา
+	let mod;
 	let text;
 	if (summary.has_bays === false) {
-		cls = "badge-secondary text-muted";
-		text = "ไม่มีช่องจอด";
+		mod = "tsc-cap--none";
+		text = "—";
 	} else if (summary.is_closed) {
-		cls = "badge-secondary";
-		text = "ปิดทำการ";
+		mod = "tsc-cap--closed";
+		text = "ปิด";
+	} else if (summary.status === "เต็ม") {
+		mod = "tsc-cap--full";
+		text = `${tsc_fmt_hours(summary.booked)}/${tsc_fmt_hours(summary.cap)}`;
+	} else if (summary.status === "ใกล้เต็ม") {
+		mod = "tsc-cap--near";
+		text = `${tsc_fmt_hours(summary.booked)}/${tsc_fmt_hours(summary.cap)}`;
 	} else {
-		cls = tsc_status_badge(summary.status);
-		text = `${tsc_fmt_hours(summary.booked)}/${tsc_fmt_hours(summary.cap)} ชม.`;
+		mod = "tsc-cap--free";
+		text = `${tsc_fmt_hours(summary.booked)}/${tsc_fmt_hours(summary.cap)}`;
 	}
 
 	const title = frappe.utils.escape_html(tsc_capacity_tooltip(day));
-	let html = `<span class="badge tsc-cap-badge ${cls}" role="button" tabindex="0"`;
+	let html = `<span class="tsc-cap ${mod}" role="button" tabindex="0"`;
 	html += ` data-date="${frappe.utils.escape_html(date)}" title="${title}">`;
 	html += frappe.utils.escape_html(text);
 	// จองเกินต้องแดงเสมอ แม้สถานะรวมจะยังว่าง (ช่องหนึ่งล้นขณะที่อีกช่องยังโล่ง)
 	if (over > 0) {
-		html += ` <b class="tsc-cap-over">เกิน +${frappe.utils.escape_html(tsc_fmt_hours(over))}</b>`;
+		html += `<b class="tsc-cap-over">+${frappe.utils.escape_html(tsc_fmt_hours(over))}</b>`;
 	}
 	html += "</span>";
 
 	return html;
 }
 
+
 function tsc_capacity_tooltip(day) {
 	// native tooltip รองรับ \n อยู่แล้ว ไม่ต้องพึ่ง JS tooltip เพิ่ม
 	const summary = day.summary || {};
 	const lines = [];
 
+	// บรรทัดแรกอธิบายตัวเลขย่อในช่อง ("0/48" คืออะไร) แล้วค่อยลงรายละเอียดรายช่องจอด
+	if (summary.has_bays === false) {
+		lines.push("ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน");
+	} else {
+		let head = `ใช้ไป ${tsc_fmt_hours(summary.booked)}/${tsc_fmt_hours(summary.cap)} ชม.`;
+		head += ` · เหลือ ${tsc_fmt_hours(summary.free)} ชม.`;
+		if (flt(summary.over) > 0) head += ` · เกิน ${tsc_fmt_hours(summary.over)} ชม.`;
+		lines.push(head);
+	}
 	if (summary.day_note) lines.push(summary.day_note);
 	(day.bays || []).forEach(function(bay) {
 		let line = `${bay.bay_name || bay.bay} · ${tsc_fmt_hours(bay.booked)}/${tsc_fmt_hours(bay.cap)} ชม. · ${bay.status}`;
@@ -368,12 +385,31 @@ function tsc_inject_capacity_css() {
 		   เป็น position:absolute โดยมี .fc-daygrid-event z-index:6 — badge ที่เป็น static
 		   (z-index: auto) จะถูกสองเลเยอร์นี้บังรับคลิกไปหมด มุมมองสัปดาห์/วันไม่มีปัญหานี้
 		   เพราะ badge อยู่บนหัวคอลัมน์ซึ่งไม่มีเลเยอร์พวกนี้เลย */
-		.tsc-cap-badge { font-size: 10px; padding: 1px 5px; white-space: nowrap; cursor: pointer; position: relative; z-index: 7; }
-		.tsc-cap-over { color: var(--red-600, #dc3545); }
-		/* .fc-daygrid-day-top เป็น flex แบบ row-reverse — badge จึงไปอยู่ฝั่งซ้ายของเลขวัน */
-		.fc-daygrid-day-top { flex-wrap: wrap; }
-		.tsc-cap-closed { background: var(--gray-100, #f4f5f6); }
-		.tsc-cap-full { background: var(--red-50, #fff5f5); }
+		.tsc-cap {
+			position: relative;
+			z-index: 7;
+			cursor: pointer;
+			font-size: 11px;
+			line-height: 1.4;
+			white-space: nowrap;
+			font-variant-numeric: tabular-nums;
+			padding: 0 4px;
+			border-radius: 4px;
+			color: var(--text-light, #8d99a6);
+		}
+		/* Frappe บังคับ .fc-daygrid-day-top เป็น flex-direction: row (margin ซ้าย 10px)
+		   margin-left:auto จึงดันตัวเลขไปชิดขวาสุด ไม่ไปเบียดเลขวันที่อยู่ซ้าย */
+		.tsc-cap-host .tsc-cap { margin-left: auto; margin-right: 8px; }
+		.tsc-cap-host { flex-wrap: wrap; }
+		.tsc-cap:hover { background: var(--gray-100, #f4f5f6); color: var(--text-color, #1f272e); }
+		/* วันปกติจางไว้ ให้สายตาไปหยุดเฉพาะวันที่ใกล้เต็ม/เต็ม/เกิน */
+		.tsc-cap--near { color: var(--orange-600, #b95000); background: var(--orange-50, #fff8f0); }
+		.tsc-cap--full { color: var(--red-600, #c0392b); background: var(--red-50, #fff5f5); font-weight: 600; }
+		.tsc-cap--closed, .tsc-cap--none { color: var(--gray-400, #c0c6cc); }
+		.tsc-cap-over { color: var(--red-600, #c0392b); font-weight: 600; margin-left: 3px; }
+		.tsc-cap-full-day { background: var(--red-50, #fff5f5); }
+		/* หัวคอลัมน์ของมุมมองสัปดาห์/วัน — วางเป็นบรรทัดใหม่ใต้ชื่อวัน ไม่ต้องดันชิดขวา */
+		th.fc-col-header-cell .tsc-cap { display: inline-block; margin-top: 2px; }
 	`;
 	document.head.appendChild(style);
 }
