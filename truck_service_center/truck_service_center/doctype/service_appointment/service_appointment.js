@@ -91,6 +91,10 @@ frappe.ui.form.on('Service Appointment', {
 		// ตั้งค่า filter สำหรับช่องจอดในตารางช่องจอดที่จัดให้
 		set_bay_filter(frm);
 
+		// wrapper ของ HTML field ถูกล้างทุก refresh จึงต้องวาดใหม่ทุกครั้ง
+		// (refresh ยิงหลัง save อยู่แล้ว ตัวเลขหลังบันทึกจึงอัปเดตตามไปด้วย)
+		load_capacity_meter(frm);
+
 		// ปุ่มให้ระบบจัดช่องจอดใหม่ (ล้างของเดิมทิ้งแล้วจัดใหม่)
 		if (frm.doc.docstatus === 0) {
 			frm.add_custom_button(__('จัด Bay ใหม่'), function() {
@@ -184,10 +188,8 @@ frappe.ui.form.on('Service Appointment', {
 	},
 	
 	appointment_date: function(frm) {
-		// แสดงสถานะช่องจอดของวันที่เลือก (ชั่วโมงที่จองแล้ว / ที่รับได้)
-		if (frm.doc.appointment_date) {
-			show_bay_status(frm);
-		}
+		// อัปเดตแถบความจุของวันที่เลือก (ชั่วโมงที่จองแล้ว / ที่รับได้)
+		load_capacity_meter(frm);
 	},
 	
 	assigned_technician: function(frm) {
@@ -243,58 +245,186 @@ function bay_status_badge(status) {
 	return classes[status] || 'badge-secondary';
 }
 
-function show_bay_status(frm) {
-	if (!frm.doc.appointment_date) return;
-	
-	frappe.call({
-		method: 'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_bay_day_status',
-		args: {
+function fmt_hours(hours) {
+	// ตัด .00 ทิ้ง แต่คงทศนิยมที่มีค่าจริงไว้ — "8 ชม." อ่านง่ายกว่า "8.00 ชม."
+	const value = flt(hours, 2);
+	return String(parseFloat(value.toFixed(2)));
+}
+
+function load_capacity_meter(frm) {
+	const field = frm.get_field('capacity_html');
+	if (!field) return;
+
+	if (!frm.doc.appointment_date) {
+		field.$wrapper.empty();
+		return;
+	}
+
+	// เปลี่ยนวันรัวๆ แล้วคำตอบของวันเก่าอาจกลับมาทีหลัง — นับ request ไว้แล้วทิ้งของเก่า
+	frm._capacity_req = (frm._capacity_req || 0) + 1;
+	const req = frm._capacity_req;
+
+	frappe.xcall(
+		'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_bay_day_status',
+		{
 			date: frm.doc.appointment_date,
 			exclude_appointment: frm.is_new() ? null : frm.doc.name
-		},
-		callback: function(r) {
-			if (!r.message) return;
-			let data = r.message;
-			let html = '';
-			
-			if (data.day_closed) {
-				html += '<p class="text-danger"><b>วันนี้ปิดทำการทุกช่องจอด — จองได้แต่จะถือเป็นงาน OT</b></p>';
-			}
-			if (data.day_note) {
-				html += `<p class="text-muted">${frappe.utils.escape_html(data.day_note)}</p>`;
-			}
-			
-			if (!data.bays || !data.bays.length) {
-				html += '<p class="text-muted">ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน</p>';
-			} else {
-				html += '<table class="table table-bordered" style="margin-top: 5px;">';
-				html += '<thead><tr><th>ช่องจอด</th><th>หลุมซ่อม</th><th>จองแล้ว/รับได้ (ชม.)</th><th>สถานะ</th></tr></thead>';
-				html += '<tbody>';
-				data.bays.forEach(function(bay) {
-					html += '<tr>';
-					html += `<td><strong>${frappe.utils.escape_html(bay.bay_name || bay.bay)}</strong></td>`;
-					html += `<td>${bay.has_pit ? 'มี' : '-'}</td>`;
-					html += `<td>${flt(bay.booked, 2)} / ${flt(bay.cap, 2)}</td>`;
-					html += `<td><span class="badge ${bay_status_badge(bay.status)}">${frappe.utils.escape_html(bay.status)}</span></td>`;
-					html += '</tr>';
-				});
-				html += '</tbody></table>';
-				html += '<p class="text-muted">ระบบจะจัดช่องจอดให้อัตโนมัติตอนบันทึก แก้ไขเองได้ในตาราง "ช่องจอดที่จัดให้"</p>';
-			}
-			
-			let d = new frappe.ui.Dialog({
-				title: __('สถานะช่องจอด — {0}', [frm.doc.appointment_date]),
-				fields: [
-					{
-						fieldtype: 'HTML',
-						options: html
-					}
-				],
-				size: 'small'
-			});
-			d.show();
 		}
+	).then(function(data) {
+		if (req !== frm._capacity_req) return;
+		render_capacity_meter(frm, data);
 	});
+}
+
+function inject_capacity_meter_css() {
+	if (document.getElementById('tsc-meter-css')) return;
+
+	const style = document.createElement('style');
+	style.id = 'tsc-meter-css';
+	style.textContent = `
+		.tsc-meter { font-size: 12px; }
+		.tsc-meter-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+		.tsc-meter-total { font-size: 15px; font-weight: 600; }
+		.tsc-meter-free { margin-left: auto; color: var(--text-muted, #6a7581); }
+		/* รายช่องจอดคือข้อมูลที่ต้องอ่านจริงตอนเลือกวัน ไม่ใช่ของประดับ — ให้ขนาดเท่าฟอร์ม
+		   และแยกบรรทัดด้วยเส้นจาง แทนการยัดเป็นข้อความ 11px ติดกันจนกวาดตาไม่ทัน */
+		.tsc-meter-bay {
+			display: flex; align-items: center; gap: 8px;
+			padding: 4px 0; border-top: 1px solid var(--border-color, #ebeef0);
+		}
+		.tsc-meter-bay-name { font-weight: 600; min-width: 72px; }
+		.tsc-meter-bay-bar { flex: 1 1 auto; min-width: 40px; height: 6px;
+			background: var(--gray-200, #e2e6e9); border-radius: 3px; overflow: hidden; }
+		.tsc-meter-bay-bar > span { display: block; height: 100%; }
+		.tsc-meter-bay-free { min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
+		.tsc-meter-pit { color: var(--text-muted, #6a7581); font-weight: 400; }
+		.tsc-meter-note { color: var(--text-muted, #6a7581); margin: 6px 0 0; }
+	`;
+	document.head.appendChild(style);
+}
+
+function meter_bar_color(status) {
+	return {
+		'ว่าง': 'var(--green-500, #29cd42)',
+		'ใกล้เต็ม': 'var(--orange-500, #ff8c37)',
+		'เต็ม': 'var(--red-500, #ff5858)',
+		'ปิดทำการ': 'var(--gray-400, #c0c6cc)'
+	}[status] || 'var(--gray-400, #c0c6cc)';
+}
+
+function capacity_bay_row_html(bay) {
+	const cap = flt(bay.cap);
+	const booked = flt(bay.booked);
+	// เหลือติดลบแปลว่าช่องนั้นล้นแล้ว แถบเต็มหลอด ตัวเลขบอกส่วนเกินแทน
+	const free = flt(bay.free);
+	const pct = cap > 0 ? Math.min(Math.max(booked / cap, 0), 1) * 100 : 100;
+
+	let html = '<div class="tsc-meter-bay">';
+	html += `<span class="tsc-meter-bay-name">${frappe.utils.escape_html(bay.bay_name || bay.bay)}`;
+	if (bay.has_pit) html += ' <span class="tsc-meter-pit" title="มีหลุมซ่อม">◍</span>';
+	html += '</span>';
+	html += `<span class="tsc-meter-bay-bar"><span style="width: ${pct}%; background: ${meter_bar_color(bay.status)};"></span></span>`;
+
+	let right;
+	if (bay.is_closed) {
+		right = '<span class="text-muted">ปิด</span>';
+	} else if (free < 0) {
+		right = `<span class="text-danger">เกิน ${fmt_hours(-free)} ชม.</span>`;
+	} else {
+		right = `เหลือ ${fmt_hours(free)} ชม.`;
+	}
+	html += `<span class="tsc-meter-bay-free">${right}</span>`;
+	html += '</div>';
+
+	if (bay.is_closed && bay.reason) {
+		html += `<div class="tsc-meter-note" style="margin: 0 0 2px;">${frappe.utils.escape_html(bay.reason)}</div>`;
+	}
+
+	return html;
+}
+
+function render_capacity_meter(frm, data) {
+	const field = frm.get_field('capacity_html');
+	if (!field || !data) return;
+
+	inject_capacity_meter_css();
+
+	const summary = data.summary || {};
+	const cap = flt(summary.cap);
+	const booked = flt(summary.booked);
+	const free = flt(summary.free);
+	const over = flt(summary.over);
+	// ชั่วโมงของใบนี้ถูก exclude_appointment ตัดออกไปแล้ว ถ้าไม่วาดกลับ meter จะดู
+	// "ว่างขึ้น" ทันทีที่บันทึก ทั้งที่ความจุถูกใช้ไปจริง
+	const own = flt(frm.doc.estimated_duration);
+
+	let html = '<div class="tsc-meter">';
+
+	html += '<div class="tsc-meter-head">';
+	html += `<span class="tsc-meter-total">${fmt_hours(booked)}/${fmt_hours(cap)} ชม.</span>`;
+	if (summary.status) {
+		html += `<span class="badge ${bay_status_badge(summary.status)}">${frappe.utils.escape_html(summary.status)}</span>`;
+	}
+	if (over > 0) {
+		html += `<b class="text-danger">เกิน +${fmt_hours(over)}</b>`;
+	}
+	if (summary.has_bays !== false) {
+		html += `<span class="tsc-meter-free">เหลือ ${fmt_hours(free)} ชม.</span>`;
+	}
+	html += '</div>';
+
+	if (summary.has_bays === false) {
+		html += '<p class="text-danger"><b>ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน</b></p>';
+	} else if (data.day_closed) {
+		html += '<p class="text-danger"><b>วันนี้ปิดทำการทุกช่องจอด — จองได้แต่จะถือเป็นงาน OT</b></p>';
+	}
+	if (data.day_note) {
+		html += `<p class="tsc-meter-note" style="margin-top: 0;">${frappe.utils.escape_html(data.day_note)}</p>`;
+	}
+
+	html += capacity_bar_html(cap, booked, own, summary.status);
+
+	(data.bays || []).forEach(function(bay) {
+		html += capacity_bay_row_html(bay);
+	});
+
+	html += '<p class="tsc-meter-note">';
+	html += 'ระบบจะจัดช่องจอดให้อัตโนมัติตอนบันทึก แก้ไขเองได้ในตาราง "ช่องจอดที่จัดให้"';
+	html += '</p>';
+
+	html += '</div>';
+
+	field.$wrapper.html(html);
+}
+
+
+function capacity_bar_html(cap, booked, own, status) {
+	// ไม่มีความจุให้เทียบ (วันปิด/ไม่มีช่องจอด) — แถบเทาเต็มความกว้างสื่อว่าไม่มีที่ให้วัด
+	if (cap <= 0) {
+		return '<div class="progress" style="height: 10px; margin-bottom: 8px;">' +
+			'<div class="progress-bar bg-secondary" style="width: 100%;"></div></div>';
+	}
+
+	const bar_class = {
+		'ว่าง': 'bg-success',
+		'ใกล้เต็ม': 'bg-warning',
+		'เต็ม': 'bg-danger',
+		'ปิดทำการ': 'bg-secondary'
+	}[status] || 'bg-secondary';
+
+	const booked_pct = Math.min(booked / cap, 1) * 100;
+	// ส่วนของใบนี้ต่อท้าย แต่รวมกันต้องไม่เกิน 100% ของแถบ
+	const own_pct = Math.min(Math.max(own, 0) / cap, 1 - booked_pct / 100) * 100;
+
+	let html = '<div class="progress" style="height: 10px; margin-bottom: 8px;">';
+	html += `<div class="progress-bar ${bar_class}" style="width: ${booked_pct}%;"></div>`;
+	if (own_pct > 0) {
+		html += '<div class="progress-bar progress-bar-striped bg-info" ' +
+			`style="width: ${own_pct}%;" title="ชั่วโมงของใบนี้"></div>`;
+	}
+	html += '</div>';
+
+	return html;
 }
 
 function capacity_warning_html(warnings) {
@@ -330,6 +460,11 @@ function reallocate_bays(frm) {
 		if (!r.message) return;
 		let allocations = r.message.allocations || [];
 		let warnings = r.message.warnings || [];
+
+		// payload มี availability มาแล้ว วาด meter จากตรงนี้เลย ไม่ต้องยิง request ซ้ำ
+		if (r.message.availability) {
+			render_capacity_meter(frm, r.message.availability);
+		}
 		
 		allocations.forEach(function(row) {
 			let child = frm.add_child('bay_allocations');
@@ -376,6 +511,10 @@ function confirm_capacity_before_save(frm) {
 	if (frm.doc.docstatus !== 0 || !frm.doc.appointment_date) return;
 	
 	return check_appointment_capacity(frm).then(function(r) {
+		if (r.message && r.message.availability) {
+			render_capacity_meter(frm, r.message.availability);
+		}
+
 		let warnings = (r.message && r.message.warnings) || [];
 		if (!warnings.length) return;
 		

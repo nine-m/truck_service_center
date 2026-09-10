@@ -6,7 +6,7 @@ import json
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import add_to_date, flt, get_datetime, get_time, getdate
+from frappe.utils import add_days, add_to_date, date_diff, flt, get_datetime, get_time, getdate
 
 # นัดหมายที่ไม่กินความจุของช่องจอด (ตรงกับตัวกรองเดิมของ check_slot_availability)
 EXCLUDED_STATUSES = ("Cancelled", "No Show")
@@ -47,6 +47,13 @@ WORK_TYPE_PIT = "งานใต้ท้อง (ใช้หลุม)"
 WORK_TYPE_GENERAL = "งานทั่วไป"
 
 NO_PIT_BAY_WARNING = "มีงานที่ต้องใช้หลุมซ่อม แต่ไม่มีช่องจอดที่มีหลุมเปิดใช้งาน — ระบบรวมเป็นงานทั่วไปให้ก่อน"
+
+# วันที่ไม่มีช่องจอดเปิดใช้งานเลย ไม่ใช่ "เต็ม" แต่คือยังตั้งค่าระบบไม่เสร็จ
+NO_ACTIVE_BAY_NOTE = "ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน"
+
+# ปฏิทินรายเดือนขอมากสุด 42 ช่อง (6 สัปดาห์) — เผื่อไว้ราว 3 เดือน แล้วกันการยิงช่วงยาวผิดปกติ
+# ที่จะกวาดตาราง Service Appointment Bay ทั้งตาราง
+MAX_CAPACITY_RANGE_DAYS = 93
 
 
 def resolve_bay_caps(bays, day_mode, overrides):
@@ -109,6 +116,127 @@ def availability_status(cap, booked, is_closed=False):
 	if booked >= cap * NEAR_FULL_RATIO:
 		return STATUS_NEAR_FULL
 	return STATUS_FREE
+
+
+def build_day_rows(bays, caps, booked_hours):
+	"""แถวสถานะต่อช่องจอดของวันหนึ่ง — รูปเดียวกับที่ dialog/ฟอร์ม/ปฏิทินใช้ร่วมกัน
+
+	แยกออกมาเป็น pure function เพื่อให้ get_bay_availability (ทีละวัน) กับ
+	get_capacity_range (ทีละช่วง) ประกอบแถวด้วยโค้ดชุดเดียวกัน ไม่มีทางเพี้ยนจากกัน
+
+	free ติดลบได้ตามเดิม — ส่วนที่เกินคือชั่วโมง OT ที่จองไปแล้ว ไม่ใช่ศูนย์
+	"""
+	rows = []
+	for bay in bays or []:
+		name = bay.get("name")
+		cap_info = caps.get(name) or {}
+		cap = flt(cap_info.get("cap"))
+		booked = flt((booked_hours or {}).get(name), 2)
+		rows.append(
+			{
+				"bay": name,
+				"bay_name": bay.get("bay_name"),
+				"has_pit": int(bay.get("has_pit") or 0),
+				"cap": cap,
+				"cap_source": cap_info.get("source"),
+				"is_closed": bool(cap_info.get("is_closed")),
+				"reason": cap_info.get("reason"),
+				"booked": booked,
+				"free": flt(cap - booked, 2),
+				"status": availability_status(cap, booked, cap_info.get("is_closed")),
+			}
+		)
+
+	return rows
+
+
+def build_day_notes(day_mode, overrides):
+	"""ข้อความอธิบายภาพรวมของวัน (โหมดวัน + override ที่มีผลทุกช่อง)
+
+	รับ overrides ทั้งชุดของวันนั้น เพราะต้องหา override ที่เว้นช่องจอดว่างเอง
+	ซึ่งเป็นตัวเดียวที่กระทบทุกช่องจอดจนควรบอกในระดับวัน
+	"""
+	notes = []
+	if day_mode == DAY_MODE_CLOSED:
+		notes.append("วันนี้ตั้งค่าไว้เป็นวันหยุดประจำสัปดาห์")
+	elif day_mode == DAY_MODE_HALF:
+		notes.append("วันนี้ทำครึ่งวัน — ชั่วโมงรับงานของทุกช่องจอดเหลือครึ่งเดียว")
+
+	global_override = next((o for o in overrides or [] if not o.get("service_bay")), None)
+	if global_override is not None:
+		hours = flt(global_override.get("capacity_hours"), 2)
+		reason = global_override.get("reason")
+		suffix = f" ({reason})" if reason else ""
+		if hours <= 0:
+			notes.append(f"มีรายการปิดทำการทุกช่องจอดในวันนี้{suffix}")
+		else:
+			notes.append(f"มีรายการปรับชั่วโมงรับงานของทุกช่องจอดเป็น {hours} ชม.{suffix}")
+
+	return " • ".join(notes)
+
+
+def summarize_day(rows, day_note=""):
+	"""ยอดรวมระดับวัน — ตัวเลขชุดเดียวที่ฟอร์ม ปฏิทิน และคำเตือนใช้ร่วมกัน
+
+	free clamp ต่อช่อง (ไม่ใช่ cap รวม ลบ booked รวม) เพราะชั่วโมงย้ายข้ามช่องจอดไม่ได้:
+	BAY-01 10/8 + BAY-02 2/8 คือ OT 2 ชม. และยังรับได้อีก 6 ชม. ไม่ใช่ "12/16 ยังไม่เต็ม"
+	— ตรงกับที่ build_capacity_warnings เตือนเป็นรายช่องอยู่แล้ว
+
+	status ดูจาก cap - free (ชั่วโมงที่ถูกกินไปจริงในเชิง "ยังจองได้ไหม") ส่วน over ตอบ
+	คนละคำถามคือ OT ที่เกิดไปแล้วเท่าไร — 12/8 + 7/8 จึงเป็น "ใกล้เต็ม" (ยังจองได้ 1 ชม.)
+	ทั้งที่ booked 19 เกิน cap 16 ไปแล้ว
+
+	วันที่ไม่มีช่องจอดเลย availability_status(0, 0) จะตอบ "เต็ม" ซึ่งสื่อผิด จึงตอบปิดทำการ
+	พร้อม note บอกสาเหตุจริงแทน
+	"""
+	rows = rows or []
+	cap = flt(sum(flt(row.get("cap")) for row in rows), 2)
+	booked = flt(sum(flt(row.get("booked")) for row in rows), 2)
+	free = flt(sum(max(flt(row.get("cap")) - flt(row.get("booked")), 0.0) for row in rows), 2)
+	over = flt(sum(max(flt(row.get("booked")) - flt(row.get("cap")), 0.0) for row in rows), 2)
+
+	has_bays = bool(rows)
+	is_closed = has_bays and all(row.get("is_closed") for row in rows)
+
+	if not has_bays:
+		status = STATUS_CLOSED
+	else:
+		status = availability_status(cap, flt(cap - free, 2), is_closed)
+
+	return {
+		"cap": cap,
+		"booked": booked,
+		"free": free,
+		"over": over,
+		"status": status,
+		"is_closed": is_closed,
+		"has_bays": has_bays,
+		"day_note": day_note or ("" if has_bays else NO_ACTIVE_BAY_NOTE),
+	}
+
+
+def fold_booked_hours(appointments, bay_rows):
+	"""รวมชั่วโมงที่จองแล้วเป็น {"YYYY-MM-DD": {ช่องจอด: ชั่วโมง}}
+
+	pure ล้วน เพื่อให้เทสต์ครอบตรรกะการรวมได้โดยไม่ต้อง insert Service Appointment จริง
+	(ซึ่งบังคับ customer/vehicle และ validate เต็มใบ)
+
+	key วันที่เป็นสตริงเสมอ จะได้เป็นชนิดเดียวกันทั้งตอน lookup ในลูปและตอนส่งออกเป็น JSON
+	"""
+	date_by_name = {row.get("name"): str(getdate(row.get("appointment_date"))) for row in appointments or []}
+
+	booked = {}
+	for row in bay_rows or []:
+		bay = row.get("service_bay")
+		if not bay:
+			continue
+		date = date_by_name.get(row.get("parent"))
+		if date is None:
+			continue
+		per_bay = booked.setdefault(date, {})
+		per_bay[bay] = per_bay.get(bay, 0.0) + flt(row.get("allocated_hours"))
+
+	return booked
 
 
 def compute_allocation(pit_hours, general_hours, availability):
@@ -268,82 +396,60 @@ def get_bay_availability(date, exclude_appointment=None):
 	caps = resolve_bay_caps(bays, day_mode, overrides)
 	booked_hours = get_booked_hours(date, exclude_appointment)
 
-	rows = []
-	for bay in bays:
-		cap_info = caps.get(bay.name) or {}
-		cap = flt(cap_info.get("cap"))
-		booked = flt(booked_hours.get(bay.name), 2)
-		rows.append(
-			{
-				"bay": bay.name,
-				"bay_name": bay.bay_name,
-				"has_pit": int(bay.has_pit or 0),
-				"cap": cap,
-				"cap_source": cap_info.get("source"),
-				"is_closed": bool(cap_info.get("is_closed")),
-				"reason": cap_info.get("reason"),
-				"booked": booked,
-				"free": flt(cap - booked, 2),
-				"status": availability_status(cap, booked, cap_info.get("is_closed")),
-			}
-		)
-
-	notes = []
-	if day_mode == DAY_MODE_CLOSED:
-		notes.append("วันนี้ตั้งค่าไว้เป็นวันหยุดประจำสัปดาห์")
-	elif day_mode == DAY_MODE_HALF:
-		notes.append("วันนี้ทำครึ่งวัน — ชั่วโมงรับงานของทุกช่องจอดเหลือครึ่งเดียว")
-
-	global_override = next((o for o in overrides if not o.get("service_bay")), None)
-	if global_override is not None:
-		hours = flt(global_override.get("capacity_hours"), 2)
-		reason = global_override.get("reason")
-		suffix = f" ({reason})" if reason else ""
-		if hours <= 0:
-			notes.append(f"มีรายการปิดทำการทุกช่องจอดในวันนี้{suffix}")
-		else:
-			notes.append(f"มีรายการปรับชั่วโมงรับงานของทุกช่องจอดเป็น {hours} ชม.{suffix}")
+	rows = build_day_rows(bays, caps, booked_hours)
+	day_note = build_day_notes(day_mode, overrides)
 
 	return {
 		"date": str(date),
 		"bays": rows,
 		"caps": caps,
 		"day_closed": bool(rows) and all(row["is_closed"] for row in rows),
-		"day_note": " • ".join(notes),
+		"day_note": day_note,
+		"summary": summarize_day(rows, day_note),
 	}
 
 
-def get_booked_hours(date, exclude_appointment=None):
-	"""ชั่วโมงที่ถูกจองไว้แล้วของแต่ละช่องจอดในวันหนึ่ง
+def get_booked_hours_range(start, end, exclude_appointment=None):
+	"""ชั่วโมงที่ถูกจองไว้แล้วของทุกช่องจอดตลอดช่วงวัน — 2 query ไม่ว่าช่วงยาวแค่ไหน
 
-	ตัวกรองนัดหมายตรงกับ check_slot_availability เดิม: วันที่ตรง, ยังไม่ถูก cancel,
-	สถานะไม่ใช่ Cancelled/No Show และไม่นับตัวเอง — ฉบับร่างนับด้วยเหมือนเดิม
+	ตัวกรองนัดหมายตรงกับ check_slot_availability เดิม: ยังไม่ถูก cancel, สถานะไม่ใช่
+	Cancelled/No Show และไม่นับตัวเอง — ฉบับร่างนับด้วยเหมือนเดิม
+
+	นี่คือที่เดียวที่ตัวกรองนี้อยู่ get_booked_hours (รายวัน) เรียกตัวนี้ต่อ จะได้ไม่ต้อง
+	คอยไล่ sync เงื่อนไขสองชุดให้ตรงกัน
 	"""
+	start = getdate(start)
+	end = getdate(end)
+
 	filters = {
-		"appointment_date": date,
+		"appointment_date": ["between", [start, end]],
 		"docstatus": ["!=", 2],
 		"status": ["not in", list(EXCLUDED_STATUSES)],
 	}
 	if exclude_appointment:
 		filters["name"] = ["!=", exclude_appointment]
 
-	names = frappe.get_all("Service Appointment", filters=filters, pluck="name")
-	if not names:
+	appointments = frappe.get_all("Service Appointment", filters=filters, fields=["name", "appointment_date"])
+	if not appointments:
 		return {}
 
-	rows = frappe.get_all(
+	bay_rows = frappe.get_all(
 		"Service Appointment Bay",
-		filters={"parenttype": "Service Appointment", "parent": ["in", names]},
-		fields=["service_bay", "allocated_hours"],
+		filters={
+			"parenttype": "Service Appointment",
+			"parent": ["in", [row.name for row in appointments]],
+		},
+		fields=["parent", "service_bay", "allocated_hours"],
 	)
 
-	booked = {}
-	for row in rows:
-		if not row.service_bay:
-			continue
-		booked[row.service_bay] = booked.get(row.service_bay, 0.0) + flt(row.allocated_hours)
+	return fold_booked_hours(appointments, bay_rows)
 
-	return booked
+
+def get_booked_hours(date, exclude_appointment=None):
+	"""ชั่วโมงที่ถูกจองไว้แล้วของแต่ละช่องจอดในวันหนึ่ง (ฉบับวันเดียวของ range เวอร์ชัน)"""
+	date = getdate(date)
+
+	return get_booked_hours_range(date, date, exclude_appointment).get(str(date), {})
 
 
 def get_pit_service_types(doc):
@@ -716,6 +822,66 @@ def get_bay_day_status(date, exclude_appointment=None):
 	frappe.has_permission("Service Appointment", "read", throw=True)
 
 	return get_bay_availability(date, exclude_appointment=exclude_appointment)
+
+
+@frappe.whitelist()
+def get_capacity_range(start, end):
+	"""ความจุรายวันตลอดช่วง สำหรับแปะตัวเลขลงทุกช่องของปฏิทิน
+
+	ปฏิทินเปิดหนึ่งครั้ง = 4 query + settings ที่ cache ไว้ ไม่ว่าช่วงจะยาวแค่ไหน
+	ห้ามวนเรียก get_bay_availability รายวันเด็ดขาด — เดือนหนึ่งจะกลายเป็น 42 คูณ 4 query
+
+	รูปแถวใน "bays" มาจาก build_day_rows ตัวเดียวกับที่ฟอร์มใช้ ตัวเลขของปฏิทินกับฟอร์ม
+	จึงตรงกันโดยโครงสร้าง ไม่ใช่เพราะบังเอิญเขียนเหมือนกัน
+	"""
+	frappe.has_permission("Service Appointment", "read", throw=True)
+
+	start = getdate(start)
+	end = getdate(end)
+
+	if end < start:
+		frappe.throw("ช่วงวันที่ไม่ถูกต้อง — วันสิ้นสุดต้องไม่มาก่อนวันเริ่ม")
+	if date_diff(end, start) > MAX_CAPACITY_RANGE_DAYS:
+		frappe.throw(f"ขอข้อมูลความจุได้ครั้งละไม่เกิน {MAX_CAPACITY_RANGE_DAYS} วัน")
+
+	bays = frappe.get_all(
+		"Service Bay",
+		filters={"is_active": 1},
+		fields=["name", "bay_name", "has_pit", "daily_capacity_hours"],
+		order_by="bay_name asc",
+	)
+
+	settings = frappe.get_cached_doc("Truck Service Center Settings")
+
+	overrides = frappe.get_all(
+		"Bay Capacity Override",
+		filters={"override_date": ["between", [start, end]]},
+		fields=["override_date", "service_bay", "capacity_hours", "reason"],
+		order_by="override_date asc, creation asc",
+	)
+
+	# ต้องคงลำดับ creation ไว้ในแต่ละวัน — resolve_bay_caps เลือก global override ตัวแรกที่เจอ
+	overrides_by_date = {}
+	for override in overrides:
+		overrides_by_date.setdefault(str(getdate(override.override_date)), []).append(override)
+
+	booked = get_booked_hours_range(start, end)
+
+	days = {}
+	date = start
+	while date <= end:
+		key = str(date)
+		day_mode = settings.get(WEEKDAY_FIELDS[date.weekday()])
+		day_overrides = overrides_by_date.get(key, [])
+		caps = resolve_bay_caps(bays, day_mode, day_overrides)
+		rows = build_day_rows(bays, caps, booked.get(key, {}))
+		days[key] = {
+			"summary": summarize_day(rows, build_day_notes(day_mode, day_overrides)),
+			"bays": rows,
+		}
+		date = getdate(add_days(date, 1))
+
+	return {"start": str(start), "end": str(end), "days": days}
 
 
 @frappe.whitelist()
