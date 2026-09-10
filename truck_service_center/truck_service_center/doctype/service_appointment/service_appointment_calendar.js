@@ -119,12 +119,19 @@ frappe.views.calendar["Service Appointment"] = {
 	},
 
 	bind_capacity_click() {
-		if (this._capacity_click_bound || !this.$cal) return;
+		// ผูกที่ $wrapper (ชั้นนอกสุด) ไม่ใช่ $cal — FullCalendar สร้าง DOM ข้างในใหม่ทุกครั้ง
+		// ที่เปลี่ยนมุมมอง delegated handler จึงต้องอยู่บนชั้นที่ไม่ถูกรื้อ
+		if (this._capacity_click_bound || !this.$wrapper) return;
 		this._capacity_click_bound = true;
 
 		const me = this;
-		this.$cal.on("click", ".tsc-cap-badge", function(e) {
-			// ถ้าปล่อยให้ bubble ไปถึง cell การคลิกครั้งที่สองจะสลับเป็นมุมมองรายวัน
+		// FullCalendar ตัดสิน dateClick จาก pointer gesture (mousedown→mouseup) ไม่ใช่ event click
+		// การ stopPropagation ตอน click จึงสายเกินไป ต้องสกัดตั้งแต่ mousedown
+		this.$wrapper.on("mousedown", ".tsc-cap-badge", function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+		});
+		this.$wrapper.on("click", ".tsc-cap-badge", function(e) {
 			e.stopPropagation();
 			e.preventDefault();
 			me.show_capacity_detail($(this).attr("data-date"));
@@ -287,7 +294,8 @@ function tsc_capacity_badge_html(day, date) {
 	}
 
 	const title = frappe.utils.escape_html(tsc_capacity_tooltip(day));
-	let html = `<span class="badge tsc-cap-badge ${cls}" data-date="${frappe.utils.escape_html(date)}" title="${title}">`;
+	let html = `<span class="badge tsc-cap-badge ${cls}" role="button" tabindex="0"`;
+	html += ` data-date="${frappe.utils.escape_html(date)}" title="${title}">`;
 	html += frappe.utils.escape_html(text);
 	// จองเกินต้องแดงเสมอ แม้สถานะรวมจะยังว่าง (ช่องหนึ่งล้นขณะที่อีกช่องยังโล่ง)
 	if (over > 0) {
@@ -355,7 +363,12 @@ function tsc_inject_capacity_css() {
 	const style = document.createElement("style");
 	style.id = "tsc-capacity-css";
 	style.textContent = `
-		.tsc-cap-badge { font-size: 10px; padding: 1px 5px; white-space: nowrap; cursor: help; }
+		/* ต้องเป็น positioned element และ z-index สูงกว่าเลเยอร์ของมุมมองเดือน ไม่งั้นคลิกไม่โดน:
+		   .fc-daygrid-day-number เป็น position:relative z-index:4 และ .fc-daygrid-day-events
+		   เป็น position:absolute โดยมี .fc-daygrid-event z-index:6 — badge ที่เป็น static
+		   (z-index: auto) จะถูกสองเลเยอร์นี้บังรับคลิกไปหมด มุมมองสัปดาห์/วันไม่มีปัญหานี้
+		   เพราะ badge อยู่บนหัวคอลัมน์ซึ่งไม่มีเลเยอร์พวกนี้เลย */
+		.tsc-cap-badge { font-size: 10px; padding: 1px 5px; white-space: nowrap; cursor: pointer; position: relative; z-index: 7; }
 		.tsc-cap-over { color: var(--red-600, #dc3545); }
 		/* .fc-daygrid-day-top เป็น flex แบบ row-reverse — badge จึงไปอยู่ฝั่งซ้ายของเลขวัน */
 		.fc-daygrid-day-top { flex-wrap: wrap; }
