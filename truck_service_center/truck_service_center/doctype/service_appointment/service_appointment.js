@@ -276,13 +276,83 @@ function load_capacity_meter(frm) {
 	});
 }
 
+function inject_capacity_meter_css() {
+	if (document.getElementById('tsc-meter-css')) return;
+
+	const style = document.createElement('style');
+	style.id = 'tsc-meter-css';
+	style.textContent = `
+		.tsc-meter { font-size: 12px; }
+		.tsc-meter-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+		.tsc-meter-total { font-size: 15px; font-weight: 600; }
+		.tsc-meter-free { margin-left: auto; color: var(--text-muted, #6a7581); }
+		/* รายช่องจอดคือข้อมูลที่ต้องอ่านจริงตอนเลือกวัน ไม่ใช่ของประดับ — ให้ขนาดเท่าฟอร์ม
+		   และแยกบรรทัดด้วยเส้นจาง แทนการยัดเป็นข้อความ 11px ติดกันจนกวาดตาไม่ทัน */
+		.tsc-meter-bay {
+			display: flex; align-items: center; gap: 8px;
+			padding: 4px 0; border-top: 1px solid var(--border-color, #ebeef0);
+		}
+		.tsc-meter-bay-name { font-weight: 600; min-width: 72px; }
+		.tsc-meter-bay-bar { flex: 1 1 auto; min-width: 40px; height: 6px;
+			background: var(--gray-200, #e2e6e9); border-radius: 3px; overflow: hidden; }
+		.tsc-meter-bay-bar > span { display: block; height: 100%; }
+		.tsc-meter-bay-free { min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
+		.tsc-meter-pit { color: var(--text-muted, #6a7581); font-weight: 400; }
+		.tsc-meter-note { color: var(--text-muted, #6a7581); margin: 6px 0 0; }
+	`;
+	document.head.appendChild(style);
+}
+
+function meter_bar_color(status) {
+	return {
+		'ว่าง': 'var(--green-500, #29cd42)',
+		'ใกล้เต็ม': 'var(--orange-500, #ff8c37)',
+		'เต็ม': 'var(--red-500, #ff5858)',
+		'ปิดทำการ': 'var(--gray-400, #c0c6cc)'
+	}[status] || 'var(--gray-400, #c0c6cc)';
+}
+
+function capacity_bay_row_html(bay) {
+	const cap = flt(bay.cap);
+	const booked = flt(bay.booked);
+	// เหลือติดลบแปลว่าช่องนั้นล้นแล้ว แถบเต็มหลอด ตัวเลขบอกส่วนเกินแทน
+	const free = flt(bay.free);
+	const pct = cap > 0 ? Math.min(Math.max(booked / cap, 0), 1) * 100 : 100;
+
+	let html = '<div class="tsc-meter-bay">';
+	html += `<span class="tsc-meter-bay-name">${frappe.utils.escape_html(bay.bay_name || bay.bay)}`;
+	if (bay.has_pit) html += ' <span class="tsc-meter-pit" title="มีหลุมซ่อม">◍</span>';
+	html += '</span>';
+	html += `<span class="tsc-meter-bay-bar"><span style="width: ${pct}%; background: ${meter_bar_color(bay.status)};"></span></span>`;
+
+	let right;
+	if (bay.is_closed) {
+		right = '<span class="text-muted">ปิด</span>';
+	} else if (free < 0) {
+		right = `<span class="text-danger">เกิน ${fmt_hours(-free)} ชม.</span>`;
+	} else {
+		right = `เหลือ ${fmt_hours(free)} ชม.`;
+	}
+	html += `<span class="tsc-meter-bay-free">${right}</span>`;
+	html += '</div>';
+
+	if (bay.is_closed && bay.reason) {
+		html += `<div class="tsc-meter-note" style="margin: 0 0 2px;">${frappe.utils.escape_html(bay.reason)}</div>`;
+	}
+
+	return html;
+}
+
 function render_capacity_meter(frm, data) {
 	const field = frm.get_field('capacity_html');
 	if (!field || !data) return;
 
+	inject_capacity_meter_css();
+
 	const summary = data.summary || {};
 	const cap = flt(summary.cap);
 	const booked = flt(summary.booked);
+	const free = flt(summary.free);
 	const over = flt(summary.over);
 	// ชั่วโมงของใบนี้ถูก exclude_appointment ตัดออกไปแล้ว ถ้าไม่วาดกลับ meter จะดู
 	// "ว่างขึ้น" ทันทีที่บันทึก ทั้งที่ความจุถูกใช้ไปจริง
@@ -290,13 +360,16 @@ function render_capacity_meter(frm, data) {
 
 	let html = '<div class="tsc-meter">';
 
-	html += '<div style="margin-bottom: 4px;">';
-	html += `<b>${fmt_hours(booked)}/${fmt_hours(cap)} ชม.</b> `;
+	html += '<div class="tsc-meter-head">';
+	html += `<span class="tsc-meter-total">${fmt_hours(booked)}/${fmt_hours(cap)} ชม.</span>`;
 	if (summary.status) {
-		html += `<span class="badge ${bay_status_badge(summary.status)}">${frappe.utils.escape_html(summary.status)}</span> `;
+		html += `<span class="badge ${bay_status_badge(summary.status)}">${frappe.utils.escape_html(summary.status)}</span>`;
 	}
 	if (over > 0) {
 		html += `<b class="text-danger">เกิน +${fmt_hours(over)}</b>`;
+	}
+	if (summary.has_bays !== false) {
+		html += `<span class="tsc-meter-free">เหลือ ${fmt_hours(free)} ชม.</span>`;
 	}
 	html += '</div>';
 
@@ -306,20 +379,16 @@ function render_capacity_meter(frm, data) {
 		html += '<p class="text-danger"><b>วันนี้ปิดทำการทุกช่องจอด — จองได้แต่จะถือเป็นงาน OT</b></p>';
 	}
 	if (data.day_note) {
-		html += `<p class="text-muted" style="margin-bottom: 4px;">${frappe.utils.escape_html(data.day_note)}</p>`;
+		html += `<p class="tsc-meter-note" style="margin-top: 0;">${frappe.utils.escape_html(data.day_note)}</p>`;
 	}
 
 	html += capacity_bar_html(cap, booked, own, summary.status);
 
 	(data.bays || []).forEach(function(bay) {
-		const reason = bay.is_closed && bay.reason ? ` · ${frappe.utils.escape_html(bay.reason)}` : '';
-		html += '<div class="text-muted" style="font-size: 11px; margin-top: 2px;">';
-		html += `${frappe.utils.escape_html(bay.bay_name || bay.bay)} · ${fmt_hours(bay.booked)}/${fmt_hours(bay.cap)} ชม. `;
-		html += `<span class="badge ${bay_status_badge(bay.status)}">${frappe.utils.escape_html(bay.status)}</span>${reason}`;
-		html += '</div>';
+		html += capacity_bay_row_html(bay);
 	});
 
-	html += '<p class="text-muted" style="font-size: 11px; margin-top: 6px;">';
+	html += '<p class="tsc-meter-note">';
 	html += 'ระบบจะจัดช่องจอดให้อัตโนมัติตอนบันทึก แก้ไขเองได้ในตาราง "ช่องจอดที่จัดให้"';
 	html += '</p>';
 
@@ -328,10 +397,11 @@ function render_capacity_meter(frm, data) {
 	field.$wrapper.html(html);
 }
 
+
 function capacity_bar_html(cap, booked, own, status) {
 	// ไม่มีความจุให้เทียบ (วันปิด/ไม่มีช่องจอด) — แถบเทาเต็มความกว้างสื่อว่าไม่มีที่ให้วัด
 	if (cap <= 0) {
-		return '<div class="progress" style="height: 8px; margin-bottom: 4px;">' +
+		return '<div class="progress" style="height: 10px; margin-bottom: 8px;">' +
 			'<div class="progress-bar bg-secondary" style="width: 100%;"></div></div>';
 	}
 
@@ -346,7 +416,7 @@ function capacity_bar_html(cap, booked, own, status) {
 	// ส่วนของใบนี้ต่อท้าย แต่รวมกันต้องไม่เกิน 100% ของแถบ
 	const own_pct = Math.min(Math.max(own, 0) / cap, 1 - booked_pct / 100) * 100;
 
-	let html = '<div class="progress" style="height: 8px; margin-bottom: 4px;">';
+	let html = '<div class="progress" style="height: 10px; margin-bottom: 8px;">';
 	html += `<div class="progress-bar ${bar_class}" style="width: ${booked_pct}%;"></div>`;
 	if (own_pct > 0) {
 		html += '<div class="progress-bar progress-bar-striped bg-info" ' +
