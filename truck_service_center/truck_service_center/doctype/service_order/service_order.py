@@ -1125,6 +1125,9 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
 	stock_entry.set_posting_time = 1
 	stock_entry.posting_date = frappe.utils.today()
 	stock_entry.custom_service_order = doc.name  # Link กลับไป Service Order
+	# owner ของ Stock Entry คือ session user ตอน insert — ช่างที่กดปุ่มในพอร์ทัล
+	# เก็บชื่อไว้ตั้งแต่ตอนนี้ จะได้ไม่ต้องไปไล่ resolve ตอน render หน้ารายการ
+	stock_entry.custom_created_by_name = get_user_display_name(frappe.session.user)
 
 	items_added = []
 
@@ -1329,6 +1332,17 @@ def select_unclaimed_requisition_rows(doc):
 		)
 
 	return [item for item in doc.service_items if not item.material_issue and not is_claimable(item)]
+
+
+def get_user_display_name(user):
+	"""ชื่อผู้ใช้สำหรับแสดงบนหน้ารายการใบเบิก
+
+	ถอยไปใช้ user id เมื่อยังไม่ได้ตั้งชื่อเต็ม จะได้ไม่เหลือช่องว่างที่ดูเหมือนข้อมูลหาย
+	"""
+	if not user:
+		return None
+
+	return frappe.db.get_value("User", user, "full_name") or user
 
 
 def build_material_issue_line(item, settings):
