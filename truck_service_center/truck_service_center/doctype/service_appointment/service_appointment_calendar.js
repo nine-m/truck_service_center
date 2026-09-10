@@ -389,24 +389,26 @@ function tsc_inject_capacity_css() {
 			position: relative;
 			z-index: 7;
 			cursor: pointer;
-			font-size: 11px;
-			line-height: 1.4;
+			font-size: 12px;
+			font-weight: 600;
+			line-height: 1.5;
 			white-space: nowrap;
 			font-variant-numeric: tabular-nums;
-			padding: 0 4px;
-			border-radius: 4px;
-			color: var(--text-light, #8d99a6);
+			padding: 1px 6px;
+			border-radius: 6px;
 		}
 		/* Frappe บังคับ .fc-daygrid-day-top เป็น flex-direction: row (margin ซ้าย 10px)
 		   margin-left:auto จึงดันตัวเลขไปชิดขวาสุด ไม่ไปเบียดเลขวันที่อยู่ซ้าย */
 		.tsc-cap-host .tsc-cap { margin-left: auto; margin-right: 8px; }
 		.tsc-cap-host { flex-wrap: wrap; }
-		.tsc-cap:hover { background: var(--gray-100, #f4f5f6); color: var(--text-color, #1f272e); }
-		/* วันปกติจางไว้ ให้สายตาไปหยุดเฉพาะวันที่ใกล้เต็ม/เต็ม/เกิน */
-		.tsc-cap--near { color: var(--orange-600, #b95000); background: var(--orange-50, #fff8f0); }
-		.tsc-cap--full { color: var(--red-600, #c0392b); background: var(--red-50, #fff5f5); font-weight: 600; }
-		.tsc-cap--closed, .tsc-cap--none { color: var(--gray-400, #c0c6cc); }
-		.tsc-cap-over { color: var(--red-600, #c0392b); font-weight: 600; margin-left: 3px; }
+		.tsc-cap:hover { box-shadow: 0 0 0 1px var(--gray-400, #b8bfc7); }
+		/* พื้นหลังอ่อนพอให้อ่านออกทุกช่อง แต่ไม่ทึบจนกลบ event ในช่องเดียวกัน
+		   ไล่ความเข้มตามความเร่งด่วน สายตาจึงไปหยุดที่วันใกล้เต็ม/เต็มก่อน */
+		.tsc-cap--free { color: var(--green-700, #0f7a4d); background: var(--green-100, #d3f7e4); }
+		.tsc-cap--near { color: var(--orange-700, #96430f); background: var(--orange-100, #ffe8cd); }
+		.tsc-cap--full { color: var(--red-700, #a31f1f); background: var(--red-100, #ffdcdc); }
+		.tsc-cap--closed, .tsc-cap--none { color: var(--gray-600, #6a7581); background: var(--gray-100, #f4f5f6); }
+		.tsc-cap-over { color: var(--red-700, #a31f1f); margin-left: 4px; }
 		.tsc-cap-full-day { background: var(--red-50, #fff5f5); }
 		/* หัวคอลัมน์ของมุมมองสัปดาห์/วัน — วางเป็นบรรทัดใหม่ใต้ชื่อวัน ไม่ต้องดันชิดขวา */
 		th.fc-col-header-cell .tsc-cap { display: inline-block; margin-top: 2px; }
