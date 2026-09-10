@@ -14,10 +14,12 @@ from frappe.utils import escape_html, flt, now_datetime
 from truck_service_center.queries import get_technician_users
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	ROW_TECHNICIAN_FIELDS,
+	collect_material_issue_problems,
 	create_material_issue_for_rows,
 	get_bay_warnings,
 	receive_vehicle,
 	select_requisition_rows,
+	select_unclaimed_requisition_rows,
 )
 
 # ช่องช่างผู้รับผิดชอบทั้ง 10 ช่องของ Service Order (แบน ไม่ใช่ child table)
@@ -310,17 +312,26 @@ def set_service_bay(service_order, row_name, service_bay=None):
 
 
 @frappe.whitelist()
-def create_service_requisition(service_order, row_name):
-	"""สร้างใบเบิกอะไหล่ของงานรายการหนึ่งจากพอร์ทัล
+def create_service_requisition(service_order, row_name=None):
+	"""สร้างใบเบิกอะไหล่จากพอร์ทัล — ของงานรายการหนึ่ง หรือของกลุ่ม "อะไหล่อื่น ๆ"
+
+	row_name ว่าง = กลุ่มอะไหล่ที่ไม่มีแถวงานไหนจับคู่ได้ (ไม่มี service_type) ซึ่งไม่มี
+	ปุ่มรายงานไหนเบิกให้ได้เลย ถ้าไม่เปิดทางนี้ ใบที่มีอะไหล่กลุ่มนั้นจะปิดงานไม่ได้ตลอดไป
+	เพราะ _validate_completion บังคับให้เบิกครบก่อนปิด
 
 	role Technician ไม่มีสิทธิ์สร้าง Stock Entry จึงต้องส่ง ignore_permissions ลงไป
-	ด่านจริงคือ _get_row_job ด้านบน (ต้องเป็นช่างของงานรายการนี้หรือหัวหน้าช่าง)
-	ส่วนกฎ "ต้องรับรถก่อน" ยังถูกบังคับอยู่ภายใน create_material_issue_for_rows
+	ด่านจริงคือ gate ด้านบน — รายงานใช้ _get_row_job (ต้องเป็นช่างของงานรายการนั้น)
+	ส่วนกลุ่มอะไหล่อื่นไม่ผูกกับรายงานไหน จึงใช้ _get_editable_job ระดับใบเหมือน
+	ปุ่มอื่นที่แก้ทั้งใบ ส่วนกฎ "ต้องรับรถก่อน" ยังถูกบังคับใน create_material_issue_for_rows
 	การแก้ไขใบเบิกหลังสร้างแล้วยังต้องทำผ่าน desk ตามเดิม
 	"""
-	doc, row = _get_row_job(service_order, row_name)
+	if row_name:
+		doc, row = _get_row_job(service_order, row_name)
+		rows = select_requisition_rows(doc, row)
+	else:
+		doc = _get_editable_job(service_order)
+		rows = select_unclaimed_requisition_rows(doc)
 
-	rows = select_requisition_rows(doc, row)
 	if not rows:
 		frappe.throw(_("ไม่มีอะไหล่ที่ยังไม่ได้เบิกสำหรับงานนี้"))
 
@@ -338,6 +349,10 @@ def _validate_completion(doc):
 
 	งานทุกรายการต้องกดจบแล้ว เพราะเวลาจบเป็นตัวคำนวณ actual_time ให้เอง
 	ยังคงเช็ค actual_time > 0 ไว้ด้วยเพื่อกันเคสใบเก่า/ข้อมูลแปลกที่ไม่มี timestamp
+
+	อะไหล่ทุกแถวที่เป็นสินค้าคงคลังต้องมีใบเบิกแล้ว — เดิมกฎนี้อยู่ที่ submit เท่านั้น
+	(Service Order.validate_material_issues_for_submit) ช่างจึงปิดงานทั้งที่ยังไม่เบิกได้
+	แล้วของก็ออกจากคลังไม่ครบ พอปิดงานแล้วสถานะหลุด EDITABLE_STATUSES กลับมาเบิกเองก็ไม่ได้
 	"""
 	missing = []
 
@@ -350,6 +365,14 @@ def _validate_completion(doc):
 	unfinished = [row.service_type or _("(ไม่ระบุ)") for row in doc.service_types if not row.end_time]
 	if unfinished:
 		missing.append(_("กดจบงานให้ครบทุกรายการ — ยังไม่จบ: {0}").format(", ".join(unfinished)))
+
+	# ตรวจแค่ว่า "มีใบเบิกแล้ว" ไม่ได้ตรวจว่า submit แล้ว — ใบเบิกที่สร้างจากพอร์ทัลเป็น Draft
+	# เสมอ (role Technician submit Stock Entry ไม่ได้) การ submit ยังเป็นงานของผู้จัดการบน desk
+	unissued = collect_material_issue_problems(doc)["items_without_mi"]
+	if unissued:
+		missing.append(
+			_("สร้างใบเบิกอะไหล่ให้ครบ — ยังไม่ได้เบิก: {0}").format(", ".join(row["label"] for row in unissued))
+		)
 
 	if missing:
 		frappe.throw(
