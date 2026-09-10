@@ -9,6 +9,10 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 	CAP_SOURCE_NORMAL,
 	CAP_SOURCE_OVERRIDE,
 	CAP_SOURCE_WEEKLY_HOLIDAY,
+	DAY_MODE_CLOSED,
+	DAY_MODE_FULL,
+	DAY_MODE_HALF,
+	NO_ACTIVE_BAY_NOTE,
 	STATUS_CLOSED,
 	STATUS_FREE,
 	STATUS_FULL,
@@ -17,9 +21,13 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 	WORK_TYPE_PIT,
 	availability_status,
 	build_capacity_warnings,
+	build_day_notes,
+	build_day_rows,
 	compute_allocation,
+	fold_booked_hours,
 	resolve_bay_caps,
 	split_pit_hours,
+	summarize_day,
 )
 
 
@@ -41,16 +49,18 @@ def make_appointment(package_rows=None, service_rows=None, bay_rows=None):
 	return appointment
 
 
-def make_bay(bay, cap=8.0, booked=0.0, has_pit=0, is_closed=False):
-	"""แถว availability ประดิษฐ์ — รูปเดียวกับที่ get_bay_availability คืนให้"""
+def make_bay(bay, cap=8.0, booked=0.0, has_pit=0, is_closed=False, cap_source=CAP_SOURCE_NORMAL, reason=None):
+	"""แถว availability ประดิษฐ์ — รูปเดียวกับที่ build_day_rows คืนให้"""
 	return {
 		"bay": bay,
 		"bay_name": bay,
 		"has_pit": has_pit,
 		"cap": cap,
+		"cap_source": cap_source,
+		"is_closed": is_closed,
+		"reason": reason,
 		"booked": booked,
 		"free": cap - booked,
-		"is_closed": is_closed,
 		"status": availability_status(cap, booked, is_closed),
 	}
 
@@ -570,3 +580,240 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 		)
 
 		self.assertEqual(warnings, [])
+
+
+class UnitTestBuildDayRows(UnitTestCase):
+	"""ตรึงรูปแถวรายช่องจอดหลังแยกออกมาเป็น pure function — ห้ามเปลี่ยนพฤติกรรมเดิม"""
+
+	def make_bays(self):
+		return [
+			{"name": "BAY-01", "bay_name": "ช่อง 1", "has_pit": 1, "daily_capacity_hours": 8},
+			{"name": "BAY-02", "bay_name": "ช่อง 2", "has_pit": 0, "daily_capacity_hours": 8},
+		]
+
+	def test_row_shape_and_values(self):
+		"""แถวต้องมีครบทุกคีย์ที่ฝั่ง client ใช้ และคำนวณ free/status ให้ถูก"""
+		bays = self.make_bays()
+		caps = resolve_bay_caps(bays, DAY_MODE_FULL, [])
+		# 6.4/8 = 80% พอดี — ตรึงขอบเขต NEAR_FULL_RATIO ที่ระดับแถวด้วย
+		rows = build_day_rows(bays, caps, {"BAY-01": 6.4})
+
+		self.assertEqual(len(rows), 2)
+		self.assertEqual(rows[0]["bay"], "BAY-01")
+		self.assertEqual(rows[0]["bay_name"], "ช่อง 1")
+		self.assertEqual(rows[0]["has_pit"], 1)
+		self.assertEqual(rows[0]["cap"], 8.0)
+		self.assertEqual(rows[0]["booked"], 6.4)
+		self.assertEqual(rows[0]["free"], 1.6)
+		self.assertEqual(rows[0]["cap_source"], CAP_SOURCE_NORMAL)
+		self.assertFalse(rows[0]["is_closed"])
+		self.assertIsNone(rows[0]["reason"])
+		self.assertEqual(rows[0]["status"], STATUS_NEAR_FULL)
+
+		self.assertEqual(rows[1]["booked"], 0.0)
+		self.assertEqual(rows[1]["status"], STATUS_FREE)
+
+	def test_free_goes_negative_when_overbooked(self):
+		"""จองเกินแล้ว free ต้องติดลบ ไม่ใช่ถูก clamp เป็นศูนย์ — ระดับแถวยังบอก OT ได้"""
+		bays = self.make_bays()
+		caps = resolve_bay_caps(bays, DAY_MODE_FULL, [])
+		rows = build_day_rows(bays, caps, {"BAY-01": 11.0})
+
+		self.assertEqual(rows[0]["free"], -3.0)
+		self.assertEqual(rows[0]["status"], STATUS_FULL)
+
+	def test_override_reason_flows_into_row(self):
+		"""เหตุผลของ override ต้องไหลลงแถว เพื่อให้ tooltip ปฏิทินบอกสาเหตุที่ปิดได้"""
+		bays = self.make_bays()
+		overrides = [{"service_bay": "BAY-01", "capacity_hours": 0, "reason": "ซ่อมลิฟต์"}]
+		caps = resolve_bay_caps(bays, DAY_MODE_FULL, overrides)
+		rows = build_day_rows(bays, caps, {})
+
+		self.assertTrue(rows[0]["is_closed"])
+		self.assertEqual(rows[0]["reason"], "ซ่อมลิฟต์")
+		self.assertEqual(rows[0]["cap_source"], CAP_SOURCE_OVERRIDE)
+		self.assertEqual(rows[0]["status"], STATUS_CLOSED)
+		# ช่องที่ไม่ได้ถูก override ต้องไม่โดนหางเลข
+		self.assertFalse(rows[1]["is_closed"])
+
+	def test_no_bays_gives_no_rows(self):
+		"""ไม่มีช่องจอดก็ไม่มีแถว — ไม่ throw"""
+		self.assertEqual(build_day_rows([], {}, {}), [])
+
+
+class UnitTestBuildDayNotes(UnitTestCase):
+	"""ข้อความระดับวันที่เอาไปโชว์ใต้ meter และใน tooltip ของปฏิทิน"""
+
+	def test_weekly_holiday(self):
+		self.assertIn("วันหยุดประจำสัปดาห์", build_day_notes(DAY_MODE_CLOSED, []))
+
+	def test_half_day(self):
+		self.assertIn("ครึ่งวัน", build_day_notes(DAY_MODE_HALF, []))
+
+	def test_full_day_without_override_has_no_note(self):
+		self.assertEqual(build_day_notes(DAY_MODE_FULL, []), "")
+
+	def test_global_close_override_mentions_reason(self):
+		"""override ที่เว้นช่องจอดว่าง = มีผลทุกช่อง จึงต้องบอกในระดับวัน"""
+		note = build_day_notes(DAY_MODE_FULL, [{"service_bay": None, "capacity_hours": 0, "reason": "ตรุษจีน"}])
+		self.assertIn("ปิดทำการทุกช่องจอด", note)
+		self.assertIn("ตรุษจีน", note)
+
+	def test_global_reduced_override_shows_hours(self):
+		note = build_day_notes(DAY_MODE_FULL, [{"service_bay": None, "capacity_hours": 4, "reason": None}])
+		self.assertIn("4.0 ชม.", note)
+
+	def test_bay_specific_override_is_not_a_day_note(self):
+		"""override รายช่องไม่ใช่เรื่องระดับวัน — ไปโชว์ที่แถวของช่องนั้นแทน"""
+		self.assertEqual(
+			build_day_notes(DAY_MODE_FULL, [{"service_bay": "BAY-01", "capacity_hours": 0, "reason": "x"}]),
+			"",
+		)
+
+	def test_half_day_and_override_are_joined(self):
+		note = build_day_notes(DAY_MODE_HALF, [{"service_bay": None, "capacity_hours": 0, "reason": None}])
+		self.assertIn(" • ", note)
+
+
+class UnitTestSummarizeDay(UnitTestCase):
+	"""ยอดรวมระดับวัน — ตัวเลขชุดเดียวที่ปฏิทินกับฟอร์มใช้ร่วมกัน"""
+
+	def test_no_bays_is_closed_not_full(self):
+		"""ไม่มีช่องจอดเลยคือยังตั้งค่าไม่เสร็จ ไม่ใช่เต็ม — availability_status(0, 0) จะตอบว่าเต็ม"""
+		summary = summarize_day([])
+
+		self.assertFalse(summary["has_bays"])
+		self.assertEqual(summary["status"], STATUS_CLOSED)
+		self.assertEqual(summary["cap"], 0)
+		self.assertEqual(summary["booked"], 0)
+		self.assertEqual(summary["free"], 0)
+		self.assertEqual(summary["over"], 0)
+		self.assertEqual(summary["day_note"], NO_ACTIVE_BAY_NOTE)
+
+	def test_plain_sum_when_nothing_is_overbooked(self):
+		summary = summarize_day([make_bay("BAY-01", booked=3), make_bay("BAY-02", booked=5)])
+
+		self.assertEqual(summary["cap"], 16)
+		self.assertEqual(summary["booked"], 8)
+		self.assertEqual(summary["free"], 8)
+		self.assertEqual(summary["over"], 0)
+		self.assertEqual(summary["status"], STATUS_FREE)
+
+	def test_free_is_clamped_per_bay(self):
+		"""BAY-01 10/8 + BAY-02 2/8 = OT 2 ชม. และยังรับได้ 6 ชม. ไม่ใช่ 12/16 ที่ยังว่าง 4 ชม."""
+		summary = summarize_day([make_bay("BAY-01", booked=10), make_bay("BAY-02", booked=2)])
+
+		self.assertEqual(summary["booked"], 12)
+		self.assertEqual(summary["free"], 6)
+		self.assertEqual(summary["over"], 2)
+		self.assertEqual(summary["status"], STATUS_FREE)
+
+	def test_status_follows_remaining_hours_not_raw_booked(self):
+		"""booked 19 > cap 16 แต่ยังจองได้อีก 1 ชม. → ใกล้เต็ม ไม่ใช่เต็ม"""
+		summary = summarize_day([make_bay("BAY-01", booked=12), make_bay("BAY-02", booked=7)])
+
+		self.assertEqual(summary["booked"], 19)
+		self.assertEqual(summary["free"], 1)
+		self.assertEqual(summary["over"], 4)
+		self.assertEqual(summary["status"], STATUS_NEAR_FULL)
+
+	def test_full_when_no_bay_has_room_left(self):
+		summary = summarize_day([make_bay("BAY-01", booked=8), make_bay("BAY-02", booked=9)])
+
+		self.assertEqual(summary["free"], 0)
+		self.assertEqual(summary["over"], 1)
+		self.assertEqual(summary["status"], STATUS_FULL)
+
+	def test_exactly_eighty_percent_is_near_full(self):
+		"""ขอบเขต NEAR_FULL_RATIO — 80% พอดีต้องนับเป็นใกล้เต็มแล้ว"""
+		summary = summarize_day([make_bay("BAY-01", booked=6.4), make_bay("BAY-02", booked=6.4)])
+
+		self.assertEqual(summary["free"], 3.2)
+		self.assertEqual(summary["status"], STATUS_NEAR_FULL)
+
+	def test_all_bays_closed_still_counts_overtime(self):
+		"""วันปิดที่มีคนจองไว้ ต้องบอกทั้ง "ปิดทำการ" และ OT ที่เกิดไปแล้ว"""
+		rows = [
+			make_bay("BAY-01", cap=0, booked=4, is_closed=True),
+			make_bay("BAY-02", cap=0, booked=0, is_closed=True),
+		]
+		summary = summarize_day(rows)
+
+		self.assertTrue(summary["is_closed"])
+		self.assertEqual(summary["status"], STATUS_CLOSED)
+		self.assertEqual(summary["over"], 4)
+		self.assertEqual(summary["free"], 0)
+
+	def test_one_closed_bay_does_not_close_the_day(self):
+		rows = [make_bay("BAY-01", cap=0, is_closed=True), make_bay("BAY-02", booked=1)]
+		summary = summarize_day(rows)
+
+		self.assertFalse(summary["is_closed"])
+		self.assertEqual(summary["cap"], 8)
+		self.assertEqual(summary["status"], STATUS_FREE)
+
+	def test_day_note_is_passed_through(self):
+		"""มีช่องจอดแล้วต้องใช้ note ที่ส่งมา ไม่ใช่ทับด้วยข้อความว่าไม่มีช่องจอด"""
+		summary = summarize_day([make_bay("BAY-01")], "วันนี้ทำครึ่งวัน")
+		self.assertEqual(summary["day_note"], "วันนี้ทำครึ่งวัน")
+
+
+class UnitTestFoldBookedHours(UnitTestCase):
+	"""รวมชั่วโมงที่จองแล้วแบบ pure — ครอบแทนการ insert Service Appointment จริง"""
+
+	def test_groups_by_date_and_bay(self):
+		appointments = [
+			{"name": "APT-1", "appointment_date": "2026-09-10"},
+			{"name": "APT-2", "appointment_date": "2026-09-10"},
+			{"name": "APT-3", "appointment_date": "2026-09-11"},
+		]
+		bay_rows = [
+			{"parent": "APT-1", "service_bay": "BAY-01", "allocated_hours": 3},
+			{"parent": "APT-2", "service_bay": "BAY-01", "allocated_hours": 2},
+			{"parent": "APT-2", "service_bay": "BAY-02", "allocated_hours": 1},
+			{"parent": "APT-3", "service_bay": "BAY-01", "allocated_hours": 4},
+		]
+
+		booked = fold_booked_hours(appointments, bay_rows)
+
+		self.assertEqual(booked["2026-09-10"], {"BAY-01": 5.0, "BAY-02": 1.0})
+		self.assertEqual(booked["2026-09-11"], {"BAY-01": 4.0})
+
+	def test_keys_are_iso_strings(self):
+		"""key ต้องเป็นสตริงเสมอ แม้ input จะเป็น date object — ฝั่ง JS ใช้ค่านี้ตรงๆ"""
+		import datetime
+
+		booked = fold_booked_hours(
+			[{"name": "APT-1", "appointment_date": datetime.date(2026, 9, 10)}],
+			[{"parent": "APT-1", "service_bay": "BAY-01", "allocated_hours": 2}],
+		)
+
+		self.assertEqual(list(booked), ["2026-09-10"])
+
+	def test_rows_without_bay_are_skipped(self):
+		"""แถวที่ยังไม่ได้เลือกช่องจอด ไม่กินความจุของใคร"""
+		booked = fold_booked_hours(
+			[{"name": "APT-1", "appointment_date": "2026-09-10"}],
+			[
+				{"parent": "APT-1", "service_bay": None, "allocated_hours": 5},
+				{"parent": "APT-1", "service_bay": "BAY-01", "allocated_hours": 2},
+			],
+		)
+
+		self.assertEqual(booked, {"2026-09-10": {"BAY-01": 2.0}})
+
+	def test_appointment_without_bay_rows_has_no_entry(self):
+		"""ใบที่ยังไม่ถูกจัดช่องจอด ไม่ควรสร้าง key วันเปล่าๆ ให้ปฏิทินเข้าใจผิด"""
+		self.assertEqual(fold_booked_hours([{"name": "APT-1", "appointment_date": "2026-09-10"}], []), {})
+
+	def test_orphan_bay_rows_are_ignored(self):
+		"""แถวที่ parent ไม่อยู่ในชุดนัดหมายที่กรองมา (เช่นถูก exclude) ต้องไม่ถูกนับ"""
+		booked = fold_booked_hours(
+			[{"name": "APT-1", "appointment_date": "2026-09-10"}],
+			[{"parent": "APT-OTHER", "service_bay": "BAY-01", "allocated_hours": 9}],
+		)
+
+		self.assertEqual(booked, {})
+
+	def test_empty_input(self):
+		self.assertEqual(fold_booked_hours([], []), {})
