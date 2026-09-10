@@ -9,7 +9,7 @@ from frappe.tests import UnitTestCase
 from truck_service_center.api.technician_portal import _validate_completion
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	get_bay_warnings,
-	get_service_order_owner_label,
+	get_user_display_name,
 	select_requisition_rows,
 	select_unclaimed_requisition_rows,
 )
@@ -476,21 +476,21 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual([part.needs_issue for part in parts], [True, False, False])
 
-	# ── ชื่อผู้เปิดใบสั่งงานที่ไปโชว์บนหน้ารายการใบเบิก ─────────────────────────
+	# ── ชื่อผู้สร้างใบเบิกที่ไปโชว์บนหน้ารายการ Stock Entry ─────────────────────
 
-	def test_owner_label_uses_full_name(self):
+	def test_display_name_uses_full_name(self):
 		"""คอลัมน์นี้มีไว้ให้คนอ่าน จึงต้องเป็นชื่อ ไม่ใช่ user id"""
 		with patch("frappe.db.get_value", return_value="สมชาย แรงดี"):
-			self.assertEqual(get_service_order_owner_label("somchai@example.com"), "สมชาย แรงดี")
+			self.assertEqual(get_user_display_name("somchai@example.com"), "สมชาย แรงดี")
 
-	def test_owner_label_falls_back_to_user_id(self):
+	def test_display_name_falls_back_to_user_id(self):
 		"""ยังไม่ได้ตั้งชื่อเต็ม ต้องได้ user id ไม่ใช่ช่องว่างที่ดูเหมือนข้อมูลหาย"""
 		with patch("frappe.db.get_value", return_value=None):
-			self.assertEqual(get_service_order_owner_label("somchai@example.com"), "somchai@example.com")
+			self.assertEqual(get_user_display_name("somchai@example.com"), "somchai@example.com")
 
-	def test_owner_label_is_blank_without_owner(self):
-		"""ไม่มีเจ้าของก็ไม่ต้องเดา"""
-		self.assertIsNone(get_service_order_owner_label(None))
+	def test_display_name_is_blank_without_user(self):
+		"""ไม่มี user ก็ไม่ต้องเดา"""
+		self.assertIsNone(get_user_display_name(None))
 
 	# ── กลุ่ม "อะไหล่อื่น ๆ" ต้องเบิกได้ ไม่งั้นปิดงานไม่ได้ตลอดไป ────────────────
 

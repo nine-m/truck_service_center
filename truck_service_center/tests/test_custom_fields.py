@@ -53,14 +53,18 @@ class TestStockEntryCustomFields(IntegrationTestCase):
 
 		self.assertTrue(field.in_list_view, "custom_service_order ไม่ได้อยู่ในคอลัมน์หน้ารายการ")
 
-	def test_service_order_owner_is_a_list_view_column(self):
-		"""ผู้เปิดใบสั่งงานต้องขึ้นเป็นคอลัมน์ และเป็น Data (เก็บชื่อ ไม่ใช่ user id)"""
-		field = frappe.get_meta("Stock Entry").get_field("custom_service_order_owner")
+	def test_created_by_name_is_a_list_view_column(self):
+		"""ผู้สร้างใบเบิกต้องขึ้นเป็นคอลัมน์ และเป็น Data (เก็บชื่อ ไม่ใช่ user id)"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_created_by_name")
 
-		self.assertIsNotNone(field, "ไม่พบฟิลด์ custom_service_order_owner บน Stock Entry")
+		self.assertIsNotNone(field, "ไม่พบฟิลด์ custom_created_by_name บน Stock Entry")
 		self.assertTrue(field.in_list_view)
 		self.assertEqual(field.fieldtype, "Data")
 		self.assertTrue(field.read_only)
+
+	def test_superseded_owner_field_is_gone(self):
+		"""ฟิลด์รอบก่อน (ผู้เปิดใบสั่งงาน) ต้องถูกลบ ไม่ค้างเป็นคอลัมน์ว่าง"""
+		self.assertIsNone(frappe.get_meta("Stock Entry").get_field("custom_service_order_owner"))
 
 	def test_filtering_by_service_order_returns_only_its_issues(self):
 		"""กรองแล้วต้องได้เฉพาะใบเบิกของใบสั่งงานนั้น"""
@@ -121,7 +125,7 @@ class TestStockEntryListColumns(IntegrationTestCase):
 
 		self.assertEqual(
 			self._pinned_fieldnames(),
-			["stock_entry_type", "custom_service_order", "custom_service_order_owner", "purpose"],
+			["stock_entry_type", "custom_service_order", "custom_created_by_name", "purpose"],
 		)
 
 	def test_patch_is_idempotent(self):
@@ -133,6 +137,37 @@ class TestStockEntryListColumns(IntegrationTestCase):
 		execute()
 
 		self.assertEqual(self._pinned_fieldnames(), first)
+
+	def test_patch_drops_the_superseded_column(self):
+		"""คอลัมน์รอบก่อนต้องหายไป ไม่งั้นหน้ารายการจะมีช่องว่างที่ไม่มีฟิลด์รองรับ"""
+		self._set_pinned_columns(
+			[
+				{"fieldname": "stock_entry_type", "label": "Stock Entry Type"},
+				{"fieldname": "custom_service_order_owner", "label": "ผู้เปิดใบสั่งงาน"},
+			]
+		)
+
+		execute()
+
+		self.assertNotIn("custom_service_order_owner", self._pinned_fieldnames())
+
+	def test_patch_orders_our_columns_together(self):
+		"""คอลัมน์ของแอปต้องอยู่ติดกันตามลำดับที่ตั้งใจ ไม่ว่าเดิมจะเรียงยังไง"""
+		self._set_pinned_columns(
+			[
+				{"fieldname": "stock_entry_type", "label": "Stock Entry Type"},
+				{"fieldname": "custom_created_by_name", "label": "ผู้สร้างใบเบิก"},
+				{"fieldname": "purpose", "label": "Purpose"},
+				{"fieldname": "custom_service_order", "label": "ใบสั่งงาน"},
+			]
+		)
+
+		execute()
+
+		self.assertEqual(
+			self._pinned_fieldnames(),
+			["stock_entry_type", "custom_service_order", "custom_created_by_name", "purpose"],
+		)
 
 	def test_patch_keeps_user_widths_and_order(self):
 		"""ความกว้าง/ลำดับที่ผู้ใช้ตั้งไว้ต้องไม่ถูกรื้อ"""

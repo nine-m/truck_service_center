@@ -23,16 +23,17 @@ CUSTOM_FIELDS = {
 			"print_hide": 1,
 		},
 		{
-			"fieldname": "custom_service_order_owner",
+			"fieldname": "custom_created_by_name",
+			# ชื่อคนที่ "สร้าง" ใบเบิก = owner ของ Stock Entry (ช่างที่กดปุ่มในพอร์ทัล)
+			# ไม่ใช่คนที่มา submit ทีหลัง ซึ่งคือ modified_by และมักเป็นผู้จัดการคนเดียวทั้งระบบ
 			# เก็บเป็น "ชื่อ" ไม่ใช่ Link → User เพราะคอลัมน์นี้มีไว้ให้คนอ่าน
 			# frappe render Link → User เป็น user id (User ไม่ได้เปิด show_title_field_in_link)
-			# ค่าถูกเขียนตอนสร้างใบเบิก (create_material_issue_for_rows) เป็น snapshot
-			# ถ้าผู้ใช้เปลี่ยนชื่อทีหลัง ใบเก่าจะยังเป็นชื่อเดิม ซึ่งตรงกับความหมายของเอกสาร
-			"label": "ผู้เปิดใบสั่งงาน",
+			# เป็น snapshot ตอนสร้าง ถ้าผู้ใช้เปลี่ยนชื่อทีหลัง ใบเก่าจะยังเป็นชื่อเดิม
+			"label": "ผู้สร้างใบเบิก",
 			"fieldtype": "Data",
 			"insert_after": "custom_service_order",
 			"read_only": 1,
-			"no_copy": 1,
+			"no_copy": 1,  # amend ใบเบิกแล้วต้องได้ชื่อคนที่ amend ไม่ใช่คนเดิม
 			"in_list_view": 1,
 			"print_hide": 1,
 		},
