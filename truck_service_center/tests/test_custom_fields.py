@@ -12,6 +12,7 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 from frappe.tests import IntegrationTestCase
 
 from truck_service_center.install import CUSTOM_FIELDS
+from truck_service_center.patches.show_service_order_columns_in_stock_entry_list import execute
 
 
 class TestStockEntryCustomFields(IntegrationTestCase):
@@ -81,3 +82,79 @@ class TestStockEntryCustomFields(IntegrationTestCase):
 
 		self.assertTrue(rows)
 		self.assertEqual({row.custom_service_order for row in rows}, {service_order})
+
+
+class TestStockEntryListColumns(IntegrationTestCase):
+	"""layout ที่ผู้ใช้ pin ไว้ต้องได้คอลัมน์ใหม่ด้วย
+
+	in_list_view ไม่มีผลเลยเมื่อ site มี List View Settings ของ doctype นั้น — ฝั่ง client
+	ใช้ list_view_settings.fields แทน docfield ทั้งหมด และ record นั้นเกิดเองตั้งแต่มีคน
+	ลากปรับความกว้างคอลัมน์
+	"""
+
+	SETTINGS = "Stock Entry"
+
+	def _set_pinned_columns(self, fields):
+		if frappe.db.exists("List View Settings", self.SETTINGS):
+			doc = frappe.get_doc("List View Settings", self.SETTINGS)
+		else:
+			doc = frappe.new_doc("List View Settings")
+			doc.name = self.SETTINGS
+		doc.fields = frappe.as_json(fields)
+		doc.save(ignore_permissions=True)
+		return doc
+
+	def _pinned_fieldnames(self):
+		doc = frappe.get_doc("List View Settings", self.SETTINGS)
+		return [row["fieldname"] for row in frappe.parse_json(doc.fields)]
+
+	def test_patch_inserts_columns_after_stock_entry_type(self):
+		"""คอลัมน์ใหม่ต้องอยู่ต่อจากประเภทใบเบิก ไม่ใช่ไปต่อท้ายสุดจนมองไม่เห็น"""
+		self._set_pinned_columns(
+			[
+				{"fieldname": "stock_entry_type", "label": "Stock Entry Type"},
+				{"fieldname": "purpose", "label": "Purpose"},
+			]
+		)
+
+		execute()
+
+		self.assertEqual(
+			self._pinned_fieldnames(),
+			["stock_entry_type", "custom_service_order", "custom_service_order_owner", "purpose"],
+		)
+
+	def test_patch_is_idempotent(self):
+		"""รันซ้ำ (ทุกครั้งที่ migrate) ต้องไม่เพิ่มคอลัมน์ซ้ำ"""
+		self._set_pinned_columns([{"fieldname": "stock_entry_type", "label": "Stock Entry Type"}])
+
+		execute()
+		first = self._pinned_fieldnames()
+		execute()
+
+		self.assertEqual(self._pinned_fieldnames(), first)
+
+	def test_patch_keeps_user_widths_and_order(self):
+		"""ความกว้าง/ลำดับที่ผู้ใช้ตั้งไว้ต้องไม่ถูกรื้อ"""
+		self._set_pinned_columns(
+			[
+				{"fieldname": "stock_entry_type", "label": "Stock Entry Type"},
+				{"fieldname": "name", "label": "ID", "width": 156.75},
+			]
+		)
+
+		execute()
+
+		doc = frappe.get_doc("List View Settings", self.SETTINGS)
+		id_column = next(row for row in frappe.parse_json(doc.fields) if row["fieldname"] == "name")
+		self.assertEqual(id_column["width"], 156.75)
+		self.assertEqual(self._pinned_fieldnames()[-1], "name")
+
+	def test_patch_is_a_noop_without_pinned_layout(self):
+		"""site ที่ไม่มี layout ค้างไว้ ต้องปล่อยให้ in_list_view ทำงานเอง"""
+		if frappe.db.exists("List View Settings", self.SETTINGS):
+			frappe.delete_doc("List View Settings", self.SETTINGS, force=1, ignore_permissions=True)
+
+		execute()  # ต้องไม่โยนและไม่สร้าง record ขึ้นมาเอง
+
+		self.assertFalse(frappe.db.exists("List View Settings", self.SETTINGS))
