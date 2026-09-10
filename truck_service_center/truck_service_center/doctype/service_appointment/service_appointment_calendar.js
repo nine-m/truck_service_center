@@ -391,11 +391,18 @@ function tsc_inject_capacity_css() {
 			cursor: pointer;
 			font-size: 12px;
 			font-weight: 600;
-			line-height: 1.5;
+			line-height: 1;
 			white-space: nowrap;
 			font-variant-numeric: tabular-nums;
-			padding: 1px 6px;
+			padding: 3px 6px;
 			border-radius: 6px;
+			/* .fc-daygrid-day-top เป็น flex และ align-items ปริยายคือ stretch — pill จะถูกยืด
+			   สูงเท่าเลขวัน (ที่มี padding 4px) แต่ตัวอักษรยังเกาะขอบบน ดูเหมือนลอย
+			   align-self: center กันการยืด ส่วน inline-flex + align-items จัดตัวเลขให้อยู่กลาง
+			   ในทุกบริบท รวมหัวคอลัมน์ของมุมมองสัปดาห์/วันที่ไม่ได้เป็น flex item */
+			display: inline-flex;
+			align-items: center;
+			align-self: center;
 		}
 		/* Frappe บังคับ .fc-daygrid-day-top เป็น flex-direction: row (margin ซ้าย 10px)
 		   margin-left:auto จึงดันตัวเลขไปชิดขวาสุด ไม่ไปเบียดเลขวันที่อยู่ซ้าย */
@@ -411,7 +418,7 @@ function tsc_inject_capacity_css() {
 		.tsc-cap-over { color: var(--red-700, #a31f1f); margin-left: 4px; }
 		.tsc-cap-full-day { background: var(--red-50, #fff5f5); }
 		/* หัวคอลัมน์ของมุมมองสัปดาห์/วัน — วางเป็นบรรทัดใหม่ใต้ชื่อวัน ไม่ต้องดันชิดขวา */
-		th.fc-col-header-cell .tsc-cap { display: inline-block; margin-top: 2px; }
+		th.fc-col-header-cell .tsc-cap { margin-top: 2px; }
 	`;
 	document.head.appendChild(style);
 }
