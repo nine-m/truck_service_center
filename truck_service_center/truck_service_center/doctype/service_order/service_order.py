@@ -1211,8 +1211,9 @@ def _get_bay_type_warnings(doc):
 	ช่องจอดที่มีผลกับแถว = ช่องจอดของแถวเอง ถ้าไม่มีก็ตกไปใช้ช่องจอดหลักของใบงาน
 	(ตรงกับที่ apply_default_bay จะเติมให้ตอน save)
 
-	ประเภทเริ่มต้นของระบบถูกอ่านเฉพาะตอนที่มีงานซึ่งไม่ได้ระบุประเภทไว้จริง ๆ เพื่อไม่ให้
-	ใบงานทั่วไปต้องเสีย query เปล่า (และเพื่อให้เทสต์ที่ mock frappe.get_all ไม่ต้องแตะ DB)
+	ประเภทเริ่มต้นของระบบและชื่อไทยของประเภท ถูกอ่านเฉพาะตอนที่จำเป็นจริง ๆ (มีงานที่ไม่ระบุ
+	ประเภท / มีคำเตือนที่ต้องแสดงชื่อ) ใบงานที่ช่องจอดถูกประเภทอยู่แล้วซึ่งเป็นกรณีปกติ
+	จึงเสียแค่ 2 query เท่าเดิม
 	"""
 	pairs = []
 	for row in doc.service_types:
@@ -1248,7 +1249,7 @@ def _get_bay_type_warnings(doc):
 	if any(not required_types.get(service_type) for service_type in service_types):
 		default_bay_type = get_default_bay_type()
 
-	warnings = []
+	mismatches = []
 	seen = set()
 	for service_type, bay in pairs:
 		required = required_types.get(service_type) or default_bay_type
@@ -1258,11 +1259,27 @@ def _get_bay_type_warnings(doc):
 		if (service_type, bay) in seen:
 			continue
 		seen.add((service_type, bay))
-		# ใช้รหัสประเภท ไม่ใช่ชื่อไทย เพราะการอ่านชื่อจาก master ต้องโหลด meta ของ Bay Type
-		# ซึ่งยิง frappe.get_all ของตัวเองเพิ่ม ทำให้จำนวน query ของฟังก์ชันนี้ไม่นิ่ง
-		warnings.append(f"งาน {service_type} ต้องใช้ช่องจอดประเภท {required} แต่ช่องจอด {bay} เป็นประเภท {actual}")
+		mismatches.append((service_type, bay, required, actual))
 
-	return warnings
+	if not mismatches:
+		return []
+
+	# ชื่อไทยของประเภท ดึงทีเดียวและเฉพาะตอนที่มีคำเตือนจริง — ใบงานที่ช่องจอดถูกประเภทอยู่แล้ว
+	# ซึ่งเป็นกรณีปกติ จึงยังเสีย query เท่าเดิม ส่วนข้อความที่ผู้ใช้เห็นเป็นภาษาไทยเหมือน
+	# คำเตือนฝั่งนัดหมาย ไม่ใช่รหัสประเภทดิบ
+	wanted = {required for _, _, required, _ in mismatches} | {actual for _, _, _, actual in mismatches}
+	labels = {
+		row["name"]: row["bay_type_name"] or row["name"]
+		for row in frappe.get_all(
+			"Bay Type", filters={"name": ["in", list(wanted)]}, fields=["name", "bay_type_name"]
+		)
+	}
+
+	return [
+		f"งาน {service_type} ต้องใช้ช่องจอดประเภท {labels.get(required, required)} "
+		f"แต่ช่องจอด {bay} เป็นประเภท {labels.get(actual, actual)}"
+		for service_type, bay, required, actual in mismatches
+	]
 
 
 @frappe.whitelist()
