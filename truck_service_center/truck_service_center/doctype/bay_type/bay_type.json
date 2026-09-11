@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:bay_type_code",
+ "creation": "2026-09-11 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bay_type_code",
+  "bay_type_name",
+  "column_break_1",
+  "is_default",
+  "is_active",
+  "section_break_1",
+  "description"
+ ],
+ "fields": [
+  {
+   "description": "รหัสสั้น ๆ เป็นตัวอักษรอังกฤษ เช่น GENERAL, PIT, CRANE",
+   "fieldname": "bay_type_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "รหัสประเภท",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "bay_type_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ชื่อประเภท",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "งานที่ไม่ระบุประเภทช่องจอดจะใช้ประเภทนี้",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "ประเภทเริ่มต้น"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "เปิดใช้งาน"
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "รายละเอียด"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-11 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Bay Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Manager"
+  }
+ ],
+ "quick_entry": 1,
+ "show_title_field_in_link": 1,
+ "sort_field": "bay_type_name",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "bay_type_name",
+ "track_changes": 1
+}
