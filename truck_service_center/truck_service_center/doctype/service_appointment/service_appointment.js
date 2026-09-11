@@ -300,7 +300,10 @@ function inject_capacity_meter_css() {
 			background: var(--gray-200, #e2e6e9); border-radius: 3px; overflow: hidden; }
 		.tsc-meter-bay-bar > span { display: block; height: 100%; }
 		.tsc-meter-bay-free { min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
-		.tsc-meter-pit { color: var(--text-muted, #6a7581); font-weight: 400; }
+		.tsc-meter-bay-type { color: var(--text-muted, #6a7581); font-weight: 400; }
+		/* ความจุถูกแบ่งตามประเภทช่องจอดแล้ว ยอดรวมทั้งวันจึงบอกไม่หมดว่าประเภทไหนเต็ม
+		   บรรทัดนี้คือสิ่งที่บอก จึงวางไว้ใต้แถบรวมก่อนรายการช่องจอด */
+		.tsc-meter-types { color: var(--text-muted, #6a7581); margin-bottom: 4px; }
 		.tsc-meter-note { color: var(--text-muted, #6a7581); margin: 6px 0 0; }
 	`;
 	document.head.appendChild(style);
@@ -324,7 +327,10 @@ function capacity_bay_row_html(bay) {
 
 	let html = '<div class="tsc-meter-bay">';
 	html += `<span class="tsc-meter-bay-name">${frappe.utils.escape_html(bay.bay_name || bay.bay)}`;
-	if (bay.has_pit) html += ' <span class="tsc-meter-pit" title="มีหลุมซ่อม">◍</span>';
+	if (bay.bay_type) {
+		const bay_type = frappe.utils.escape_html(bay.bay_type_name || bay.bay_type);
+		html += ` <span class="tsc-meter-bay-type">(${bay_type})</span>`;
+	}
 	html += '</span>';
 	html += `<span class="tsc-meter-bay-bar"><span style="width: ${pct}%; background: ${meter_bar_color(bay.status)};"></span></span>`;
 
@@ -386,6 +392,7 @@ function render_capacity_meter(frm, data) {
 	}
 
 	html += capacity_bar_html(cap, booked, own, summary.status);
+	html += capacity_by_type_html(summary.by_type);
 
 	(data.bays || []).forEach(function(bay) {
 		html += capacity_bay_row_html(bay);
@@ -400,6 +407,18 @@ function render_capacity_meter(frm, data) {
 	field.$wrapper.html(html);
 }
 
+
+function capacity_by_type_html(by_type) {
+	// งานทั่วไปยืมช่องที่มีหลุมไม่ได้แล้ว ตัวเลขรวมทั้งวันจึงดูว่างกว่าความจริงของแต่ละประเภท
+	if (!by_type || !by_type.length) return '';
+
+	const parts = (by_type || []).map(function(group) {
+		const name = frappe.utils.escape_html(group.bay_type_name || group.bay_type || '');
+		return `${name} ${fmt_hours(group.booked)}/${fmt_hours(group.cap)}`;
+	});
+
+	return `<div class="tsc-meter-types">${parts.join(' · ')}</div>`;
+}
 
 function capacity_bar_html(cap, booked, own, status) {
 	// ไม่มีความจุให้เทียบ (วันปิด/ไม่มีช่องจอด) — แถบเทาเต็มความกว้างสื่อว่าไม่มีที่ให้วัด
@@ -472,7 +491,7 @@ function reallocate_bays(frm) {
 		allocations.forEach(function(row) {
 			let child = frm.add_child('bay_allocations');
 			child.service_bay = row.service_bay;
-			child.work_type = row.work_type;
+			child.bay_type = row.bay_type;
 			child.allocated_hours = row.allocated_hours;
 		});
 		frm.refresh_field('bay_allocations');

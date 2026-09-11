@@ -330,7 +330,9 @@ function tsc_capacity_tooltip(day) {
 	}
 	if (summary.day_note) lines.push(summary.day_note);
 	(day.bays || []).forEach(function(bay) {
-		let line = `${bay.bay_name || bay.bay} · ${tsc_fmt_hours(bay.booked)}/${tsc_fmt_hours(bay.cap)} ชม. · ${bay.status}`;
+		let line = `${bay.bay_name || bay.bay}`;
+		if (bay.bay_type) line += ` (${bay.bay_type_name || bay.bay_type})`;
+		line += ` · ${tsc_fmt_hours(bay.booked)}/${tsc_fmt_hours(bay.cap)} ชม. · ${bay.status}`;
 		if (bay.is_closed && bay.reason) line += ` (${bay.reason})`;
 		lines.push(line);
 	});
@@ -358,13 +360,23 @@ function tsc_capacity_detail_html(day) {
 		return html;
 	}
 
+	// ความจุถูกแบ่งตามประเภทช่องจอด ยอดรวมทั้งวันด้านบนจึงบอกไม่ได้ว่าประเภทไหนเต็มแล้ว
+	const by_type = (day.summary || {}).by_type || [];
+	if (by_type.length > 1) {
+		const parts = by_type.map(function(group) {
+			const name = frappe.utils.escape_html(group.bay_type_name || group.bay_type || "");
+			return `${name} ${tsc_fmt_hours(group.booked)}/${tsc_fmt_hours(group.cap)}`;
+		});
+		html += `<p class="text-muted" style="margin-bottom: 0;">${parts.join(" · ")}</p>`;
+	}
+
 	html += '<table class="table table-bordered" style="margin-top: 5px;">';
-	html += "<thead><tr><th>ช่องจอด</th><th>หลุมซ่อม</th><th>จองแล้ว/รับได้ (ชม.)</th><th>สถานะ</th></tr></thead><tbody>";
+	html += "<thead><tr><th>ช่องจอด</th><th>ประเภท</th><th>จองแล้ว/รับได้ (ชม.)</th><th>สถานะ</th></tr></thead><tbody>";
 	(day.bays || []).forEach(function(bay) {
 		const reason = bay.is_closed && bay.reason ? ` <small class="text-muted">(${frappe.utils.escape_html(bay.reason)})</small>` : "";
 		html += "<tr>";
 		html += `<td><strong>${frappe.utils.escape_html(bay.bay_name || bay.bay)}</strong></td>`;
-		html += `<td>${bay.has_pit ? "มี" : "-"}</td>`;
+		html += `<td>${frappe.utils.escape_html(bay.bay_type_name || bay.bay_type || "-")}</td>`;
 		html += `<td>${tsc_fmt_hours(bay.booked)} / ${tsc_fmt_hours(bay.cap)}</td>`;
 		html += `<td><span class="badge ${tsc_status_badge(bay.status)}">${frappe.utils.escape_html(bay.status)}</span>${reason}</td>`;
 		html += "</tr>";

@@ -116,7 +116,7 @@
 								<option value="">— ใช้ช่องจอดหลัก —</option>
 								{% for bay in bays %}
 								<option value="{{ bay.name }}" {% if line.service_bay == bay.name %}selected{% endif %}>
-									{{ bay.bay_name }}{% if bay.has_pit %} (มีหลุม){% endif %}
+									{{ bay.bay_name }}{% if bay.bay_type_name %} ({{ bay.bay_type_name }}){% endif %}
 								</option>
 								{% endfor %}
 							</select>
@@ -212,7 +212,7 @@
 					<option value="">— ยังไม่ระบุ —</option>
 					{% for bay in bays %}
 					<option value="{{ bay.name }}" {% if job.service_bay == bay.name %}selected{% endif %}>
-						{{ bay.bay_name }}{% if bay.has_pit %} (มีหลุม){% endif %}
+						{{ bay.bay_name }}{% if bay.bay_type_name %} ({{ bay.bay_type_name }}){% endif %}
 					</option>
 					{% endfor %}
 				</select>
