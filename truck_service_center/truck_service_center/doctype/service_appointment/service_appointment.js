@@ -228,10 +228,13 @@ function set_vehicle_filter(frm) {
 }
 
 function set_bay_filter(frm) {
-	frm.set_query('service_bay', 'bay_allocations', function() {
-		return {
-			filters: { 'is_active': 1 }
-		};
+	frm.set_query('service_bay', 'bay_allocations', function(doc, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		let filters = { 'is_active': 1 };
+		// แถวรู้อยู่แล้วว่าเป็นงานประเภทไหน — กรองให้เหลือเฉพาะช่องจอดประเภทนั้น
+		// จะได้เลือกผิดประเภทด้วยมือยากขึ้น (ยังเตือนฝั่ง server อยู่ดีถ้าเลือกผิด)
+		if (row && row.bay_type) filters.bay_type = row.bay_type;
+		return { filters: filters };
 	});
 }
 

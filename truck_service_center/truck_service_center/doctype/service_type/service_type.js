@@ -6,6 +6,18 @@ frappe.ui.form.on('Service Type', {
 		// เพิ่มฟังก์ชันช่วยเหลือ
 	},
 
+	service_type_group: function(frm) {
+		// เปลี่ยนกลุ่มคือการกระทำที่ตั้งใจ จึงทับ bay_type เดิมได้ (ต่างจากฝั่ง server
+		// ที่เติมให้เฉพาะตอนว่าง) กลุ่มที่ไม่ได้ตั้งค่าเริ่มต้นไว้ → ไม่แตะค่าเดิม ไม่ล้างทิ้ง
+		if (!frm.doc.service_type_group) return;
+
+		frappe.db.get_value('Service Type Group', frm.doc.service_type_group, 'default_bay_type')
+			.then(function(r) {
+				let bay_type = r.message && r.message.default_bay_type;
+				if (bay_type) frm.set_value('bay_type', bay_type);
+			});
+	},
+
 	item_code: function(frm) {
 		// เมื่อเลือก item_code ให้ดึงราคา
 		if (frm.doc.item_code) {

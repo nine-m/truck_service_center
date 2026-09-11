@@ -11,6 +11,7 @@
   "group_name",
   "column_break_1",
   "is_active",
+  "default_bay_type",
   "remark"
  ],
  "fields": [
@@ -41,6 +42,13 @@
    "label": "เปิดใช้งาน"
   },
   {
+   "description": "ประเภทช่องจอดที่จะเติมให้ประเภทบริการในกลุ่มนี้ตอนเลือกกลุ่ม — แก้รายตัวได้ภายหลัง",
+   "fieldname": "default_bay_type",
+   "fieldtype": "Link",
+   "label": "ประเภทช่องจอดเริ่มต้นของกลุ่ม",
+   "options": "Bay Type"
+  },
+  {
    "fieldname": "remark",
    "fieldtype": "Small Text",
    "label": "หมายเหตุ"
@@ -48,7 +56,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-09-11 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type Group",

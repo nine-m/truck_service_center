@@ -20,7 +20,7 @@
   "details_tab",
   "service_details_section",
   "default_duration",
-  "requires_pit",
+  "bay_type",
   "labor_rate",
   "spare_parts_section",
   "items",
@@ -104,10 +104,11 @@
    "precision": 2
   },
   {
-   "description": "งานนี้ต้องทำในช่องจอดที่มีหลุมซ่อม (เช่น เปลี่ยนถ่ายของเหลว งานใต้ท้องรถ)",
-   "fieldname": "requires_pit",
-   "fieldtype": "Check",
-   "label": "ต้องใช้หลุมซ่อม"
+   "description": "ประเภทช่องจอดที่งานนี้ต้องใช้ — เว้นว่าง = ใช้ประเภทเริ่มต้นของระบบ",
+   "fieldname": "bay_type",
+   "fieldtype": "Link",
+   "label": "ประเภทช่องจอดที่ต้องใช้",
+   "options": "Bay Type"
   },
   {
    "fieldname": "labor_rate",
@@ -174,7 +175,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-03 09:00:00.000000",
+ "modified": "2026-09-11 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type",
