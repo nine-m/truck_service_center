@@ -99,12 +99,18 @@ def get_context(context):
 	context.is_manager = is_manager
 
 	# ช่องจอดที่เลือกได้ — render ฝั่ง server จึงไม่ต้องเปิด endpoint list เพิ่ม
+	# ชื่อประเภทมาจาก query เดียวแล้วแปะลงทุกแถว ไม่ใช่ lookup รายช่อง
 	context.bays = frappe.get_all(
 		"Service Bay",
 		filters={"is_active": 1},
-		fields=["name", "bay_name", "has_pit"],
+		fields=["name", "bay_name", "bay_type"],
 		order_by="bay_name asc",
 	)
+	bay_type_names = {
+		row.name: row.bay_type_name for row in frappe.get_all("Bay Type", fields=["name", "bay_type_name"])
+	}
+	for bay in context.bays:
+		bay.bay_type_name = bay_type_names.get(bay.bay_type) or bay.bay_type
 
 	# รายชื่อช่างสำหรับ dropdown assign — เฉพาะหัวหน้าช่างเท่านั้นที่ต้องใช้
 	context.technician_options = _get_technician_options() if is_manager else []

@@ -6,6 +6,8 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import cint, flt, now_datetime, time_diff_in_hours
 
+from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
+
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
 # (lock_rows_with_submitted_material_issue ใน service_order.js)
 MATERIAL_ISSUE_LOCKED_TEXT_FIELDS = {
@@ -1180,7 +1182,7 @@ def get_bay_warnings(doc):
 
 	สองชั้น:
 	1. ช่องจอดหลักถูกใบงานอื่นที่ยังเปิดอยู่ใช้ค้างไว้
-	2. งานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่มีผลจริงกับแถวนั้นไม่มีหลุม
+	2. งานที่ต้องใช้ช่องจอดประเภทหนึ่ง แต่ช่องจอดที่มีผลจริงกับแถวนั้นเป็นอีกประเภท
 	"""
 	warnings = []
 
@@ -1197,17 +1199,21 @@ def get_bay_warnings(doc):
 		if busy:
 			warnings.append(f"ช่องจอด {doc.service_bay} กำลังถูกใช้โดยใบงานที่ยังไม่ปิด: {', '.join(busy)}")
 
-	warnings.extend(_get_pit_warnings(doc))
+	warnings.extend(_get_bay_type_warnings(doc))
 
 	return warnings
 
 
-def _get_pit_warnings(doc):
-	"""แถวงานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่จะได้ใช้จริงไม่มีหลุม
+def _get_bay_type_warnings(doc):
+	"""แถวงานที่ต้องใช้ช่องจอดประเภทหนึ่ง แต่ช่องจอดที่จะได้ใช้จริงเป็นอีกประเภท
 
 	ดึงข้อมูล master ทีเดียวเป็น batch ทั้ง Service Type และ Service Bay กัน N+1
 	ช่องจอดที่มีผลกับแถว = ช่องจอดของแถวเอง ถ้าไม่มีก็ตกไปใช้ช่องจอดหลักของใบงาน
 	(ตรงกับที่ apply_default_bay จะเติมให้ตอน save)
+
+	ประเภทเริ่มต้นของระบบและชื่อไทยของประเภท ถูกอ่านเฉพาะตอนที่จำเป็นจริง ๆ (มีงานที่ไม่ระบุ
+	ประเภท / มีคำเตือนที่ต้องแสดงชื่อ) ใบงานที่ช่องจอดถูกประเภทอยู่แล้วซึ่งเป็นกรณีปกติ
+	จึงเสียแค่ 2 query เท่าเดิม
 	"""
 	pairs = []
 	for row in doc.service_types:
@@ -1221,35 +1227,59 @@ def _get_pit_warnings(doc):
 	service_types = {service_type for service_type, _ in pairs}
 	bays = {bay for _, bay in pairs}
 
-	needs_pit = set(
-		frappe.get_all(
+	required_types = {
+		row["name"]: row["bay_type"]
+		for row in frappe.get_all(
 			"Service Type",
-			filters={"name": ["in", list(service_types)], "requires_pit": 1},
-			pluck="name",
+			filters={"name": ["in", list(service_types)]},
+			fields=["name", "bay_type"],
 		)
-	)
-	if not needs_pit:
-		return []
+	}
 
-	has_pit = set(
-		frappe.get_all(
+	bay_types = {
+		row["name"]: row["bay_type"]
+		for row in frappe.get_all(
 			"Service Bay",
-			filters={"name": ["in", list(bays)], "has_pit": 1},
-			pluck="name",
+			filters={"name": ["in", list(bays)]},
+			fields=["name", "bay_type"],
 		)
-	)
+	}
 
-	warnings = []
+	default_bay_type = None
+	if any(not required_types.get(service_type) for service_type in service_types):
+		default_bay_type = get_default_bay_type()
+
+	mismatches = []
 	seen = set()
 	for service_type, bay in pairs:
-		if service_type not in needs_pit or bay in has_pit:
+		required = required_types.get(service_type) or default_bay_type
+		actual = bay_types.get(bay)
+		if not required or not actual or required == actual:
 			continue
 		if (service_type, bay) in seen:
 			continue
 		seen.add((service_type, bay))
-		warnings.append(f"งาน {service_type} ต้องใช้หลุมซ่อม แต่ช่องจอด {bay} ไม่มีหลุม")
+		mismatches.append((service_type, bay, required, actual))
 
-	return warnings
+	if not mismatches:
+		return []
+
+	# ชื่อไทยของประเภท ดึงทีเดียวและเฉพาะตอนที่มีคำเตือนจริง — ใบงานที่ช่องจอดถูกประเภทอยู่แล้ว
+	# ซึ่งเป็นกรณีปกติ จึงยังเสีย query เท่าเดิม ส่วนข้อความที่ผู้ใช้เห็นเป็นภาษาไทยเหมือน
+	# คำเตือนฝั่งนัดหมาย ไม่ใช่รหัสประเภทดิบ
+	wanted = {required for _, _, required, _ in mismatches} | {actual for _, _, _, actual in mismatches}
+	labels = {
+		row["name"]: row["bay_type_name"] or row["name"]
+		for row in frappe.get_all(
+			"Bay Type", filters={"name": ["in", list(wanted)]}, fields=["name", "bay_type_name"]
+		)
+	}
+
+	return [
+		f"งาน {service_type} ต้องใช้ช่องจอดประเภท {labels.get(required, required)} "
+		f"แต่ช่องจอด {bay} เป็นประเภท {labels.get(actual, actual)}"
+		for service_type, bay, required, actual in mismatches
+	]
 
 
 @frappe.whitelist()

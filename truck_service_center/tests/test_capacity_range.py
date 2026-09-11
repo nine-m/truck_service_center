@@ -29,6 +29,9 @@ TEST_BAY_A = "ZZ-TEST-BAY-01"
 TEST_BAY_B = "ZZ-TEST-BAY-02"
 OVERRIDE_REASON = "ทดสอบปิดทำการ"
 
+# ประเภทช่องจอดที่ seed มากับแอป — ใช้ของจริงเพื่อให้แถวทดสอบมีมากกว่าหนึ่งประเภท
+PIT_BAY_TYPE = "PIT"
+
 
 class TestCapacityRange(IntegrationTestCase):
 	"""ช่วงวันต้องครบทุกวัน ตัวเลขต้องตรงกับฉบับรายวัน และช่วงยาวผิดปกติต้องถูกปฏิเสธ"""
@@ -39,15 +42,18 @@ class TestCapacityRange(IntegrationTestCase):
 
 		cls.today = getdate(today())
 		# วันที่ปิดด้วย override — เว้น service_bay ว่างเพื่อให้มีผลทุกช่องจอด
-		cls.closed_date = getdate(add_days(cls.today, 2))
+		# ต้องเลือกวันที่ยังไม่มี override ของจริงบน site ด้วย เพราะ Bay Capacity Override
+		# ห้ามซ้ำวัน+ช่องจอดเดียวกัน วันหยุดที่ผู้ใช้ตั้งไว้จริงจะทำให้ setUpClass ล้มทั้งคลาส
+		cls.closed_date = cls.pick_date_without_override()
 
-		for bay_name, has_pit in ((TEST_BAY_A, 1), (TEST_BAY_B, 0)):
+		for bay_name, bay_type in ((TEST_BAY_A, PIT_BAY_TYPE), (TEST_BAY_B, None)):
 			if not frappe.db.exists("Service Bay", bay_name):
 				frappe.get_doc(
 					{
 						"doctype": "Service Bay",
 						"bay_name": bay_name,
-						"has_pit": has_pit,
+						# เว้น bay_type ว่าง = ให้ controller เติมประเภทเริ่มต้นให้เอง
+						"bay_type": bay_type,
 						"daily_capacity_hours": 8,
 						"is_active": 1,
 					}
@@ -61,6 +67,16 @@ class TestCapacityRange(IntegrationTestCase):
 				"reason": OVERRIDE_REASON,
 			}
 		).insert()
+
+	@classmethod
+	def pick_date_without_override(cls, start_offset=2):
+		"""วันแรกนับจากวันนี้ที่ยังไม่มีรายการปรับชั่วโมงรับงานของจริง"""
+		for offset in range(start_offset, start_offset + 60):
+			date = getdate(add_days(cls.today, offset))
+			if not frappe.db.count("Bay Capacity Override", {"override_date": date}):
+				return date
+
+		raise RuntimeError("หาวันที่ยังไม่มี Bay Capacity Override ไม่ได้เลยใน 60 วันข้างหน้า")
 
 	def test_every_day_in_range_is_present(self):
 		"""ปฏิทินต้องได้ข้อมูลครบทุกช่อง วันที่หายไปหนึ่งวันคือช่องว่างบนหน้าจอ"""
@@ -107,6 +123,18 @@ class TestCapacityRange(IntegrationTestCase):
 
 				self.assertEqual(from_range["summary"], from_day["summary"])
 				self.assertEqual(from_range["bays"], from_day["bays"])
+				# by_type คือบรรทัดที่บอกว่าประเภทไหนเต็ม ถ้าสองทางไม่ตรงกันผู้ใช้จะเห็น
+				# คนละเรื่องระหว่างปฏิทินกับฟอร์ม เหมือนกับ summary ที่ตรึงไว้ด้านบน
+				self.assertEqual(from_range["summary"]["by_type"], from_day["summary"]["by_type"])
+
+	def test_by_type_covers_every_bay_without_changing_day_totals(self):
+		"""ยอดรวมรายประเภทต้องบวกกลับได้เท่ากับยอดรวมทั้งวันเสมอ"""
+		summary = get_capacity_range(self.today, self.today)["days"][str(self.today)]["summary"]
+
+		self.assertTrue(summary["by_type"])
+		self.assertEqual(sum(group["cap"] for group in summary["by_type"]), summary["cap"])
+		self.assertEqual(sum(group["booked"] for group in summary["by_type"]), summary["booked"])
+		self.assertIn(PIT_BAY_TYPE, [group["bay_type"] for group in summary["by_type"]])
 
 	def test_long_range_is_rejected(self):
 		"""ช่วงยาวผิดปกติต้องถูกปฏิเสธ ไม่ใช่ปล่อยให้กวาดตารางทั้งตาราง"""

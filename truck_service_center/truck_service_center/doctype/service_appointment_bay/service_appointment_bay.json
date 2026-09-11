@@ -7,7 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "service_bay",
-  "work_type",
+  "bay_type",
   "allocated_hours"
  ],
  "fields": [
@@ -22,12 +22,11 @@
   },
   {
    "columns": 4,
-   "default": "งานทั่วไป",
-   "fieldname": "work_type",
-   "fieldtype": "Select",
+   "fieldname": "bay_type",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "ประเภทงาน",
-   "options": "งานใต้ท้อง (ใช้หลุม)\nงานทั่วไป",
+   "label": "ประเภทช่องจอด",
+   "options": "Bay Type",
    "reqd": 1
   },
   {
@@ -43,7 +42,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-04 10:15:00.000000",
+ "modified": "2026-09-11 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment Bay",

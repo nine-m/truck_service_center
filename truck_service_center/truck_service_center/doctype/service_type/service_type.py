@@ -15,9 +15,26 @@ class ServiceType(Document):
 		# คำนวณยอดรวมสำหรับรายการอะไหล่
 		self.calculate_item_amounts()
 
+		self.apply_group_bay_type()
+
 		# ดึงราคาเฉพาะเมื่อ item_code ถูกเปลี่ยนแปลง
 		if self.has_value_changed("item_code"):
 			self.set_labor_rate_from_item()
+
+	def apply_group_bay_type(self):
+		"""ยังไม่ระบุประเภทช่องจอด → เติมจากค่าเริ่มต้นของกลุ่มบริการ
+
+		เติมเฉพาะตอนที่ว่างเท่านั้น ไม่ fallback ไปประเภทเริ่มต้นของระบบ เพราะการปล่อยว่างไว้
+		แปลว่า "ตามค่าเริ่มต้นของระบบ" ซึ่งเปลี่ยนตามได้ทีหลัง ต่างจากการเขียนรหัสลงไปจริง
+
+		ห้ามใช้ has_value_changed("service_type_group") เป็นเงื่อนไขทับค่า — บนเอกสารใหม่
+		มันคืน True เสมอ (get_doc_before_save เป็น None) จะทับค่าที่ผู้ใช้เพิ่งเลือกเอง
+		การทับค่าตอนเปลี่ยนกลุ่มเป็นหน้าที่ของ handler ฝั่ง client ที่รู้ว่าผู้ใช้ตั้งใจเปลี่ยน
+		"""
+		if self.bay_type or not self.service_type_group:
+			return
+
+		self.bay_type = frappe.db.get_value("Service Type Group", self.service_type_group, "default_bay_type")
 
 	def calculate_item_amounts(self):
 		"""คำนวณยอดรวมสำหรับแต่ละรายการอะไหล่ และดึงราคาจาก Price List -> Standard Rate -> Value Rate"""

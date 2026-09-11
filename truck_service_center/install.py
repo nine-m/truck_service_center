@@ -78,6 +78,15 @@ CUSTOM_FIELDS = {
 	],
 }
 
+# ประเภทช่องจอดเริ่มต้น — ช่องจอดหนึ่งช่องมีได้ประเภทเดียว และงานที่ไม่ระบุประเภท
+# จะตกมาที่ตัวที่ตั้ง is_default ไว้ ศูนย์ที่มีช่องพิเศษอื่น (ล้างอัดฉีด ฯลฯ) เพิ่มเองได้ไม่จำกัด
+DEFAULT_BAY_TYPES = [
+	{"bay_type_code": "GENERAL", "bay_type_name": "ช่องจอดทั่วไป", "is_default": 1},
+	{"bay_type_code": "PIT", "bay_type_name": "ช่องจอดมีหลุมซ่อม", "is_default": 0},
+	{"bay_type_code": "CRANE", "bay_type_name": "ช่องจอดมีเครน", "is_default": 0},
+]
+
+
 # ยี่ห้อรถบรรทุก/รถเพื่อการพาณิชย์ที่จำหน่ายในประเทศไทย
 DEFAULT_VEHICLE_BRANDS = [
 	"Isuzu",
@@ -130,9 +139,35 @@ DEFAULT_ROLE_PROFILES = {
 
 def after_install():
 	create_custom_fields(CUSTOM_FIELDS)
+	# ต้องมาก่อนตัวอื่น — Service Bay.bay_type เป็นฟิลด์บังคับที่เติมจากประเภทเริ่มต้น
+	# ถ้ายังไม่มี Bay Type เลย การสร้างช่องจอดครั้งแรกจะทำไม่ได้
+	create_default_bay_types()
 	create_default_roles()
 	create_default_role_profiles()
 	create_default_vehicle_brands()
+
+
+def create_default_bay_types():
+	"""สร้างประเภทช่องจอดเริ่มต้น (idempotent — ข้ามตัวที่มีอยู่แล้ว ไม่ทับค่าที่ผู้ใช้แก้)"""
+	created = 0
+	for bay_type in DEFAULT_BAY_TYPES:
+		if frappe.db.exists("Bay Type", bay_type["bay_type_code"]):
+			continue
+
+		doc = frappe.get_doc(
+			{
+				"doctype": "Bay Type",
+				"is_active": 1,
+				**bay_type,
+			}
+		)
+		doc.insert(ignore_permissions=True)
+		created += 1
+
+	if created:
+		frappe.db.commit()
+
+	print(f"✓ สร้างประเภทช่องจอดเริ่มต้นเรียบร้อย ({created} รายการ)")
 
 
 def create_default_roles():

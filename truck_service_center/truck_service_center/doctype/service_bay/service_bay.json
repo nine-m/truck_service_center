@@ -8,7 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "bay_name",
-  "has_pit",
+  "bay_type",
   "daily_capacity_hours",
   "column_break_1",
   "is_active",
@@ -25,11 +25,13 @@
    "unique": 1
   },
   {
-   "description": "ช่องจอดที่มีหลุมซ่อม ใช้กับงานเปลี่ยนถ่ายของเหลวหรืองานใต้ท้องรถได้",
-   "fieldname": "has_pit",
-   "fieldtype": "Check",
+   "description": "ช่องจอดหนึ่งช่องมีได้ประเภทเดียว — เว้นว่างไว้ระบบจะเติมประเภทเริ่มต้นให้ตอนบันทึก",
+   "fieldname": "bay_type",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "มีหลุมซ่อม"
+   "label": "ประเภทช่องจอด",
+   "options": "Bay Type",
+   "reqd": 1
   },
   {
    "default": "8",
@@ -63,7 +65,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-04 10:00:00.000000",
+ "modified": "2026-09-11 09:10:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Bay",

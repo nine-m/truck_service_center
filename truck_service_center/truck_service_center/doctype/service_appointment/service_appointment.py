@@ -8,6 +8,8 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import add_days, add_to_date, date_diff, flt, get_datetime, get_time, getdate
 
+from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
+
 # นัดหมายที่ไม่กินความจุของช่องจอด (ตรงกับตัวกรองเดิมของ check_slot_availability)
 EXCLUDED_STATUSES = ("Cancelled", "No Show")
 
@@ -42,11 +44,12 @@ STATUS_FULL = "เต็ม"
 STATUS_NEAR_FULL = "ใกล้เต็ม"
 STATUS_FREE = "ว่าง"
 
-# ชนิดงานในตารางช่องจอด — ต้องตรงกับ options ของ Service Appointment Bay.work_type เป๊ะ
-WORK_TYPE_PIT = "งานใต้ท้อง (ใช้หลุม)"
-WORK_TYPE_GENERAL = "งานทั่วไป"
-
-NO_PIT_BAY_WARNING = "มีงานที่ต้องใช้หลุมซ่อม แต่ไม่มีช่องจอดที่มีหลุมเปิดใช้งาน — ระบบรวมเป็นงานทั่วไปให้ก่อน"
+# งานที่ไม่รู้ว่าต้องใช้ช่องจอดประเภทไหน (ไม่ได้ตั้งที่ Service Type และระบบไม่มีประเภทเริ่มต้น)
+# จัดช่องจอดให้ไม่ได้เลย ต่างจากประเภทที่รู้แต่วันนั้นไม่มีช่องเปิด จึงต้องคนละข้อความ
+NO_DEFAULT_BAY_TYPE_WARNING = (
+	"มีงาน {hours} ชม. ที่ยังไม่รู้ว่าต้องใช้ช่องจอดประเภทไหน — "
+	"ตั้งประเภทช่องจอดให้ประเภทบริการ หรือตั้งประเภทเริ่มต้นที่ Bay Type ก่อน"
+)
 
 # วันที่ไม่มีช่องจอดเปิดใช้งานเลย ไม่ใช่ "เต็ม" แต่คือยังตั้งค่าระบบไม่เสร็จ
 NO_ACTIVE_BAY_NOTE = "ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน"
@@ -118,25 +121,32 @@ def availability_status(cap, booked, is_closed=False):
 	return STATUS_FREE
 
 
-def build_day_rows(bays, caps, booked_hours):
+def build_day_rows(bays, caps, booked_hours, bay_type_names=None):
 	"""แถวสถานะต่อช่องจอดของวันหนึ่ง — รูปเดียวกับที่ dialog/ฟอร์ม/ปฏิทินใช้ร่วมกัน
 
 	แยกออกมาเป็น pure function เพื่อให้ get_bay_availability (ทีละวัน) กับ
 	get_capacity_range (ทีละช่วง) ประกอบแถวด้วยโค้ดชุดเดียวกัน ไม่มีทางเพี้ยนจากกัน
 
+	bay_type_names เป็น map รหัส → ชื่อไทย ที่ผู้เรียกดึงมาทีเดียวแล้วส่งต่อ ไม่ใช่ query
+	รายแถว — ปฏิทินหนึ่งเดือนมี 42 วันคูณจำนวนช่องจอด
+
 	free ติดลบได้ตามเดิม — ส่วนที่เกินคือชั่วโมง OT ที่จองไปแล้ว ไม่ใช่ศูนย์
 	"""
+	bay_type_names = bay_type_names or {}
+
 	rows = []
 	for bay in bays or []:
 		name = bay.get("name")
 		cap_info = caps.get(name) or {}
 		cap = flt(cap_info.get("cap"))
 		booked = flt((booked_hours or {}).get(name), 2)
+		bay_type = bay.get("bay_type")
 		rows.append(
 			{
 				"bay": name,
 				"bay_name": bay.get("bay_name"),
-				"has_pit": int(bay.get("has_pit") or 0),
+				"bay_type": bay_type,
+				"bay_type_name": bay_type_names.get(bay_type) or bay_type,
 				"cap": cap,
 				"cap_source": cap_info.get("source"),
 				"is_closed": bool(cap_info.get("is_closed")),
@@ -212,7 +222,42 @@ def summarize_day(rows, day_note=""):
 		"is_closed": is_closed,
 		"has_bays": has_bays,
 		"day_note": day_note or ("" if has_bays else NO_ACTIVE_BAY_NOTE),
+		"by_type": summarize_by_bay_type(rows),
 	}
+
+
+def summarize_by_bay_type(rows):
+	"""ซอยตัวเลขของวันตามประเภทช่องจอด — สูตร clamp ต่อช่องชุดเดียวกับระดับวัน
+
+	ความจุถูกแบ่งเป็นส่วน ๆ ตามประเภทตั้งแต่เปลี่ยนมาใช้ Bay Type: งานทั่วไปยืมช่องที่มีหลุม
+	ไม่ได้อีกแล้ว ยอดรวมทั้งวันจึงบอกความจริงไม่หมด บรรทัดรายประเภทคือสิ่งที่บอก
+	(ตัวเลขรวมระดับวันไม่เปลี่ยน — นี่คือการซอยกลุ่ม ไม่ใช่การคิดใหม่)
+	"""
+	groups = {}
+	for row in rows or []:
+		groups.setdefault(row.get("bay_type"), []).append(row)
+
+	summaries = []
+	for bay_type, type_rows in groups.items():
+		cap = flt(sum(flt(row.get("cap")) for row in type_rows), 2)
+		free = flt(sum(max(flt(row.get("cap")) - flt(row.get("booked")), 0.0) for row in type_rows), 2)
+		is_closed = all(row.get("is_closed") for row in type_rows)
+		summaries.append(
+			{
+				"bay_type": bay_type,
+				"bay_type_name": type_rows[0].get("bay_type_name") or bay_type,
+				"cap": cap,
+				"booked": flt(sum(flt(row.get("booked")) for row in type_rows), 2),
+				"free": free,
+				"over": flt(
+					sum(max(flt(row.get("booked")) - flt(row.get("cap")), 0.0) for row in type_rows), 2
+				),
+				"status": availability_status(cap, flt(cap - free, 2), is_closed),
+				"is_closed": is_closed,
+			}
+		)
+
+	return sorted(summaries, key=lambda item: item["bay_type_name"] or "")
 
 
 def fold_booked_hours(appointments, bay_rows):
@@ -239,70 +284,84 @@ def fold_booked_hours(appointments, bay_rows):
 	return booked
 
 
-def compute_allocation(pit_hours, general_hours, availability):
-	"""จัดช่องจอดให้นัดหมายหนึ่งใบ — สูงสุด 2 แถว (งานหลุม 1 + งานทั่วไป 1)
+def bay_type_order(bay_types, default_bay_type=None):
+	"""ลำดับการหยิบประเภทช่องจอด: ประเภทเฉพาะ (เรียงตามรหัส) ก่อน แล้วประเภทเริ่มต้นปิดท้าย
 
-	รถย้ายช่องจอดได้ครั้งเดียว จึงไม่กระจายงานลง 3 ช่องขึ้นไป ช่องเดียวรับได้ทั้งสองส่วน
-	(เป็น 2 แถวแยกตามประเภทงาน) ไม่ throw ในทุกกรณี — ความจุที่ไม่พอเป็นเรื่องของ
-	build_capacity_warnings ที่เตือนอย่างเดียวตามที่ผู้ใช้ยืนยัน
+	ใช้ร่วมกันทั้งตอนกระจายเพดานของแพ็คเกจและตอนจัดช่องจอด เพื่อให้ "ชั่วโมงที่ถูกตัด
+	ตามเพดานแพ็คเกจ หักจากงานประเภททั่วไปก่อน" เป็นกฎข้อเดียวที่ใช้ทุกที่
+	คีย์ None (ไม่รู้ประเภท) ต่อท้ายสุดเสมอ เพราะจัดช่องจอดให้ไม่ได้อยู่แล้ว
+	"""
+	present = list(bay_types)
+	specific = sorted(t for t in present if t is not None and t != default_bay_type)
+	tail = list(dict.fromkeys(t for t in (default_bay_type, None) if t in present))
+
+	return specific + tail
+
+
+def compute_allocation(hours_by_bay_type, availability, default_bay_type=None):
+	"""จัดช่องจอดให้นัดหมายหนึ่งใบ — 1 แถวต่อ 1 ประเภทช่องจอดที่มีชั่วโมง
+
+	สมมติฐานเดิมยังอยู่ (รถย้ายช่องจอดได้ ไม่กระจายงานหนึ่งประเภทลงหลายช่อง) แค่ยืดหยุ่นขึ้น
+	จาก 2 แถวตายตัวเป็น 1 แถวต่อประเภท เกณฑ์ "งานทั่วไปเลี่ยงช่องที่มีหลุม" หายไปเองโดย
+	ไม่ต้องเขียน เพราะงานลงได้เฉพาะช่องที่เป็นประเภทเดียวกันอยู่แล้ว
+
+	ประเภทที่วันนั้นไม่มีช่องจอดเปิดใช้งานเลย จะ **ไม่ถูกจัดช่องให้** (ไม่ยุบไปช่องประเภทอื่น
+	ตามที่ผู้ใช้ยืนยัน) แล้วคืนกลับเป็น dict {ประเภท: ชั่วโมง} ให้ผู้เรียกไปทำต่อ — ข้อความเตือน
+	ประกอบที่ build_capacity_warnings ที่เดียว จะได้ไม่เตือนซ้อนกันสองที่และไม่ต้องรู้จักวันที่
+
+	ไม่ throw ในทุกกรณี — ความจุที่ไม่พอเป็นเรื่องของคำเตือนตามที่ผู้ใช้ยืนยัน
 	"""
 	allocations = []
-	warnings = []
+	unallocatable = {}
 
-	pit_hours = flt(pit_hours)
-	general_hours = flt(general_hours)
-	if not availability or (pit_hours <= 0 and general_hours <= 0):
-		return allocations, warnings
+	free = {row.get("bay"): flt(row.get("free")) for row in availability or []}
+	bays_by_type = {}
+	for row in availability or []:
+		bays_by_type.setdefault(row.get("bay_type"), []).append(row)
 
-	free = {row.get("bay"): flt(row.get("free")) for row in availability}
+	for bay_type in bay_type_order(hours_by_bay_type or {}, default_bay_type):
+		hours = flt((hours_by_bay_type or {}).get(bay_type))
+		if hours <= 0:
+			continue
 
-	if pit_hours > 0:
-		pit_bays = [row for row in availability if row.get("has_pit")]
-		if pit_bays:
-			# ช่องที่รับไหวมาก่อน แล้วค่อยดูช่องที่ว่างที่สุด
-			chosen = max(pit_bays, key=lambda row: (free[row["bay"]] >= pit_hours, free[row["bay"]]))
-			allocations.append(
-				{
-					"service_bay": chosen["bay"],
-					"work_type": WORK_TYPE_PIT,
-					"allocated_hours": flt(pit_hours, 2),
-				}
-			)
-			# หักช่องที่เพิ่งจองไปก่อน จะได้ไม่เลือกช่องเดิมทั้งที่เต็มแล้ว
-			free[chosen["bay"]] -= pit_hours
-		else:
-			warnings.append(NO_PIT_BAY_WARNING)
-			general_hours += pit_hours
+		candidates = bays_by_type.get(bay_type) or []
+		# ไม่รู้ประเภทก็จัดไม่ได้ ไม่ว่าจะมีช่องจอดที่ยังไม่ได้ตั้งประเภทค้างอยู่หรือไม่
+		if bay_type is None or not candidates:
+			unallocatable[bay_type] = flt(hours, 2)
+			continue
 
-	if general_hours > 0:
-		# ช่องที่รับไหว > ช่องที่ไม่มีหลุม (กันหลุมไว้ให้งานที่ต้องใช้จริง) > ช่องที่ว่างที่สุด
-		chosen = max(
-			availability,
-			key=lambda row: (
-				free[row["bay"]] >= general_hours,
-				not row.get("has_pit"),
-				free[row["bay"]],
-			),
-		)
+		# ช่องที่รับไหวมาก่อน แล้วค่อยดูช่องที่ว่างที่สุด (เสมอกันได้ช่องแรกตาม bay_name asc)
+		chosen = max(candidates, key=lambda row: (free[row["bay"]] >= hours, free[row["bay"]]))
 		allocations.append(
 			{
 				"service_bay": chosen["bay"],
-				"work_type": WORK_TYPE_GENERAL,
-				"allocated_hours": flt(general_hours, 2),
+				"bay_type": bay_type,
+				"allocated_hours": flt(hours, 2),
 			}
 		)
+		# หักช่องที่เพิ่งจองไปก่อน จะได้ไม่เลือกช่องเดิมทั้งที่เต็มแล้ว
+		free[chosen["bay"]] -= hours
 
-	return allocations, warnings
+	return allocations, unallocatable
 
 
-def build_capacity_warnings(doc, availability, cap_map, pit_service_types):
+def build_capacity_warnings(
+	doc, availability, cap_map, bay_type_by_service_type, default_bay_type=None, bay_type_names=None
+):
 	"""ข้อความเตือนเรื่องความจุ — คืนเป็น list ไม่ throw (ผู้ใช้ยืนยันว่าเตือนอย่างเดียว)
 
 	แยกเป็นฟังก์ชัน pure ระดับ module แบบเดียวกับ get_bay_warnings ของใบสั่งงาน
 	เพื่อให้ validate, endpoint ตรวจก่อนบันทึก และเทสต์ ใช้ตรรกะชุดเดียวกัน
+
+	bay_type_names (รหัส → ชื่อไทย) มีไว้ให้ข้อความอ่านรู้เรื่องเท่านั้น ไม่มีก็ยังทำงานได้
+	แค่ขึ้นเป็นรหัสแทน
 	"""
 	warnings = []
 	date = doc.get("appointment_date")
+	bay_type_names = bay_type_names or {}
+
+	def label(bay_type):
+		return bay_type_names.get(bay_type) or bay_type
 
 	if not availability:
 		return ["ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน — ระบบจัดช่องจอดให้ไม่ได้"]
@@ -311,6 +370,24 @@ def build_capacity_warnings(doc, availability, cap_map, pit_service_types):
 		(cap_map.get(row.get("bay")) or {}).get("source") == CAP_SOURCE_WEEKLY_HOLIDAY for row in availability
 	):
 		warnings.append(f"วันที่ {date} เป็นวันหยุดประจำสัปดาห์ตามการตั้งค่า — งานที่จองถือเป็นงาน OT")
+
+	# ชั่วโมงของประเภทที่วันนั้นไม่มีช่องจอดเปิดใช้งานเลย — คำเตือนเป็นตัวเดียวที่กันไม่ให้
+	# ชั่วโมงส่วนนี้หายไปเงียบ ๆ (ไม่ถูกจัดช่อง = ไม่ถูกนับเป็น booked ของวันนั้นด้วย)
+	hours_by_bay_type = split_hours_by_bay_type(doc, bay_type_by_service_type, default_bay_type)
+	types_with_bays = {row.get("bay_type") for row in availability}
+	unallocatable_hours = 0.0
+	for bay_type in bay_type_order(hours_by_bay_type, default_bay_type):
+		hours = flt(hours_by_bay_type.get(bay_type), 2)
+		if hours <= 0 or (bay_type is not None and bay_type in types_with_bays):
+			continue
+
+		unallocatable_hours += hours
+		if bay_type is None:
+			warnings.append(NO_DEFAULT_BAY_TYPE_WARNING.format(hours=hours))
+		else:
+			warnings.append(
+				f"ไม่มีช่องจอดประเภท {label(bay_type)} ที่เปิดใช้งานวันที่ {date} — ยังไม่ได้จัดช่องจอดให้ {hours} ชม."
+			)
 
 	rows = doc.get("bay_allocations") or []
 	if not rows:
@@ -347,20 +424,23 @@ def build_capacity_warnings(doc, availability, cap_map, pit_service_types):
 				f"({flt(cap, 2)} ชม.) — งานอาจทำข้ามวัน"
 			)
 
+	# แถวที่ถูกแก้มือไปลงช่องผิดประเภท (ระบบจัดเองไม่มีทางได้ผลแบบนี้)
 	for row in rows:
-		if row.get("work_type") != WORK_TYPE_PIT:
-			continue
 		info = by_bay.get(row.get("service_bay"))
-		if info and not info.get("has_pit"):
-			warnings.append(f"งานใต้ท้องถูกจัดลงช่องจอด {row.get('service_bay')} ซึ่งไม่มีหลุมซ่อม")
-
-	pit_hours, _general_hours = split_pit_hours(doc, pit_service_types)
-	if pit_hours > 0 and not any(row.get("has_pit") for row in availability):
-		warnings.append(NO_PIT_BAY_WARNING)
+		required = row.get("bay_type")
+		actual = info.get("bay_type") if info else None
+		if info and required and actual and required != actual:
+			warnings.append(
+				f"งานประเภท {label(required)} ถูกจัดลงช่องจอด {row.get('service_bay')} "
+				f"ซึ่งเป็นประเภท {info.get('bay_type_name') or actual}"
+			)
 
 	allocated = flt(sum(flt(row.get("allocated_hours")) for row in rows), 2)
 	duration = flt(doc.get("estimated_duration"), 2)
-	if abs(allocated - duration) > 0.01:
+	# เทียบกับชั่วโมงที่ "จัดได้" ไม่ใช่ระยะเวลาทั้งใบ ไม่งั้นทุกใบที่มีชั่วโมงจัดไม่ได้จะเห็น
+	# ข้อความชวนกด "จัด Bay ใหม่" ที่กดแล้วไม่มีวันหาย (ปุ่มก็จัดให้ไม่ได้อยู่ดี)
+	expected = flt(duration - unallocatable_hours, 2)
+	if abs(allocated - expected) > 0.01:
 		warnings.append(
 			f"ชั่วโมงในตารางช่องจอดรวม {allocated} ชม. ไม่ตรงกับระยะเวลางาน {duration} ชม. "
 			"— กดปุ่ม 'จัด Bay ใหม่' ถ้าต้องการให้ระบบจัดใหม่"
@@ -379,7 +459,7 @@ def get_bay_availability(date, exclude_appointment=None):
 	bays = frappe.get_all(
 		"Service Bay",
 		filters={"is_active": 1},
-		fields=["name", "bay_name", "has_pit", "daily_capacity_hours"],
+		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
@@ -393,10 +473,12 @@ def get_bay_availability(date, exclude_appointment=None):
 		order_by="creation asc",
 	)
 
+	bay_type_names, default_bay_type = get_bay_type_info()
+
 	caps = resolve_bay_caps(bays, day_mode, overrides)
 	booked_hours = get_booked_hours(date, exclude_appointment)
 
-	rows = build_day_rows(bays, caps, booked_hours)
+	rows = build_day_rows(bays, caps, booked_hours, bay_type_names)
 	day_note = build_day_notes(day_mode, overrides)
 
 	return {
@@ -406,7 +488,22 @@ def get_bay_availability(date, exclude_appointment=None):
 		"day_closed": bool(rows) and all(row["is_closed"] for row in rows),
 		"day_note": day_note,
 		"summary": summarize_day(rows, day_note),
+		# พ่วงมากับ payload เพื่อให้ผู้เรียก (จัดช่องจอด/คำเตือน) ไม่ต้องยิง query ซ้ำ
+		"bay_type_names": bay_type_names,
+		"default_bay_type": default_bay_type,
 	}
+
+
+def get_bay_type_info():
+	"""ชื่อไทยของทุกประเภทช่องจอด + ประเภทเริ่มต้น — query เดียวต่อการเปิดปฏิทิน/ฟอร์มหนึ่งครั้ง
+
+	รวมสองเรื่องไว้ใน query เดียวเพราะทุกจุดที่ต้องการป้ายชื่อ ก็ต้องการประเภทเริ่มต้นด้วยเสมอ
+	"""
+	rows = frappe.get_all("Bay Type", fields=["name", "bay_type_name", "is_default", "is_active"])
+	names = {row["name"]: row["bay_type_name"] for row in rows}
+	default = next((row["name"] for row in rows if row["is_default"] and row["is_active"]), None)
+
+	return names, default
 
 
 def get_booked_hours_range(start, end, exclude_appointment=None):
@@ -452,19 +549,24 @@ def get_booked_hours(date, exclude_appointment=None):
 	return get_booked_hours_range(date, date, exclude_appointment).get(str(date), {})
 
 
-def get_pit_service_types(doc):
-	"""ชื่องานในเอกสารที่ต้องใช้หลุมซ่อม — query เดียว (mirror _get_pit_warnings ของใบสั่งงาน)"""
+def get_bay_type_by_service_type(doc):
+	"""ประเภทช่องจอดที่แต่ละงานในเอกสารต้องใช้ — query เดียว
+
+	(mirror _get_bay_type_warnings ของใบสั่งงาน) ค่า None แปลว่างานนั้นไม่ได้ระบุไว้
+	ผู้เรียกจะถอยไปใช้ประเภทเริ่มต้นของระบบเอง
+	"""
 	names = {row.get("service_type") for row in (doc.get("service_types") or []) if row.get("service_type")}
 	if not names:
-		return set()
+		return {}
 
-	return set(
-		frappe.get_all(
+	return {
+		row["name"]: row["bay_type"]
+		for row in frappe.get_all(
 			"Service Type",
-			filters={"name": ["in", list(names)], "requires_pit": 1},
-			pluck="name",
+			filters={"name": ["in", list(names)]},
+			fields=["name", "bay_type"],
 		)
-	)
+	}
 
 
 def get_capacity_warnings(doc):
@@ -475,7 +577,12 @@ def get_capacity_warnings(doc):
 	availability = get_bay_availability(doc.get("appointment_date"), exclude_appointment=doc.get("name"))
 
 	return build_capacity_warnings(
-		doc, availability["bays"], availability["caps"], get_pit_service_types(doc)
+		doc,
+		availability["bays"],
+		availability["caps"],
+		get_bay_type_by_service_type(doc),
+		availability["default_bay_type"],
+		availability["bay_type_names"],
 	)
 
 
@@ -491,50 +598,66 @@ def dedupe(messages):
 	return unique
 
 
-def split_pit_hours(doc, pit_service_types):
-	"""แยกชั่วโมงงานเป็น (งานที่ต้องใช้หลุม, งานทั่วไป)
+def split_hours_by_bay_type(doc, bay_type_by_service_type, default_bay_type=None):
+	"""แยกชั่วโมงงานเป็น {ประเภทช่องจอด: ชั่วโมง} — คีย์ None คือไม่ระบุและระบบไม่มีประเภทเริ่มต้น
 
 	โครงเดียวกับ ServiceAppointment.calculate_estimated_duration ด้านล่าง — ต้องแก้คู่กัน
-	ผลรวมของสองค่าที่คืนต้องเท่ากับ estimated_duration เสมอ มิฉะนั้นจะขึ้นคำเตือน stale
+	(รวมถึง mirror ฝั่ง js ใน service_appointment.js) ผลรวมของค่าที่คืนต้องเท่ากับ
+	estimated_duration เสมอ มิฉะนั้นจะขึ้นคำเตือน stale
 
-	แพ็คเกจที่กรอกเวลาซ่อมจริงไว้ ใช้ค่านั้นเป็นเพดานของทั้งแพ็คเกจ ส่วนที่เป็นงานหลุม
-	จึงถูก cap ด้วยเวลาซ่อมจริงเช่นกัน (แถวหลุมรวม 5 ชม. ในแพ็คเกจ 2 ชม. → หลุม 2 ทั่วไป 0)
+	แพ็คเกจที่กรอกเวลาซ่อมจริงไว้ ใช้ค่านั้นเป็นเพดานของทั้งแพ็คเกจ แล้วกระจายให้แต่ละประเภท
+	ตาม bay_type_order (ประเภทเฉพาะก่อน ประเภทเริ่มต้นปิดท้าย) ชั่วโมงที่ถูกตัดตามเพดาน
+	จึงหักจากงานประเภททั่วไปก่อน — เคสสองประเภทให้ผลเท่ากับสูตรหลุม/ทั่วไปเดิมเป๊ะ
 	"""
 	by_package = {}
-	by_package_pit = {}
-	loose_pit = 0.0
-	loose_general = 0.0
+	by_package_types = {}
+	totals = {}
 
 	for row in doc.get("service_types") or []:
 		hours = flt(row.get("estimated_time"))
-		needs_pit = row.get("service_type") in pit_service_types
+		bay_type = (bay_type_by_service_type or {}).get(row.get("service_type")) or default_bay_type
 		package = row.get("service_package")
 		if package:
 			by_package[package] = by_package.get(package, 0.0) + hours
-			if needs_pit:
-				by_package_pit[package] = by_package_pit.get(package, 0.0) + hours
-		elif needs_pit:
-			loose_pit += hours
+			per_type = by_package_types.setdefault(package, {})
+			per_type[bay_type] = per_type.get(bay_type, 0.0) + hours
 		else:
-			loose_general += hours
+			totals[bay_type] = totals.get(bay_type, 0.0) + hours
 
-	pit_total = loose_pit
-	general_total = loose_general
 	for row in doc.get("service_packages") or []:
-		rows_total = by_package.pop(row.get("service_package"), 0.0)
-		rows_pit = by_package_pit.pop(row.get("service_package"), 0.0)
+		package = row.get("service_package")
+		rows_total = by_package.pop(package, 0.0)
+		per_type = by_package_types.pop(package, {})
 		effective = flt(row.get("repair_time_hours")) or rows_total
-		pit_part = min(rows_pit, effective)
-		pit_total += pit_part
-		general_total += effective - pit_part
+		spread_package_hours(totals, per_type, effective, default_bay_type)
 
 	# แถวงานที่แพ็คเกจต้นทางถูกลบไปแล้ว ยังต้องนับเวลาให้อยู่
 	for package, rows_total in by_package.items():
-		rows_pit = by_package_pit.pop(package, 0.0)
-		pit_total += rows_pit
-		general_total += rows_total - rows_pit
+		spread_package_hours(totals, by_package_types.pop(package, {}), rows_total, default_bay_type)
 
-	return flt(pit_total, 2), flt(general_total, 2)
+	return {bay_type: flt(hours, 2) for bay_type, hours in totals.items() if flt(hours, 2) > 0}
+
+
+def spread_package_hours(totals, hours_by_type, effective, default_bay_type=None):
+	"""กระจายเพดานเวลาของแพ็คเกจหนึ่งใบลง totals ตามลำดับประเภท (แก้ totals ในที่)
+
+	ประเภทเฉพาะรับเต็มก่อน ประเภทเริ่มต้นรับเศษที่เหลือ ส่วนเพดานที่มากกว่าผลรวมของแถว
+	(แพ็คเกจที่กรอกเวลาไว้ยาวกว่างานในนั้น หรือแพ็คเกจที่แถวงานถูกลบหมดแล้ว) ก็ตกเป็นของ
+	ประเภทเริ่มต้นเช่นกัน — ตรงกับสูตรเดิมที่ส่วนเกินตกเป็นงานทั่วไป
+	"""
+	remaining = flt(effective)
+
+	for bay_type in bay_type_order(hours_by_type, default_bay_type):
+		if remaining <= 0:
+			break
+		share = min(remaining, hours_by_type.get(bay_type, 0.0))
+		if share <= 0:
+			continue
+		totals[bay_type] = totals.get(bay_type, 0.0) + share
+		remaining -= share
+
+	if remaining > 0:
+		totals[default_bay_type] = totals.get(default_bay_type, 0.0) + remaining
 
 
 class ServiceAppointment(Document):
@@ -558,7 +681,7 @@ class ServiceAppointment(Document):
 		ใช้ .pop กันนับซ้ำ และบวกเศษที่เหลือใน by_package กลับเข้าไป เพื่อครอบคลุมกรณีที่
 		แถวแพ็คเกจถูกลบไปแล้วแต่แถวงานของมันยังอยู่
 
-		โครงเดียวกับ split_pit_hours ด้านบน — ต้องแก้คู่กัน
+		โครงเดียวกับ split_hours_by_bay_type ด้านบน — ต้องแก้คู่กัน
 		"""
 		by_package = {}
 		loose = 0.0
@@ -663,17 +786,24 @@ class ServiceAppointment(Document):
 			return
 
 		availability = get_bay_availability(self.appointment_date, exclude_appointment=self.name)
-		pit_hours, general_hours = split_pit_hours(self, get_pit_service_types(self))
-		# คำเตือนจากการจัดช่องจอดไม่ msgprint ที่นี่ — warn_capacity_issues ครอบคลุมให้แล้ว
-		allocations, _warnings = compute_allocation(pit_hours, general_hours, availability["bays"])
+		default_bay_type = availability["default_bay_type"]
+		hours_by_bay_type = split_hours_by_bay_type(
+			self, get_bay_type_by_service_type(self), default_bay_type
+		)
+		# ชั่วโมงที่จัดช่องไม่ได้ไม่ msgprint ที่นี่ — warn_capacity_issues ครอบคลุมให้แล้ว
+		allocations, _unallocatable = compute_allocation(
+			hours_by_bay_type, availability["bays"], default_bay_type
+		)
 		if not allocations:
 			return
 
 		for row in allocations:
 			self.append("bay_allocations", row)
 
+		bay_type_names = availability["bay_type_names"]
 		summary = ", ".join(
-			f"{row['service_bay']} — {row['work_type']} {flt(row['allocated_hours'], 2)} ชม."
+			f"{row['service_bay']} — {bay_type_names.get(row['bay_type']) or row['bay_type']} "
+			f"{flt(row['allocated_hours'], 2)} ชม."
 			for row in allocations
 		)
 		frappe.msgprint(f"จัดช่องจอดอัตโนมัติ: {summary}", indicator="green")
@@ -707,17 +837,18 @@ class ServiceAppointment(Document):
 		service_order.service_date = self.appointment_date
 		service_order.technician = self.assigned_technician
 
-		# ช่องจอดหลัก = ช่องที่จองชั่วโมงไว้มากที่สุด ส่วนแถวงานได้ช่องตามประเภทงานของมัน
-		bay_by_work_type = {}
+		# ช่องจอดหลัก = ช่องที่จองชั่วโมงไว้มากที่สุด ส่วนแถวงานได้ช่องตามประเภทช่องจอดที่มันต้องใช้
+		bay_by_bay_type = {}
 		for row in self.bay_allocations or []:
-			bay_by_work_type.setdefault(row.work_type, row.service_bay)
+			bay_by_bay_type.setdefault(row.bay_type, row.service_bay)
 
 		main_bay = None
 		if self.bay_allocations:
 			main_bay = max(self.bay_allocations, key=lambda row: flt(row.allocated_hours)).service_bay
 			service_order.service_bay = main_bay
 
-		pit_service_types = get_pit_service_types(self) if self.bay_allocations else set()
+		bay_type_by_service_type = get_bay_type_by_service_type(self) if self.bay_allocations else {}
+		default_bay_type = get_default_bay_type() if self.bay_allocations else None
 
 		# ส่งที่อยู่ไปยัง Service Order
 		if self.customer_address:
@@ -758,7 +889,7 @@ class ServiceAppointment(Document):
 		# คัดลอก service types จากตาราง (ถ้ามี)
 		if self.service_types:
 			for st_row in self.service_types:
-				work_type = WORK_TYPE_PIT if st_row.service_type in pit_service_types else WORK_TYPE_GENERAL
+				required_type = bay_type_by_service_type.get(st_row.service_type) or default_bay_type
 				service_order.append(
 					"service_types",
 					{
@@ -769,7 +900,7 @@ class ServiceAppointment(Document):
 						"labor_charges": st_row.labor_charges,
 						"service_package": st_row.service_package,
 						"remark": st_row.remark,
-						"service_bay": bay_by_work_type.get(work_type) or main_bay,
+						"service_bay": bay_by_bay_type.get(required_type) or main_bay,
 					},
 				)
 		# คัดลอก service items (อะไหล่)
@@ -828,8 +959,9 @@ def get_bay_day_status(date, exclude_appointment=None):
 def get_capacity_range(start, end):
 	"""ความจุรายวันตลอดช่วง สำหรับแปะตัวเลขลงทุกช่องของปฏิทิน
 
-	ปฏิทินเปิดหนึ่งครั้ง = 4 query + settings ที่ cache ไว้ ไม่ว่าช่วงจะยาวแค่ไหน
-	ห้ามวนเรียก get_bay_availability รายวันเด็ดขาด — เดือนหนึ่งจะกลายเป็น 42 คูณ 4 query
+	ปฏิทินเปิดหนึ่งครั้ง = 5 query + settings ที่ cache ไว้ ไม่ว่าช่วงจะยาวแค่ไหน
+	(ช่องจอด / override / นัดหมาย / แถวช่องจอด / ป้ายชื่อประเภทช่องจอด)
+	ห้ามวนเรียก get_bay_availability รายวันเด็ดขาด — เดือนหนึ่งจะกลายเป็น 42 คูณ 5 query
 
 	รูปแถวใน "bays" มาจาก build_day_rows ตัวเดียวกับที่ฟอร์มใช้ ตัวเลขของปฏิทินกับฟอร์ม
 	จึงตรงกันโดยโครงสร้าง ไม่ใช่เพราะบังเอิญเขียนเหมือนกัน
@@ -847,11 +979,14 @@ def get_capacity_range(start, end):
 	bays = frappe.get_all(
 		"Service Bay",
 		filters={"is_active": 1},
-		fields=["name", "bay_name", "has_pit", "daily_capacity_hours"],
+		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
 	settings = frappe.get_cached_doc("Truck Service Center Settings")
+
+	# ดึงป้ายชื่อประเภททีเดียวนอกลูป — ในลูปคือ pure function ล้วน ไม่มี query รายวัน
+	bay_type_names, _default_bay_type = get_bay_type_info()
 
 	overrides = frappe.get_all(
 		"Bay Capacity Override",
@@ -874,7 +1009,7 @@ def get_capacity_range(start, end):
 		day_mode = settings.get(WEEKDAY_FIELDS[date.weekday()])
 		day_overrides = overrides_by_date.get(key, [])
 		caps = resolve_bay_caps(bays, day_mode, day_overrides)
-		rows = build_day_rows(bays, caps, booked.get(key, {}))
+		rows = build_day_rows(bays, caps, booked.get(key, {}), bay_type_names)
 		days[key] = {
 			"summary": summarize_day(rows, build_day_notes(day_mode, day_overrides)),
 			"bays": rows,
@@ -904,25 +1039,33 @@ def check_appointment_capacity(doc):
 	availability = get_bay_availability(
 		appointment.appointment_date, exclude_appointment=appointment.get("name")
 	)
-	pit_service_types = get_pit_service_types(appointment)
+	bay_type_by_service_type = get_bay_type_by_service_type(appointment)
+	default_bay_type = availability["default_bay_type"]
 
-	warnings = []
 	if not appointment.bay_allocations:
-		pit_hours, general_hours = split_pit_hours(appointment, pit_service_types)
-		allocations, alloc_warnings = compute_allocation(pit_hours, general_hours, availability["bays"])
+		hours_by_bay_type = split_hours_by_bay_type(appointment, bay_type_by_service_type, default_bay_type)
+		# ชั่วโมงที่จัดไม่ได้ไม่ต้องรับมาเตือนเอง — build_capacity_warnings คิดเองอีกรอบ
+		# จากเอกสารเดียวกัน (ต้องคิดอยู่แล้วเพราะ path validate ไม่ได้ผ่านตรงนี้)
+		allocations, _unallocatable = compute_allocation(
+			hours_by_bay_type, availability["bays"], default_bay_type
+		)
 		for row in allocations:
 			appointment.append("bay_allocations", row)
-		warnings.extend(alloc_warnings)
 
-	warnings.extend(
-		build_capacity_warnings(appointment, availability["bays"], availability["caps"], pit_service_types)
+	warnings = build_capacity_warnings(
+		appointment,
+		availability["bays"],
+		availability["caps"],
+		bay_type_by_service_type,
+		default_bay_type,
+		availability["bay_type_names"],
 	)
 
 	return {
 		"allocations": [
 			{
 				"service_bay": row.service_bay,
-				"work_type": row.work_type,
+				"bay_type": row.bay_type,
 				"allocated_hours": flt(row.allocated_hours, 2),
 			}
 			for row in appointment.bay_allocations or []

@@ -1,38 +1,47 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "field:group_code",
- "creation": "2026-01-23 10:00:00",
+ "autoname": "field:bay_type_code",
+ "creation": "2026-09-11 09:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "group_code",
-  "group_name",
+  "bay_type_code",
+  "bay_type_name",
   "column_break_1",
+  "is_default",
   "is_active",
-  "default_bay_type",
-  "remark"
+  "section_break_1",
+  "description"
  ],
  "fields": [
   {
-   "fieldname": "group_code",
+   "description": "รหัสสั้น ๆ เป็นตัวอักษรอังกฤษ เช่น GENERAL, PIT, CRANE",
+   "fieldname": "bay_type_code",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "รหัสกลุ่ม",
+   "label": "รหัสประเภท",
    "reqd": 1,
    "unique": 1
   },
   {
-   "fieldname": "group_name",
+   "fieldname": "bay_type_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "ชื่อกลุ่ม",
+   "label": "ชื่อประเภท",
    "reqd": 1
   },
   {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
+  },
+  {
+   "description": "งานที่ไม่ระบุประเภทช่องจอดจะใช้ประเภทนี้",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "ประเภทเริ่มต้น"
   },
   {
    "default": "1",
@@ -42,24 +51,21 @@
    "label": "เปิดใช้งาน"
   },
   {
-   "description": "ประเภทช่องจอดที่จะเติมให้ประเภทบริการในกลุ่มนี้ตอนเลือกกลุ่ม — แก้รายตัวได้ภายหลัง",
-   "fieldname": "default_bay_type",
-   "fieldtype": "Link",
-   "label": "ประเภทช่องจอดเริ่มต้นของกลุ่ม",
-   "options": "Bay Type"
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
   },
   {
-   "fieldname": "remark",
+   "fieldname": "description",
    "fieldtype": "Small Text",
-   "label": "หมายเหตุ"
+   "label": "รายละเอียด"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-11 09:10:00.000000",
+ "modified": "2026-09-11 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
- "name": "Service Type Group",
+ "name": "Bay Type",
  "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
@@ -100,11 +106,20 @@
    "read": 1,
    "report": 1,
    "role": "Technician"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Manager"
   }
  ],
- "sort_field": "modified",
- "sort_order": "DESC",
+ "quick_entry": 1,
+ "show_title_field_in_link": 1,
+ "sort_field": "bay_type_name",
+ "sort_order": "ASC",
  "states": [],
- "track_changes": 1,
- "title_field": "group_name"
+ "title_field": "bay_type_name",
+ "track_changes": 1
 }
