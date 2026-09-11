@@ -42,13 +42,17 @@ child table ที่ทุกเอกสารใช้เหมือนก�
 **Whitelisted:** `check_service_due`, `get_vehicle_service_history`, `get_customer_contact_info`, `get_vehicle_expirations`
 
 ### Service Type Group (กลุ่มบริการ)
-`autoname = field:group_code`. ฟิลด์: `group_code`, `group_name`, `is_active`, `remark`
+`autoname = field:group_code`. ฟิลด์: `group_code`, `group_name`, `is_active`, `default_bay_type` (ประเภทช่องจอดเริ่มต้นของกลุ่ม), `remark`
+`default_bay_type` เป็นแค่ค่าตั้งต้นให้ `Service Type.bay_type` เท่านั้น ไม่ได้บังคับ — แก้รายตัวได้เสมอ
 กลุ่มมาตรฐาน (seed จาก [fixtures/create_service_type_groups.py](truck_service_center/fixtures/create_service_type_groups.py)): SU100 เครื่องล่าง, EL100 ไฟฟ้า, TY100 ยาง, OT100 อื่นๆ, RM100 ระบบการทำงาน, TR100 ส่งกำลัง, WE100 เชื่อม, CH100 ตัวถัง
 
 ### Service Type (ประเภทบริการ)
 `autoname = field:service_type_name`. กำหนดบริการ + ค่าแรง + อะไหล่มาตรฐานของบริการนั้น
 
-**ฟิลด์สำคัญ:** `service_type_name`, `service_code`, `barcode` (รองรับสแกน), `maintenance_type` (PM/CM), `service_type_group`, `labor_rate`, `default_duration`, `item_code` (ผูก Item ของ ERPNext), `income_account`, `cost_center`, `items` (child → Service Type Item: อะไหล่มาตรฐาน)
+**ฟิลด์สำคัญ:** `service_type_name`, `service_code`, `barcode` (รองรับสแกน), `maintenance_type` (PM/CM), `service_type_group`, `bay_type` (ประเภทช่องจอดที่งานนี้ต้องใช้ — **เว้นว่าง = ตามประเภทเริ่มต้นของระบบ**), `labor_rate`, `default_duration`, `item_code` (ผูก Item ของ ERPNext), `income_account`, `cost_center`, `items` (child → Service Type Item: อะไหล่มาตรฐาน)
+
+`bay_type` ถูกเติมจาก `default_bay_type` ของกลุ่มตอนบันทึก **เฉพาะตอนที่ยังว่าง** ส่วนการเปลี่ยนกลุ่มบนฟอร์ม (`service_type.js`) จะทับค่าเดิมให้เลย เพราะเป็นการกระทำที่ผู้ใช้ตั้งใจ
+การปล่อยว่างไว้มีความหมายจริง ๆ คือ "ตามค่าเริ่มต้นของระบบ" ซึ่งเปลี่ยนตามได้ทีหลัง ต่างจากการเขียนรหัสลงไปตรง ๆ
 
 **Methods:** `calculate_item_amounts()`, `set_labor_rate_from_item()`
 **Whitelisted:** `bulk_update_item_prices(service_type_names)` (อัปเดตราคาอะไหล่หลายบริการพร้อมกันจาก Item Price), `get_item_price(item_code)`
@@ -58,17 +62,31 @@ child table ที่ทุกเอกสารใช้เหมือนก�
 ฟิลด์: `position_code` (เช่น EL01, EN00, SU01), `position_name`, `remark`, `is_active`
 seed จาก [fixtures/repair_position_data.py](truck_service_center/fixtures/repair_position_data.py). กลุ่มรหัส: EL ไฟฟ้า, EN เครื่องยนต์, SU ช่วงล่าง, TY ยาง
 
+### Bay Type (ประเภทช่องจอด)
+`autoname = field:bay_type_code`, `title_field = bay_type_name` + `show_title_field_in_link` (ฟิลด์ Link จึงโชว์ชื่อไทยแทนรหัส)
+ฟิลด์: `bay_type_code` (เช่น GENERAL, PIT, CRANE — บังคับตัวพิมพ์ใหญ่ตอนบันทึก), `bay_type_name`, `is_default`, `is_active`, `description`
+seed 3 รายการจาก `create_default_bay_types()` ใน [install.py](truck_service_center/install.py) (`GENERAL` เป็นค่าเริ่มต้น) — ศูนย์เพิ่มประเภทเองได้ไม่จำกัด
+
+**`is_default` มีได้ตัวเดียว** ตั้งตัวใหม่แล้วระบบปลดธงตัวเก่าให้อัตโนมัติ (last-write-wins) ตั้งบนประเภทที่ปิดใช้งานไม่ได้ และลบประเภทเริ่มต้นไม่ได้
+เพราะทั้งระบบใช้เป็น fallback ของงานที่ไม่ระบุประเภท อ่านค่าผ่าน `get_default_bay_type()` ที่เดียวเท่านั้น
+
+**Methods:** `validate_code()`, `validate_single_default()`, `on_trash()`
+**Module-level:** `get_default_bay_type()` · **Whitelisted:** `get_active_bay_types()`
+
 ### Service Bay (ช่องจอดซ่อม)
-`autoname = field:bay_name`. ช่องจอดรับรถได้คันเดียว บางช่องมีหลุมสำหรับงานเปลี่ยนถ่ายของเหลว/งานใต้ท้องรถ
-ฟิลด์: `bay_name`, `has_pit` (มีหลุมซ่อม), `daily_capacity_hours` (ชั่วโมงรับงานต่อวัน, default 8), `is_active`, `description`
-ไม่มี seed script — สร้างเองตามหน้างานจริงของแต่ละศูนย์ (patch `set_bay_capacity_defaults` เติม 8 ชม. ให้แถวเดิมที่ยังว่าง)
+`autoname = field:bay_name`. ช่องจอดรับรถได้คันเดียว และมี**ประเภทเดียว** (`Bay Type`) เช่น ช่องทั่วไป ช่องมีหลุมซ่อม ช่องมีเครน
+ฟิลด์: `bay_name`, `bay_type` (Link → Bay Type, **บังคับ**), `daily_capacity_hours` (ชั่วโมงรับงานต่อวัน, default 8), `is_active`, `description`
+`bay_type` เว้นว่างไว้ได้ตอนกรอก — `validate()` เติมประเภทเริ่มต้นให้ก่อน Frappe ตรวจฟิลด์บังคับ (validate รันก่อน `_validate_mandatory` เสมอ)
+site ที่ยังไม่มี Bay Type เลยจะได้ข้อความบอกให้ไปสร้าง master ก่อน แทน mandatory error เปล่า ๆ
+ไม่มี seed script — สร้างเองตามหน้างานจริงของแต่ละศูนย์ (patch `set_bay_capacity_defaults` เติม 8 ชม. ให้แถวเดิมที่ยังว่าง
+ส่วน `migrate_pit_to_bay_type` ย้ายธง `has_pit` เดิมมาเป็น `PIT`/`GENERAL`)
 
 `daily_capacity_hours` คือฐานของการจองนัดหมายทั้งระบบ (ดู Service Appointment) — เกินจากนี้ถือเป็น OT ระบบเตือนแต่ไม่ห้ามจอง
 
 ผูกกับใบสั่งงาน 2 ระดับ: `Service Order.service_bay` (ช่องจอดหลัก) และ `Service Order Service Type.service_bay` (รายงาน)
 แถวที่ไม่ระบุจะถูกเติมด้วยช่องจอดหลักตอน save (`apply_default_bay`) การตรวจช่องจอด **เตือนอย่างเดียว ไม่บล็อก** —
-`get_bay_warnings()` เตือนเมื่อช่องจอดหลักถูกใบงานที่ยังเปิดอยู่ใบอื่นใช้ค้าง หรือเมื่องานที่ `Service Type.requires_pit`
-ไปอยู่ในช่องจอดที่ไม่มีหลุม
+`get_bay_warnings()` เตือนเมื่อช่องจอดหลักถูกใบงานที่ยังเปิดอยู่ใบอื่นใช้ค้าง หรือเมื่องานที่ต้องใช้ช่องจอดประเภทหนึ่ง
+(`Service Type.bay_type` หรือประเภทเริ่มต้นถ้าเว้นว่าง) ไปอยู่ในช่องจอดที่เป็นอีกประเภท
 
 ### Bay Capacity Override (ปรับชั่วโมงรับงานรายวัน)
 `autoname = format:BCO-{override_date}-{####}`. ฟิลด์: `override_date`, `service_bay` (**เว้นว่าง = มีผลทุกช่องจอด**), `capacity_hours` (**0 = ปิดทำการ**), `reason`
@@ -89,19 +107,23 @@ seed จาก [fixtures/repair_position_data.py](truck_service_center/fixtures/
 ### Service Appointment (ใบนัดหมาย) — submittable, `APT-.YYYY.-`
 จองคิวบริการ คุมความจุเป็น**ชั่วโมงต่อช่องจอดต่อวัน** และดึงข้อมูลรถ/ลูกค้าอัตโนมัติ
 
-**ฟิลด์สำคัญ:** `appointment_date`, `appointment_time` (**ไม่บังคับ** — เว้นว่าง = ทั้งวันบนปฏิทิน), `appointment_start/end` + `all_day` (ใช้วาดปฏิทิน), `bay_allocations` (ตาราง `Service Appointment Bay`: ช่องจอด / ประเภทงาน / ชั่วโมงที่จอง), `estimated_duration`, `status` (Scheduled/Confirmed/In Progress/Completed/Cancelled/No Show), `customer`, `vehicle`, `assigned_technician`, child tables (service_types/service_items/service_packages), ยอดรวม (`total_labor_charges`, `total_parts_amount`, `total_amount`), `service_order` (ลิงก์ย้อนกลับ), `appointment_slot` (legacy อ่านอย่างเดียว)
+**ฟิลด์สำคัญ:** `appointment_date`, `appointment_time` (**ไม่บังคับ** — เว้นว่าง = ทั้งวันบนปฏิทิน), `appointment_start/end` + `all_day` (ใช้วาดปฏิทิน), `bay_allocations` (ตาราง `Service Appointment Bay`: ช่องจอด / ประเภทช่องจอด / ชั่วโมงที่จอง), `estimated_duration`, `status` (Scheduled/Confirmed/In Progress/Completed/Cancelled/No Show), `customer`, `vehicle`, `assigned_technician`, child tables (service_types/service_items/service_packages), ยอดรวม (`total_labor_charges`, `total_parts_amount`, `total_amount`), `service_order` (ลิงก์ย้อนกลับ), `appointment_slot` (legacy อ่านอย่างเดียว)
 
-**การจองแบบ bay-hour:** `estimated_duration` ถูกแยกเป็นชั่วโมงงานใต้ท้อง (`Service Type.requires_pit`) กับงานทั่วไปด้วย `split_pit_hours()`
-แล้ว `compute_allocation()` จัดให้สูงสุด 2 แถว (งานหลุมลงช่องที่มีหลุม งานทั่วไปลงช่องที่ไม่มีหลุมก่อน) — **จัดให้เฉพาะตอนตารางยังว่าง**
+**การจองแบบ bay-hour:** `estimated_duration` ถูกแยกเป็นชั่วโมงของแต่ละประเภทช่องจอดด้วย `split_hours_by_bay_type()`
+(กี่ประเภทก็ได้ ไม่ใช่ 2 ถังตายตัวแบบเดิม) แล้ว `compute_allocation()` จัดให้ **1 แถวต่อ 1 ประเภทที่มีชั่วโมง** — **จัดให้เฉพาะตอนตารางยังว่าง**
 เหมือน `apply_default_bay` ของใบสั่งงาน ค่าที่แก้มือไว้จะไม่ถูกทับ กดปุ่ม **"จัด Bay ใหม่"** เพื่อจัดใหม่แบบตั้งใจ
 ความจุที่มีผลจริงมาจาก `daily_capacity_hours` ของช่องจอด คูณโหมดวันใน Settings (เต็มวัน 1 / ครึ่งวัน 0.5 / หยุด 0) แล้ว `Bay Capacity Override` ทับได้อีกชั้น
-**ทุกเคสเตือนอย่างเดียว ไม่บล็อก** (`build_capacity_warnings()` — OT รายช่อง, งานยาวข้ามวัน, วันหยุด, ปิดด้วย override, งานหลุมบนช่องไม่มีหลุม, ตารางไม่ตรงกับระยะเวลา)
+**วันที่ไม่มีช่องจอดของประเภทที่งานต้องใช้เลย → ชั่วโมงส่วนนั้นไม่ถูกจัดช่องจอดให้ และไม่ยุบไปช่องประเภทอื่น** มีแค่คำเตือนเป็นตัวบอก
+ผลข้างเคียงที่ต้องรู้: ความจุถูกแบ่งตามประเภทแล้ว (งานทั่วไปยืมช่องที่มีหลุมไม่ได้อีก) และชั่วโมงที่จัดไม่ได้จะไม่ถูกนับเป็น booked ของวันนั้น วันนั้นจึงดูว่างกว่าความจริง
+`summarize_day()` จึงคืน `summary.by_type` (ซอยตัวเลขของวันตามประเภท ยอดรวมทั้งวันเท่าเดิม) ให้ทั้งฟอร์มและ popup ของปฏิทินแสดง
+**ทุกเคสเตือนอย่างเดียว ไม่บล็อก** (`build_capacity_warnings()` — OT รายช่อง, งานยาวข้ามวัน, วันหยุด, ปิดด้วย override, งานลงช่องผิดประเภท, ประเภทที่ไม่มีช่องจอดเปิดเลย, ตารางไม่ตรงกับระยะเวลา
+ซึ่งเทียบกับ "ระยะเวลา − ชั่วโมงที่จัดไม่ได้" ไม่งั้นจะเตือนซ้อนกับข้อก่อนหน้าแบบที่กดปุ่มแล้วไม่หาย)
 ฝั่ง desk มี `frappe.confirm` ก่อนบันทึกเมื่อมีคำเตือน ส่วนฝั่ง server msgprint เสมอเพื่อให้ path API เห็นด้วย
 
 **ไม่ backfill นัดเก่า:** นัดที่สร้างก่อนระบบนี้ไม่มีแถวช่องจอด ชั่วโมงที่จองแล้วของวันนั้นจึงนับต่ำกว่าจริง จนกว่าจะเปิดใบนั้นแล้วกด "จัด Bay ใหม่"
 
 **Methods:** `calculate_estimated_duration()`, `calculate_totals()`, `validate_appointment_datetime()`, `sync_vehicle_info()`, `set_appointment_datetimes()`, `allocate_bays()`, `warn_capacity_issues()`, `create_service_order()` (ส่งช่องจอดหลัก + ช่องจอดรายแถวไปให้ใบสั่งงานด้วย)
-**Module-level (pure, เทสต์ได้ไม่ต้อง mock):** `resolve_bay_caps()`, `availability_status()`, `split_pit_hours()`, `compute_allocation()`, `build_capacity_warnings()` + IO wrapper `get_bay_availability()`
+**Module-level (pure, เทสต์ได้ไม่ต้อง mock):** `resolve_bay_caps()`, `availability_status()`, `bay_type_order()`, `split_hours_by_bay_type()`, `spread_package_hours()`, `compute_allocation()`, `summarize_by_bay_type()`, `build_capacity_warnings()` + IO wrapper `get_bay_availability()` (ซึ่งพ่วง `get_bay_type_info()` มาให้ในคำตอบ ผู้เรียกจึงไม่ต้อง query ซ้ำ)
 **Whitelisted:** `create_service_order_from_appointment`, `get_bay_day_status(date, exclude_appointment)`, `check_appointment_capacity(doc)` (ไม่เขียนอะไรลง DB)
 
 > **on_submit ไม่ได้สร้าง Service Order** — ต้องกดปุ่ม "Create Service Order" บนใบนัดที่ submit แล้วเอง (`on_submit` แค่ตั้งสถานะเป็น Confirmed)
@@ -193,6 +215,7 @@ Workspace **Truck Service Center** จัดกลุ่ม sidebar เป็น
 - **เปิดใบสั่งงาน:** Service Order → New หรือสร้างจาก Appointment/Quotation
 - **เสนอราคา:** Repair Quotation → New → เมื่อรับงานกด สร้าง Service Order
 - **แพ็คเกจ:** Service Package → New
+- **ตั้งประเภทช่องจอด:** Bay Type → New (ตั้งเป็นประเภทเริ่มต้นได้ตัวเดียว) แล้วผูกที่ Service Bay และ Service Type
 
 ---
 
@@ -236,9 +259,10 @@ seed จาก `create_default_role_profiles()` ใน [install.py](truck_servic
 | Master data อื่น (Service Type/Group, Repair Position, Package, Slot) | ทั้งหมด | read | read | — | — |
 | Bay Capacity Override | ทั้งหมด | create/write | read | read | read |
 | Service Bay | ทั้งหมด | read | read | — | — |
+| Bay Type | ทั้งหมด | read | read | — | — |
 | Truck Service Center Settings | read/write | — | — | — | — |
 
-หมายเหตุ: `Service Bay` ให้ **Technician Manager อ่านได้ด้วย** (นอกเหนือจากตารางข้างบน) เพราะพอร์ทัลช่าง render ตัวเลือกช่องจอดฝั่ง server
+หมายเหตุ: `Service Bay` และ `Bay Type` ให้ **Technician Manager อ่านได้ด้วย** (นอกเหนือจากตารางข้างบน) เพราะพอร์ทัลช่าง render ตัวเลือกช่องจอดพร้อมชื่อประเภทฝั่ง server
 
 หมายเหตุ: role `Technician` **ไม่มีสิทธิ์สร้าง Stock Entry** — ปุ่ม "สร้างใบเบิก" ในพอร์ทัลจึงเรียก
 `create_material_issue_for_rows(..., ignore_permissions=True)` หลังผ่าน gate ของพอร์ทัลเอง (`_get_row_job`)

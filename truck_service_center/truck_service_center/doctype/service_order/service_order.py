@@ -1260,9 +1260,7 @@ def _get_bay_type_warnings(doc):
 		seen.add((service_type, bay))
 		# ใช้รหัสประเภท ไม่ใช่ชื่อไทย เพราะการอ่านชื่อจาก master ต้องโหลด meta ของ Bay Type
 		# ซึ่งยิง frappe.get_all ของตัวเองเพิ่ม ทำให้จำนวน query ของฟังก์ชันนี้ไม่นิ่ง
-		warnings.append(
-			f"งาน {service_type} ต้องใช้ช่องจอดประเภท {required} แต่ช่องจอด {bay} เป็นประเภท {actual}"
-		)
+		warnings.append(f"งาน {service_type} ต้องใช้ช่องจอดประเภท {required} แต่ช่องจอด {bay} เป็นประเภท {actual}")
 
 	return warnings
 
