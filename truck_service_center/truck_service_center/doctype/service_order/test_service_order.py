@@ -680,23 +680,37 @@ class UnitTestServiceOrder(UnitTestCase):
 		self.assertIn("BAY-1", warnings[0])
 		self.assertIn("SO-2026-00001", warnings[0])
 
-	def test_bay_warning_when_job_needs_pit_but_bay_has_none(self):
-		"""งานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่จะได้ใช้จริงไม่มีหลุม → เตือน"""
+	def test_bay_warning_when_job_needs_another_bay_type(self):
+		"""งานที่ต้องใช้ช่องจอดคนละประเภทกับช่องที่จะได้ใช้จริง → เตือน"""
 		so = make_order(service_bay="BAY-1", labor_rows=[{"service_type": "ST-OIL"}])
 
-		# get_all ถูกเรียก 3 ครั้ง: ใบงานที่ใช้ช่องจอดนี้, service type ที่ต้องใช้หลุม, ช่องจอดที่มีหลุม
-		with patch("frappe.get_all", side_effect=[[], ["ST-OIL"], []]):
+		# get_all ถูกเรียก 3 ครั้ง: ใบงานที่ใช้ช่องจอดนี้, ประเภทที่งานต้องใช้, ประเภทของช่องจอด
+		with patch(
+			"frappe.get_all",
+			side_effect=[
+				[],
+				[{"name": "ST-OIL", "bay_type": "PIT"}],
+				[{"name": "BAY-1", "bay_type": "GENERAL"}],
+			],
+		):
 			warnings = get_bay_warnings(so)
 
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("ST-OIL", warnings[0])
 		self.assertIn("BAY-1", warnings[0])
 
-	def test_no_bay_warning_when_pit_available(self):
-		"""ช่องจอดว่างและมีหลุมครบตามที่งานต้องการ → ไม่มีคำเตือน"""
+	def test_no_bay_warning_when_bay_type_matches(self):
+		"""ช่องจอดว่างและเป็นประเภทที่งานต้องการ → ไม่มีคำเตือน"""
 		so = make_order(service_bay="BAY-1", labor_rows=[{"service_type": "ST-OIL"}])
 
-		with patch("frappe.get_all", side_effect=[[], ["ST-OIL"], ["BAY-1"]]):
+		with patch(
+			"frappe.get_all",
+			side_effect=[
+				[],
+				[{"name": "ST-OIL", "bay_type": "PIT"}],
+				[{"name": "BAY-1", "bay_type": "PIT"}],
+			],
+		):
 			warnings = get_bay_warnings(so)
 
 		self.assertEqual(warnings, [])

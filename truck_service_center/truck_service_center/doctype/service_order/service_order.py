@@ -6,6 +6,8 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import cint, flt, now_datetime, time_diff_in_hours
 
+from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
+
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
 # (lock_rows_with_submitted_material_issue ใน service_order.js)
 MATERIAL_ISSUE_LOCKED_TEXT_FIELDS = {
@@ -1180,7 +1182,7 @@ def get_bay_warnings(doc):
 
 	สองชั้น:
 	1. ช่องจอดหลักถูกใบงานอื่นที่ยังเปิดอยู่ใช้ค้างไว้
-	2. งานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่มีผลจริงกับแถวนั้นไม่มีหลุม
+	2. งานที่ต้องใช้ช่องจอดประเภทหนึ่ง แต่ช่องจอดที่มีผลจริงกับแถวนั้นเป็นอีกประเภท
 	"""
 	warnings = []
 
@@ -1197,17 +1199,20 @@ def get_bay_warnings(doc):
 		if busy:
 			warnings.append(f"ช่องจอด {doc.service_bay} กำลังถูกใช้โดยใบงานที่ยังไม่ปิด: {', '.join(busy)}")
 
-	warnings.extend(_get_pit_warnings(doc))
+	warnings.extend(_get_bay_type_warnings(doc))
 
 	return warnings
 
 
-def _get_pit_warnings(doc):
-	"""แถวงานที่ต้องใช้หลุมซ่อม แต่ช่องจอดที่จะได้ใช้จริงไม่มีหลุม
+def _get_bay_type_warnings(doc):
+	"""แถวงานที่ต้องใช้ช่องจอดประเภทหนึ่ง แต่ช่องจอดที่จะได้ใช้จริงเป็นอีกประเภท
 
 	ดึงข้อมูล master ทีเดียวเป็น batch ทั้ง Service Type และ Service Bay กัน N+1
 	ช่องจอดที่มีผลกับแถว = ช่องจอดของแถวเอง ถ้าไม่มีก็ตกไปใช้ช่องจอดหลักของใบงาน
 	(ตรงกับที่ apply_default_bay จะเติมให้ตอน save)
+
+	ประเภทเริ่มต้นของระบบถูกอ่านเฉพาะตอนที่มีงานซึ่งไม่ได้ระบุประเภทไว้จริง ๆ เพื่อไม่ให้
+	ใบงานทั่วไปต้องเสีย query เปล่า (และเพื่อให้เทสต์ที่ mock frappe.get_all ไม่ต้องแตะ DB)
 	"""
 	pairs = []
 	for row in doc.service_types:
@@ -1221,33 +1226,43 @@ def _get_pit_warnings(doc):
 	service_types = {service_type for service_type, _ in pairs}
 	bays = {bay for _, bay in pairs}
 
-	needs_pit = set(
-		frappe.get_all(
+	required_types = {
+		row["name"]: row["bay_type"]
+		for row in frappe.get_all(
 			"Service Type",
-			filters={"name": ["in", list(service_types)], "requires_pit": 1},
-			pluck="name",
+			filters={"name": ["in", list(service_types)]},
+			fields=["name", "bay_type"],
 		)
-	)
-	if not needs_pit:
-		return []
+	}
 
-	has_pit = set(
-		frappe.get_all(
+	bay_types = {
+		row["name"]: row["bay_type"]
+		for row in frappe.get_all(
 			"Service Bay",
-			filters={"name": ["in", list(bays)], "has_pit": 1},
-			pluck="name",
+			filters={"name": ["in", list(bays)]},
+			fields=["name", "bay_type"],
 		)
-	)
+	}
+
+	default_bay_type = None
+	if any(not required_types.get(service_type) for service_type in service_types):
+		default_bay_type = get_default_bay_type()
 
 	warnings = []
 	seen = set()
 	for service_type, bay in pairs:
-		if service_type not in needs_pit or bay in has_pit:
+		required = required_types.get(service_type) or default_bay_type
+		actual = bay_types.get(bay)
+		if not required or not actual or required == actual:
 			continue
 		if (service_type, bay) in seen:
 			continue
 		seen.add((service_type, bay))
-		warnings.append(f"งาน {service_type} ต้องใช้หลุมซ่อม แต่ช่องจอด {bay} ไม่มีหลุม")
+		# ใช้รหัสประเภท ไม่ใช่ชื่อไทย เพราะการอ่านชื่อจาก master ต้องโหลด meta ของ Bay Type
+		# ซึ่งยิง frappe.get_all ของตัวเองเพิ่ม ทำให้จำนวน query ของฟังก์ชันนี้ไม่นิ่ง
+		warnings.append(
+			f"งาน {service_type} ต้องใช้ช่องจอดประเภท {required} แต่ช่องจอด {bay} เป็นประเภท {actual}"
+		)
 
 	return warnings
 
