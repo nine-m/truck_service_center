@@ -17,8 +17,6 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 	STATUS_FREE,
 	STATUS_FULL,
 	STATUS_NEAR_FULL,
-	WORK_TYPE_GENERAL,
-	WORK_TYPE_PIT,
 	availability_status,
 	build_capacity_warnings,
 	build_day_notes,
@@ -26,9 +24,20 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 	compute_allocation,
 	fold_booked_hours,
 	resolve_bay_caps,
-	split_pit_hours,
+	split_hours_by_bay_type,
 	summarize_day,
 )
+
+# รหัสประเภทช่องจอด — ทั้งไฟล์นี้เรียกแต่ pure function จึงไม่ต้องมี record จริงในฐานข้อมูล
+GENERAL = "GENERAL"
+PIT = "PIT"
+CRANE = "CRANE"
+
+BAY_TYPE_NAMES = {
+	GENERAL: "ช่องจอดทั่วไป",
+	PIT: "ช่องจอดมีหลุมซ่อม",
+	CRANE: "ช่องจอดมีเครน",
+}
 
 
 def make_appointment(package_rows=None, service_rows=None, bay_rows=None):
@@ -49,12 +58,21 @@ def make_appointment(package_rows=None, service_rows=None, bay_rows=None):
 	return appointment
 
 
-def make_bay(bay, cap=8.0, booked=0.0, has_pit=0, is_closed=False, cap_source=CAP_SOURCE_NORMAL, reason=None):
+def make_bay(
+	bay,
+	cap=8.0,
+	booked=0.0,
+	bay_type=GENERAL,
+	is_closed=False,
+	cap_source=CAP_SOURCE_NORMAL,
+	reason=None,
+):
 	"""แถว availability ประดิษฐ์ — รูปเดียวกับที่ build_day_rows คืนให้"""
 	return {
 		"bay": bay,
 		"bay_name": bay,
-		"has_pit": has_pit,
+		"bay_type": bay_type,
+		"bay_type_name": BAY_TYPE_NAMES.get(bay_type, bay_type),
 		"cap": cap,
 		"cap_source": cap_source,
 		"is_closed": is_closed,
@@ -162,11 +180,11 @@ class UnitTestServiceAppointment(UnitTestCase):
 		self.assertEqual(appointment.estimated_duration, 0)
 
 
-class UnitTestSplitPitHours(UnitTestCase):
-	"""ทดสอบการแยกชั่วโมงงานหลุมกับงานทั่วไป (ส่ง pit set เข้าไปตรง ๆ ไม่แตะฐานข้อมูล)"""
+class UnitTestSplitHoursByBayType(UnitTestCase):
+	"""ทดสอบการแยกชั่วโมงตามประเภทช่องจอด (ส่ง map ประเภทเข้าไปตรง ๆ ไม่แตะฐานข้อมูล)"""
 
-	def test_loose_rows_split_by_flag(self):
-		"""แถวเดี่ยวที่ไม่ได้มาจากแพ็คเกจ แยกตามธงต้องใช้หลุมของแต่ละงาน"""
+	def test_loose_rows_split_by_bay_type(self):
+		"""แถวเดี่ยวที่ไม่ได้มาจากแพ็คเกจ แยกตามประเภทช่องจอดของแต่ละงาน"""
 		appointment = make_appointment(
 			service_rows=[
 				{"service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2},
@@ -174,13 +192,27 @@ class UnitTestSplitPitHours(UnitTestCase):
 			],
 		)
 
-		pit_hours, general_hours = split_pit_hours(appointment, {"เปลี่ยนน้ำมันเครื่อง"})
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
 
-		self.assertEqual(pit_hours, 2)
-		self.assertEqual(general_hours, 1.5)
+		# งานที่ไม่ได้ระบุประเภท ตกมาที่ประเภทเริ่มต้นของระบบ
+		self.assertEqual(hours, {PIT: 2, GENERAL: 1.5})
+
+	def test_three_bay_types_get_their_own_bucket(self):
+		"""เลิกถูกบีบเหลือ 2 ถังแล้ว — กี่ประเภทก็แยกได้ตามที่ตั้งไว้จริง"""
+		appointment = make_appointment(
+			service_rows=[
+				{"service_type": "ยกเครื่อง", "estimated_time": 3},
+				{"service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2},
+				{"service_type": "ล้างอัดฉีด", "estimated_time": 1},
+			],
+		)
+
+		hours = split_hours_by_bay_type(appointment, {"ยกเครื่อง": CRANE, "เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
+
+		self.assertEqual(hours, {CRANE: 3, PIT: 2, GENERAL: 1})
 
 	def test_package_splits_by_effective_hours(self):
-		"""แพ็คเกจปกติ: เวลาซ่อมจริงเป็นเพดาน ส่วนที่เหลือคืองานทั่วไป"""
+		"""แพ็คเกจปกติ: เวลาซ่อมจริงเป็นเพดาน ส่วนที่เหลือคืองานประเภทเริ่มต้น"""
 		appointment = make_appointment(
 			package_rows=[{"service_package": "PKG-1", "repair_time_hours": 4}],
 			service_rows=[
@@ -189,15 +221,14 @@ class UnitTestSplitPitHours(UnitTestCase):
 			],
 		)
 
-		pit_hours, general_hours = split_pit_hours(appointment, {"เปลี่ยนน้ำมันเครื่อง"})
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
 
-		self.assertEqual(pit_hours, 1)
-		self.assertEqual(general_hours, 3)
+		self.assertEqual(hours, {PIT: 1, GENERAL: 3})
 
-	def test_pit_rows_are_capped_by_package_repair_time(self):
-		"""แถวหลุมรวมเกินเวลาซ่อมจริงของแพ็คเกจ → หลุมได้แค่เวลาซ่อมจริง งานทั่วไปเหลือ 0
+	def test_rows_are_capped_by_package_repair_time(self):
+		"""แถวรวมเกินเวลาซ่อมจริงของแพ็คเกจ → ได้แค่เวลาซ่อมจริง
 
-		ผลรวมของสองค่าต้องเท่ากับ estimated_duration เสมอ ไม่งั้นจะขึ้นคำเตือน stale ทันที
+		ผลรวมของทุกประเภทต้องเท่ากับ estimated_duration เสมอ ไม่งั้นจะขึ้นคำเตือน stale ทันที
 		"""
 		appointment = make_appointment(
 			package_rows=[{"service_package": "PKG-1", "repair_time_hours": 2}],
@@ -207,12 +238,32 @@ class UnitTestSplitPitHours(UnitTestCase):
 			],
 		)
 
-		pit_hours, general_hours = split_pit_hours(appointment, {"เปลี่ยนน้ำมันเครื่อง", "เปลี่ยนน้ำมันเกียร์"})
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT, "เปลี่ยนน้ำมันเกียร์": PIT}, GENERAL)
 
 		appointment.calculate_estimated_duration()
-		self.assertEqual(pit_hours, 2)
-		self.assertEqual(general_hours, 0)
-		self.assertEqual(pit_hours + general_hours, appointment.estimated_duration)
+		self.assertEqual(hours, {PIT: 2})
+		self.assertEqual(sum(hours.values()), appointment.estimated_duration)
+
+	def test_package_cap_cuts_the_default_type_first(self):
+		"""เพดานแพ็คเกจตัดชั่วโมงของประเภทเริ่มต้นก่อน ประเภทเฉพาะได้เต็มจำนวน
+
+		อธิบายให้ผู้ใช้ได้ว่า "ชั่วโมงที่ถูกตัดตามเพดาน หักจากงานทั่วไปก่อน" และทำให้เคส
+		สองประเภทให้ผลเท่ากับสูตรหลุม/ทั่วไปเดิมเป๊ะ
+		"""
+		appointment = make_appointment(
+			package_rows=[{"service_package": "PKG-1", "repair_time_hours": 4}],
+			service_rows=[
+				{"service_package": "PKG-1", "service_type": "ยกเครื่อง", "estimated_time": 2},
+				{"service_package": "PKG-1", "service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2},
+				{"service_package": "PKG-1", "service_type": "ล้างอัดฉีด", "estimated_time": 3},
+			],
+		)
+
+		hours = split_hours_by_bay_type(appointment, {"ยกเครื่อง": CRANE, "เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
+
+		appointment.calculate_estimated_duration()
+		self.assertEqual(hours, {CRANE: 2, PIT: 2})
+		self.assertEqual(sum(hours.values()), appointment.estimated_duration)
 
 	def test_falls_back_to_row_sum_when_repair_time_blank(self):
 		"""แพ็คเกจที่ยังไม่กรอกเวลาซ่อมจริง ถอยไปใช้ผลรวมเวลาของแถวตามสูตรระยะเวลา"""
@@ -224,13 +275,25 @@ class UnitTestSplitPitHours(UnitTestCase):
 			],
 		)
 
-		pit_hours, general_hours = split_pit_hours(appointment, {"เปลี่ยนน้ำมันเครื่อง"})
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
 
-		self.assertEqual(pit_hours, 1.5)
-		self.assertEqual(general_hours, 2.5)
+		self.assertEqual(hours, {PIT: 1.5, GENERAL: 2.5})
 
-	def test_orphan_rows_are_split_by_flag(self):
-		"""แถวงานที่แพ็คเกจต้นทางถูกลบไปแล้ว ยังต้องถูกนับและแยกตามธงหลุม"""
+	def test_package_time_longer_than_its_rows_goes_to_default(self):
+		"""เวลาซ่อมจริงยาวกว่างานในแพ็คเกจ ส่วนเกินเป็นของประเภทเริ่มต้น (เหมือนสูตรเดิม)"""
+		appointment = make_appointment(
+			package_rows=[{"service_package": "PKG-1", "repair_time_hours": 5}],
+			service_rows=[
+				{"service_package": "PKG-1", "service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2},
+			],
+		)
+
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
+
+		self.assertEqual(hours, {PIT: 2, GENERAL: 3})
+
+	def test_orphan_rows_are_split_by_bay_type(self):
+		"""แถวงานที่แพ็คเกจต้นทางถูกลบไปแล้ว ยังต้องถูกนับและแยกตามประเภท"""
 		appointment = make_appointment(
 			service_rows=[
 				{"service_package": "PKG-GONE", "service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 1.25},
@@ -238,80 +301,88 @@ class UnitTestSplitPitHours(UnitTestCase):
 			],
 		)
 
-		pit_hours, general_hours = split_pit_hours(appointment, {"เปลี่ยนน้ำมันเครื่อง"})
+		hours = split_hours_by_bay_type(appointment, {"เปลี่ยนน้ำมันเครื่อง": PIT}, GENERAL)
 
-		self.assertEqual(pit_hours, 1.25)
-		self.assertEqual(general_hours, 0.75)
+		self.assertEqual(hours, {PIT: 1.25, GENERAL: 0.75})
 
-	def test_empty_appointment_is_zero(self):
-		"""ยังไม่มีงานและแพ็คเกจ → (0, 0) ไม่ใช่ None"""
-		self.assertEqual(split_pit_hours(make_appointment(), set()), (0, 0))
+	def test_rows_without_type_and_no_default_land_in_none(self):
+		"""ไม่ระบุประเภทและระบบไม่มีประเภทเริ่มต้น → คีย์ None = จัดช่องจอดให้ไม่ได้"""
+		appointment = make_appointment(
+			service_rows=[{"service_type": "ล้างอัดฉีด", "estimated_time": 2}],
+		)
+
+		self.assertEqual(split_hours_by_bay_type(appointment, {}, None), {None: 2})
+
+	def test_empty_appointment_has_no_buckets(self):
+		"""ยังไม่มีงานและแพ็คเกจ → dict ว่าง ไม่ใช่ None"""
+		self.assertEqual(split_hours_by_bay_type(make_appointment(), {}, GENERAL), {})
 
 
 class UnitTestComputeAllocation(UnitTestCase):
 	"""ทดสอบการจัดช่องจอด (availability ประดิษฐ์ ไม่แตะฐานข้อมูล)"""
 
-	def test_pit_work_goes_to_emptiest_pit_bay(self):
-		"""งานหลุมลงช่องที่มีหลุมและว่างที่สุด"""
+	def test_work_goes_to_emptiest_bay_of_its_type(self):
+		"""งานลงช่องที่เป็นประเภทเดียวกันและว่างที่สุด"""
 		availability = [
-			make_bay("BAY-01", has_pit=1, booked=6),
-			make_bay("BAY-02", has_pit=1, booked=2),
+			make_bay("BAY-01", bay_type=PIT, booked=6),
+			make_bay("BAY-02", bay_type=PIT, booked=2),
 			make_bay("BAY-03"),
 		]
 
-		allocations, warnings = compute_allocation(3, 0, availability)
+		allocations, unallocatable = compute_allocation({PIT: 3}, availability, GENERAL)
 
-		self.assertEqual(warnings, [])
+		self.assertEqual(unallocatable, {})
 		self.assertEqual(
 			allocations,
-			[{"service_bay": "BAY-02", "work_type": WORK_TYPE_PIT, "allocated_hours": 3}],
+			[{"service_bay": "BAY-02", "bay_type": PIT, "allocated_hours": 3}],
 		)
 
-	def test_general_work_prefers_non_pit_bay_when_both_fit(self):
-		"""งานทั่วไปเลือกช่องที่ไม่มีหลุม แม้ช่องหลุมจะว่างกว่า — กันหลุมไว้ให้งานที่ต้องใช้"""
+	def test_general_work_never_borrows_a_pit_bay(self):
+		"""งานทั่วไปลงได้เฉพาะช่องประเภททั่วไป แม้ช่องหลุมจะว่างกว่า
+
+		เกณฑ์ "งานทั่วไปเลี่ยงช่องที่มีหลุม" เดิมหายไปเองโดยไม่ต้องเขียน
+		"""
 		availability = [
-			make_bay("BAY-01", has_pit=1, booked=0),
+			make_bay("BAY-01", bay_type=PIT, booked=0),
 			make_bay("BAY-02", booked=3),
 		]
 
-		allocations, _warnings = compute_allocation(0, 2, availability)
+		allocations, _unallocatable = compute_allocation({GENERAL: 2}, availability, GENERAL)
 
 		self.assertEqual(allocations[0]["service_bay"], "BAY-02")
-		self.assertEqual(allocations[0]["work_type"], WORK_TYPE_GENERAL)
+		self.assertEqual(allocations[0]["bay_type"], GENERAL)
 
-	def test_pit_bay_takes_general_work_when_it_is_the_only_fit(self):
-		"""ช่องที่รับไหวมาก่อนเรื่องหลุม — ช่องหลุมรับงานทั่วไปได้ถ้าเป็นช่องเดียวที่พอ"""
-		availability = [
-			make_bay("BAY-01", has_pit=1, booked=0),
-			make_bay("BAY-02", booked=7),
-		]
-
-		allocations, _warnings = compute_allocation(0, 5, availability)
-
-		self.assertEqual(allocations[0]["service_bay"], "BAY-01")
-
-	def test_single_pit_bay_takes_both_parts(self):
-		"""มีช่องเดียวและเป็นช่องหลุม → รับทั้งสองส่วนเป็นสองแถว และหักชั่วโมงต่อเนื่องกัน"""
-		availability = [make_bay("BAY-01", has_pit=1)]
-
-		allocations, warnings = compute_allocation(2, 3, availability)
-
-		self.assertEqual(warnings, [])
-		self.assertEqual([row["service_bay"] for row in allocations], ["BAY-01", "BAY-01"])
-		self.assertEqual([row["work_type"] for row in allocations], [WORK_TYPE_PIT, WORK_TYPE_GENERAL])
-		self.assertEqual([row["allocated_hours"] for row in allocations], [2, 3])
-
-	def test_pit_work_without_pit_bay_merges_into_general(self):
-		"""ไม่มีช่องหลุมเปิดอยู่ → รวมชั่วโมงหลุมเข้ากับงานทั่วไปแล้วเตือน"""
+	def test_type_without_any_bay_is_left_unallocated(self):
+		"""เคสสำคัญของรอบนี้: ไม่มีช่องจอดประเภทนั้นเลย → ไม่มีแถวให้ + บอกกลับเป็นชั่วโมง
+		แต่ประเภทอื่นยังถูกจัดตามปกติ (ไม่ยุบไปช่องประเภทอื่นตามที่ผู้ใช้ยืนยัน)
+		"""
 		availability = [make_bay("BAY-01"), make_bay("BAY-02")]
 
-		allocations, warnings = compute_allocation(2, 1, availability)
+		allocations, unallocatable = compute_allocation({CRANE: 2, GENERAL: 3}, availability, GENERAL)
 
-		self.assertEqual(len(allocations), 1)
-		self.assertEqual(allocations[0]["work_type"], WORK_TYPE_GENERAL)
-		self.assertEqual(allocations[0]["allocated_hours"], 3)
-		self.assertEqual(len(warnings), 1)
-		self.assertIn("หลุมซ่อม", warnings[0])
+		self.assertEqual(allocations, [{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 3}])
+		self.assertEqual(unallocatable, {CRANE: 2})
+
+	def test_single_pit_bay_does_not_take_general_hours(self):
+		"""มีช่องเดียวและเป็นช่องหลุม → รับเฉพาะงานหลุม ที่เหลือจัดให้ไม่ได้
+
+		นี่คือผลข้างเคียงของการแบ่งความจุตามประเภท ที่คำเตือนต้องเป็นตัวบอก
+		"""
+		availability = [make_bay("BAY-01", bay_type=PIT)]
+
+		allocations, unallocatable = compute_allocation({PIT: 2, GENERAL: 3}, availability, GENERAL)
+
+		self.assertEqual(allocations, [{"service_bay": "BAY-01", "bay_type": PIT, "allocated_hours": 2}])
+		self.assertEqual(unallocatable, {GENERAL: 3})
+
+	def test_rows_follow_the_specific_then_default_order(self):
+		"""ลำดับแถวคงที่: ประเภทเฉพาะก่อน ประเภทเริ่มต้นปิดท้าย"""
+		availability = [make_bay("BAY-01", bay_type=PIT), make_bay("BAY-02")]
+
+		allocations, _unallocatable = compute_allocation({GENERAL: 1, PIT: 2}, availability, GENERAL)
+
+		self.assertEqual([row["bay_type"] for row in allocations], [PIT, GENERAL])
+		self.assertEqual([row["service_bay"] for row in allocations], ["BAY-01", "BAY-02"])
 
 	def test_no_bay_fits_still_allocates_emptiest(self):
 		"""ไม่มีช่องไหนรับไหว ยังต้องจัดลงช่องที่ว่างที่สุด ไม่ throw (OT เป็นเรื่องของคำเตือน)"""
@@ -320,23 +391,28 @@ class UnitTestComputeAllocation(UnitTestCase):
 			make_bay("BAY-02", booked=5),
 		]
 
-		allocations, warnings = compute_allocation(0, 10, availability)
+		allocations, unallocatable = compute_allocation({GENERAL: 10}, availability, GENERAL)
 
-		self.assertEqual(warnings, [])
+		self.assertEqual(unallocatable, {})
 		self.assertEqual(allocations[0]["service_bay"], "BAY-02")
 		self.assertEqual(allocations[0]["allocated_hours"], 10)
 
 	def test_zero_hour_part_creates_no_row(self):
-		"""ส่วนที่เป็น 0 ชม. ไม่สร้างแถว"""
-		availability = [make_bay("BAY-01", has_pit=1)]
+		"""ส่วนที่เป็น 0 ชม. ไม่สร้างแถว และไม่นับว่าจัดไม่ได้"""
+		availability = [make_bay("BAY-01", bay_type=PIT)]
 
-		allocations, _warnings = compute_allocation(0, 0, availability)
+		self.assertEqual(compute_allocation({PIT: 0}, availability, GENERAL), ([], {}))
+
+	def test_hours_without_a_known_type_are_unallocatable(self):
+		"""ไม่รู้ประเภท (ไม่ระบุและไม่มีประเภทเริ่มต้น) → จัดไม่ได้ ไม่ว่าจะมีช่องอะไรอยู่"""
+		allocations, unallocatable = compute_allocation({None: 2}, [make_bay("BAY-01")], None)
 
 		self.assertEqual(allocations, [])
+		self.assertEqual(unallocatable, {None: 2})
 
 	def test_no_bays_at_all_allocates_nothing(self):
-		"""ไม่มีช่องจอดเลย → ไม่มีแถว และไม่ throw"""
-		self.assertEqual(compute_allocation(2, 2, []), ([], []))
+		"""ไม่มีช่องจอดเลย → ไม่มีแถว ไม่ throw และชั่วโมงทั้งหมดจัดไม่ได้"""
+		self.assertEqual(compute_allocation({GENERAL: 2}, [], GENERAL), ([], {GENERAL: 2}))
 
 
 class UnitTestResolveBayCaps(UnitTestCase):
@@ -444,9 +520,20 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 	def make_caps(self, source=CAP_SOURCE_NORMAL, is_closed=False, reason=None, bays=("BAY-01",)):
 		return {bay: {"cap": 8, "source": source, "is_closed": is_closed, "reason": reason} for bay in bays}
 
+	def warnings_for(self, appointment, availability, caps=None, by_service_type=None):
+		"""เรียกด้วย map ป้ายชื่อเสมอ เพื่อให้เทสต์อ่านข้อความแบบเดียวกับที่ผู้ใช้เห็น"""
+		return build_capacity_warnings(
+			appointment,
+			availability,
+			caps if caps is not None else self.make_caps(),
+			by_service_type or {},
+			GENERAL,
+			BAY_TYPE_NAMES,
+		)
+
 	def test_no_active_bay_at_all(self):
 		"""ไม่มีช่องจอดเปิดใช้งานเลย"""
-		warnings = build_capacity_warnings(make_appointment(), [], {}, set())
+		warnings = build_capacity_warnings(make_appointment(), [], {}, {})
 
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน", warnings[0])
@@ -456,11 +543,10 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 		appointment = make_appointment()
 		appointment.appointment_date = "2026-09-06"
 
-		warnings = build_capacity_warnings(
+		warnings = self.warnings_for(
 			appointment,
 			[make_bay("BAY-01", cap=0, is_closed=True)],
 			self.make_caps(source=CAP_SOURCE_WEEKLY_HOLIDAY, is_closed=True),
-			set(),
 		)
 
 		self.assertEqual(len(warnings), 1)
@@ -469,15 +555,14 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 	def test_bay_closed_by_override_mentions_reason(self):
 		"""ช่องจอดถูกปิดด้วย override → เตือนพร้อมเหตุผล"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 2}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 2}],
 		)
 		appointment.estimated_duration = 2
 
-		warnings = build_capacity_warnings(
+		warnings = self.warnings_for(
 			appointment,
 			[make_bay("BAY-01", cap=0, is_closed=True)],
 			self.make_caps(source=CAP_SOURCE_OVERRIDE, is_closed=True, reason="อบรมประจำปี"),
-			set(),
 		)
 
 		self.assertTrue(any("ถูกปิดทำการ" in warning and "อบรมประจำปี" in warning for warning in warnings))
@@ -485,16 +570,11 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 	def test_overtime_warning_per_bay(self):
 		"""ชั่วโมงที่จองแล้วบวกงานใหม่เกินความจุ → เตือน OT ของช่องนั้น"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 3}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 3}],
 		)
 		appointment.estimated_duration = 3
 
-		warnings = build_capacity_warnings(
-			appointment,
-			[make_bay("BAY-01", cap=8, booked=6)],
-			self.make_caps(),
-			set(),
-		)
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01", cap=8, booked=6)])
 
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("9.0/8.0 ชม.", warnings[0])
@@ -503,81 +583,94 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 	def test_single_job_longer_than_daily_capacity(self):
 		"""งานเดียวยาวกว่าความจุต่อวันของช่อง → เตือนว่างานอาจทำข้ามวัน"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 12}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 12}],
 		)
 		appointment.estimated_duration = 12
 
-		warnings = build_capacity_warnings(
-			appointment,
-			[make_bay("BAY-01", cap=8)],
-			self.make_caps(),
-			set(),
-		)
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01", cap=8)])
 
 		self.assertTrue(any("งานอาจทำข้ามวัน" in warning for warning in warnings))
 
-	def test_pit_work_on_bay_without_pit(self):
-		"""แถวงานหลุมถูกจัด (หรือแก้มือ) ลงช่องที่ไม่มีหลุม"""
+	def test_work_placed_in_a_bay_of_another_type(self):
+		"""แถวงานถูกแก้มือไปลงช่องที่เป็นคนละประเภท → เตือนโดยบอกทั้งประเภทที่ต้องใช้และที่ได้จริง"""
 		appointment = make_appointment(
 			service_rows=[{"service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2}],
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_PIT, "allocated_hours": 2}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": PIT, "allocated_hours": 2}],
 		)
 		appointment.estimated_duration = 2
 
-		warnings = build_capacity_warnings(
+		warnings = self.warnings_for(
 			appointment,
-			[make_bay("BAY-01", has_pit=0)],
-			self.make_caps(),
-			{"เปลี่ยนน้ำมันเครื่อง"},
+			[make_bay("BAY-01"), make_bay("BAY-02", bay_type=PIT)],
+			self.make_caps(bays=("BAY-01", "BAY-02")),
+			{"เปลี่ยนน้ำมันเครื่อง": PIT},
 		)
 
-		self.assertTrue(any("ไม่มีหลุมซ่อม" in warning for warning in warnings))
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("ช่องจอดมีหลุมซ่อม", warnings[0])
+		self.assertIn("ช่องจอดทั่วไป", warnings[0])
+
+	def test_bay_type_without_any_active_bay_is_reported(self):
+		"""ประเภทที่วันนั้นไม่มีช่องจอดเปิดเลย → บอกจำนวนชั่วโมงที่ยังไม่ได้จัดช่องให้"""
+		appointment = make_appointment(
+			service_rows=[{"service_type": "ยกเครื่อง", "estimated_time": 3}],
+		)
+		appointment.appointment_date = "2026-09-10"
+		appointment.estimated_duration = 3
+
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01")], None, {"ยกเครื่อง": CRANE})
+
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("ช่องจอดมีเครน", warnings[0])
+		self.assertIn("3.0 ชม.", warnings[0])
+
+	def test_unallocatable_hours_do_not_also_raise_the_stale_warning(self):
+		"""ชั่วโมงที่จัดไม่ได้ต้องไม่ทำให้ขึ้นข้อความ "กดจัด Bay ใหม่" ที่กดแล้วไม่มีวันหาย"""
+		appointment = make_appointment(
+			service_rows=[
+				{"service_type": "ยกเครื่อง", "estimated_time": 3},
+				{"service_type": "ล้างอัดฉีด", "estimated_time": 2},
+			],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 2}],
+		)
+		appointment.estimated_duration = 5
+
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01")], None, {"ยกเครื่อง": CRANE})
+
+		self.assertEqual(len(warnings), 1)
+		self.assertFalse(any("จัด Bay ใหม่" in warning for warning in warnings))
 
 	def test_stale_allocation_is_reported(self):
 		"""ผลรวมชั่วโมงในตารางไม่ตรงกับระยะเวลางาน → แนะให้กดจัด Bay ใหม่"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 2}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 2}],
 		)
 		appointment.estimated_duration = 5
 
-		warnings = build_capacity_warnings(
-			appointment,
-			[make_bay("BAY-01")],
-			self.make_caps(),
-			set(),
-		)
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01")])
 
 		self.assertTrue(any("จัด Bay ใหม่" in warning for warning in warnings))
 
 	def test_allocation_on_unknown_bay(self):
 		"""ช่องจอดในตารางไม่อยู่ในรายการช่องที่เปิดใช้งานของวันนั้น"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-99", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 2}],
+			bay_rows=[{"service_bay": "BAY-99", "bay_type": GENERAL, "allocated_hours": 2}],
 		)
 		appointment.estimated_duration = 2
 
-		warnings = build_capacity_warnings(
-			appointment,
-			[make_bay("BAY-01")],
-			self.make_caps(),
-			set(),
-		)
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01")])
 
 		self.assertTrue(any("ไม่อยู่ในรายการช่องจอดที่เปิดใช้งาน" in warning for warning in warnings))
 
 	def test_clean_allocation_has_no_warnings(self):
 		"""จัดช่องจอดพอดี ความจุเหลือ ไม่ต้องเตือนอะไรเลย"""
 		appointment = make_appointment(
-			bay_rows=[{"service_bay": "BAY-01", "work_type": WORK_TYPE_GENERAL, "allocated_hours": 2}],
+			service_rows=[{"service_type": "ล้างอัดฉีด", "estimated_time": 2}],
+			bay_rows=[{"service_bay": "BAY-01", "bay_type": GENERAL, "allocated_hours": 2}],
 		)
 		appointment.estimated_duration = 2
 
-		warnings = build_capacity_warnings(
-			appointment,
-			[make_bay("BAY-01", booked=1)],
-			self.make_caps(),
-			set(),
-		)
+		warnings = self.warnings_for(appointment, [make_bay("BAY-01", booked=1)])
 
 		self.assertEqual(warnings, [])
 
@@ -587,8 +680,8 @@ class UnitTestBuildDayRows(UnitTestCase):
 
 	def make_bays(self):
 		return [
-			{"name": "BAY-01", "bay_name": "ช่อง 1", "has_pit": 1, "daily_capacity_hours": 8},
-			{"name": "BAY-02", "bay_name": "ช่อง 2", "has_pit": 0, "daily_capacity_hours": 8},
+			{"name": "BAY-01", "bay_name": "ช่อง 1", "bay_type": PIT, "daily_capacity_hours": 8},
+			{"name": "BAY-02", "bay_name": "ช่อง 2", "bay_type": GENERAL, "daily_capacity_hours": 8},
 		]
 
 	def test_row_shape_and_values(self):
@@ -596,12 +689,13 @@ class UnitTestBuildDayRows(UnitTestCase):
 		bays = self.make_bays()
 		caps = resolve_bay_caps(bays, DAY_MODE_FULL, [])
 		# 6.4/8 = 80% พอดี — ตรึงขอบเขต NEAR_FULL_RATIO ที่ระดับแถวด้วย
-		rows = build_day_rows(bays, caps, {"BAY-01": 6.4})
+		rows = build_day_rows(bays, caps, {"BAY-01": 6.4}, BAY_TYPE_NAMES)
 
 		self.assertEqual(len(rows), 2)
 		self.assertEqual(rows[0]["bay"], "BAY-01")
 		self.assertEqual(rows[0]["bay_name"], "ช่อง 1")
-		self.assertEqual(rows[0]["has_pit"], 1)
+		self.assertEqual(rows[0]["bay_type"], PIT)
+		self.assertEqual(rows[0]["bay_type_name"], "ช่องจอดมีหลุมซ่อม")
 		self.assertEqual(rows[0]["cap"], 8.0)
 		self.assertEqual(rows[0]["booked"], 6.4)
 		self.assertEqual(rows[0]["free"], 1.6)
@@ -635,6 +729,12 @@ class UnitTestBuildDayRows(UnitTestCase):
 		self.assertEqual(rows[0]["status"], STATUS_CLOSED)
 		# ช่องที่ไม่ได้ถูก override ต้องไม่โดนหางเลข
 		self.assertFalse(rows[1]["is_closed"])
+
+	def test_bay_type_name_falls_back_to_the_code(self):
+		"""ไม่มี map ป้ายชื่อ (หรือประเภทถูกลบไปแล้ว) ต้องยังโชว์รหัสได้ ไม่ใช่ช่องว่าง"""
+		rows = build_day_rows(self.make_bays(), {}, {})
+
+		self.assertEqual(rows[0]["bay_type_name"], PIT)
 
 	def test_no_bays_gives_no_rows(self):
 		"""ไม่มีช่องจอดก็ไม่มีแถว — ไม่ throw"""
@@ -756,6 +856,45 @@ class UnitTestSummarizeDay(UnitTestCase):
 		"""มีช่องจอดแล้วต้องใช้ note ที่ส่งมา ไม่ใช่ทับด้วยข้อความว่าไม่มีช่องจอด"""
 		summary = summarize_day([make_bay("BAY-01")], "วันนี้ทำครึ่งวัน")
 		self.assertEqual(summary["day_note"], "วันนี้ทำครึ่งวัน")
+
+	def test_by_type_splits_rows_without_changing_day_totals(self):
+		"""by_type คือการซอยกลุ่ม ไม่ใช่การคิดใหม่ — ยอดรวมระดับวันต้องเท่าเดิมเป๊ะ"""
+		rows = [
+			make_bay("BAY-01", bay_type=PIT, booked=6),
+			make_bay("BAY-02", booked=2),
+			make_bay("BAY-03", booked=0),
+		]
+		summary = summarize_day(rows)
+
+		self.assertEqual(summary["cap"], 24)
+		self.assertEqual(summary["booked"], 8)
+		self.assertEqual(sum(group["cap"] for group in summary["by_type"]), summary["cap"])
+		self.assertEqual(sum(group["booked"] for group in summary["by_type"]), summary["booked"])
+		# เรียงตามชื่อไทยของประเภท: "ช่องจอดทั่วไป" มาก่อน "ช่องจอดมีหลุมซ่อม"
+		self.assertEqual([group["bay_type"] for group in summary["by_type"]], [GENERAL, PIT])
+		self.assertEqual(summary["by_type"][0]["cap"], 16)
+		self.assertEqual(summary["by_type"][1]["booked"], 6)
+
+	def test_by_type_status_is_computed_per_type(self):
+		"""ประเภทหนึ่งเต็มแต่ทั้งวันยังว่าง — นี่คือความจริงที่ยอดรวมทั้งวันบอกไม่ได้"""
+		summary = summarize_day([make_bay("BAY-01", bay_type=PIT, booked=8), make_bay("BAY-02")])
+		by_type = {group["bay_type"]: group for group in summary["by_type"]}
+
+		self.assertEqual(by_type[PIT]["status"], STATUS_FULL)
+		self.assertEqual(by_type[GENERAL]["status"], STATUS_FREE)
+		self.assertEqual(summary["status"], STATUS_FREE)
+
+	def test_by_type_free_is_clamped_per_bay_too(self):
+		"""สูตร clamp ต่อช่องต้องเป็นชุดเดียวกับระดับวัน ไม่ใช่ cap รวมลบ booked รวม"""
+		rows = [make_bay("BAY-01", booked=10), make_bay("BAY-02", booked=2)]
+		group = summarize_day(rows)["by_type"][0]
+
+		self.assertEqual(group["free"], 6)
+		self.assertEqual(group["over"], 2)
+
+	def test_by_type_is_empty_without_bays(self):
+		"""วันที่ไม่มีช่องจอดเลย → ไม่มีบรรทัดรายประเภทให้แสดง"""
+		self.assertEqual(summarize_day([])["by_type"], [])
 
 
 class UnitTestFoldBookedHours(UnitTestCase):
