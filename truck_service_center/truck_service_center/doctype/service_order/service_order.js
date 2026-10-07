@@ -56,6 +56,9 @@ frappe.ui.form.on("Service Order", {
 		// ป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
 		lock_rows_with_submitted_material_issue(frm);
 
+		// หัวหน้าช่าง/ผู้ดูแลระบบคีย์เวลาเริ่ม-จบของงานเองได้ (เช่นคีย์ย้อนหลังงานนอกเวลาทำการ)
+		allow_work_time_editing(frm);
+
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
 		// ต้องรับรถก่อนถึงจะเบิกอะไหล่ได้ — ถ้ายังไม่รับรถจะเห็นแค่ปุ่ม "รับรถ"
 		if (
@@ -783,6 +786,14 @@ frappe.ui.form.on("Service Order Package", {
 frappe.ui.form.on("Service Order Service Type", {
 	service_types_add: function (frm) {
 		calculate_totals(frm);
+	},
+
+	start_time: function (frm) {
+		preview_actual_time(frm);
+	},
+
+	end_time: function (frm) {
+		preview_actual_time(frm);
 	},
 
 	service_bay: function (frm, cdt, cdn) {
@@ -1977,6 +1988,32 @@ function restore_deleted_locked_rows(frm) {
 }
 
 // ฟังก์ชันป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
+// ชุดเดียวกับ WORK_TIME_EDITOR_ROLES ใน service_order.py — server ตรวจซ้ำใน validate_work_times เสมอ
+const WORK_TIME_EDITOR_ROLES = ["Technician Manager", "Service Manager", "System Manager"];
+
+function allow_work_time_editing(frm) {
+	// ช่องเวลาตั้งเป็น read-only ใน doctype (ช่างได้เวลาจากปุ่มในพอร์ทัล) ปลดให้เฉพาะ role ที่แก้ได้
+	const can_edit = WORK_TIME_EDITOR_ROLES.some((role) => frappe.user.has_role(role));
+	const grid = frm.fields_dict.service_types && frm.fields_dict.service_types.grid;
+	if (!grid) return;
+
+	["start_time", "end_time"].forEach(function (fieldname) {
+		grid.update_docfield_property(fieldname, "read_only", can_edit ? 0 : 1);
+	});
+}
+
+function preview_actual_time(frm) {
+	// mirror ของ compute_actual_time ใน service_order.py (ต้องแก้คู่กัน) — ให้เห็นผลก่อน save
+	// เริ่มแรกสุด → จบท้ายสุด; ยังไม่มีเวลาเริ่มหรือเวลาจบเลยให้คงค่าเดิมไว้
+	const rows = frm.doc.service_types || [];
+	const starts = rows.filter((r) => r.start_time).map((r) => moment(r.start_time));
+	const ends = rows.filter((r) => r.end_time).map((r) => moment(r.end_time));
+	if (!starts.length || !ends.length) return;
+
+	const hours = moment.max(ends).diff(moment.min(starts), "seconds") / 3600;
+	frm.set_value("actual_time", flt(hours, 2));
+}
+
 function lock_rows_with_submitted_material_issue(frm) {
 	if (!frm.doc.service_items) return;
 	if (!frm.fields_dict.service_items || !frm.fields_dict.service_items.grid) return;

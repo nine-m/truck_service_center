@@ -233,6 +233,8 @@ def start_service(service_order, row_name):
 		frappe.throw(_("งานรายการนี้เริ่มไปแล้ว"))
 
 	row.start_time = now_datetime()
+	# ช่างไม่มีสิทธิ์แก้เวลาในฟอร์ม แต่ stamp จากปุ่มนี้ได้ (ดู validate_work_times)
+	doc.flags.allow_work_time_stamp = True
 	doc.save()
 
 	return {"value": str(row.start_time)}
@@ -250,6 +252,8 @@ def finish_service(service_order, row_name):
 		frappe.throw(_("งานรายการนี้จบไปแล้ว"))
 
 	row.end_time = now_datetime()
+	# ช่างไม่มีสิทธิ์แก้เวลาในฟอร์ม แต่ stamp จากปุ่มนี้ได้ (ดู validate_work_times)
+	doc.flags.allow_work_time_stamp = True
 	doc.save()
 
 	return {"value": str(row.end_time)}
@@ -259,7 +263,7 @@ def finish_service(service_order, row_name):
 def reset_service(service_order, row_name):
 	"""หัวหน้าช่างล้างเวลาเริ่ม-จบ เพื่อเปิดงานรายการนั้นใหม่
 
-	เป็นทางเดียวที่แก้เวลาที่กดผิดได้ เพราะ actual_time เป็น read-only ทุกที่แล้ว
+	ในพอร์ทัลเป็นทางเดียวที่แก้เวลาที่กดผิดได้ — ใน desk หัวหน้าช่างแก้เวลาในแถวงานเองได้ด้วย
 	"""
 	doc = _get_manager_job(service_order)
 	row = _get_service_row(doc, row_name)

@@ -628,6 +628,80 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual(so.actual_time, 1.5)
 
+	# ── คีย์เวลาเริ่ม-จบเองในฟอร์ม (หัวหน้าช่าง/ผู้ดูแลระบบ) ──────────────────────
+
+	def run_work_time_check(self, before_rows, after_rows, roles=("Technician",), portal=False):
+		"""เรียก validate_work_times โดยจำลองแถวก่อน save และ role ของผู้ใช้"""
+		so = make_order(labor_rows=after_rows)
+		before = make_order(labor_rows=before_rows) if before_rows is not None else None
+		so.flags.allow_work_time_stamp = portal
+
+		with (
+			patch.object(so, "get_doc_before_save", return_value=before),
+			patch("frappe.get_roles", return_value=list(roles)),
+		):
+			so.validate_work_times()
+
+	def test_technician_cannot_edit_work_time_in_form(self):
+		"""ช่างทั่วไปแก้เวลาในฟอร์มไม่ได้ ต้องกดเริ่ม/จบในพอร์ทัล"""
+		with self.assertRaises(frappe.PermissionError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2026-09-01 20:00:00"}],
+			)
+
+	def test_technician_manager_can_backdate_work_time(self):
+		"""หัวหน้าช่างคีย์ย้อนหลังนอกเวลาทำการได้"""
+		self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 20:00:00", "end_time": "2026-09-01 23:30:00"}],
+			roles=("Technician Manager",),
+		)
+
+	def test_portal_stamp_allowed_for_technician(self):
+		"""ปุ่มเริ่ม/จบในพอร์ทัลตั้ง flag ไว้ ช่างจึง stamp เวลาได้"""
+		self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00"}],
+			portal=True,
+		)
+
+	def test_unchanged_work_time_does_not_need_role(self):
+		"""แก้เรื่องอื่นในใบงาน เวลาเดิมไม่เปลี่ยน → ช่างทั่วไป save ได้ (เศษ microsecond ไม่นับ)"""
+		self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00.123456"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "remark": "แก้หมายเหตุ"}],
+		)
+
+	def test_work_time_end_before_start_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2026-09-01 10:00:00", "end_time": "2026-09-01 09:00:00"}],
+				roles=("Technician Manager",),
+			)
+
+	def test_work_time_end_without_start_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "end_time": "2026-09-01 09:00:00"}],
+				roles=("System Manager",),
+			)
+
+	def test_work_time_in_future_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2999-01-01 08:00:00"}],
+				roles=("Service Manager",),
+			)
+
+	def test_new_order_with_work_time_needs_role(self):
+		"""ใบใหม่ (ไม่มี doc ก่อน save) ที่มีเวลามาด้วย ถือว่าแก้เวลา"""
+		with self.assertRaises(frappe.PermissionError):
+			self.run_work_time_check(None, [{"start_time": "2026-09-01 08:00:00"}], roles=("Service User",))
+
 	# ── ช่างจากแถวงาน sync ขึ้นระดับใบงาน ──────────────────────────────────────
 
 	def test_row_technicians_fill_first_free_parent_slots(self):

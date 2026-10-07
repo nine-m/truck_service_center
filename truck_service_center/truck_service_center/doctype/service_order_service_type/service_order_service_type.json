@@ -134,17 +134,19 @@
    "label": "เวลาทำงาน"
   },
   {
-   "description": "บันทึกอัตโนมัติเมื่อช่างกดเริ่มงานในพอร์ทัล",
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดเริ่มงานในพอร์ทัล — หัวหน้าช่าง/ผู้ดูแลระบบคีย์เองได้ (เช่นงานนอกเวลาทำการ)",
    "fieldname": "start_time",
    "fieldtype": "Datetime",
    "label": "เวลาเริ่ม",
+   "no_copy": 1,
    "read_only": 1
   },
   {
-   "description": "บันทึกอัตโนมัติเมื่อช่างกดจบงานในพอร์ทัล",
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดจบงานในพอร์ทัล — หัวหน้าช่าง/ผู้ดูแลระบบคีย์เองได้ (เช่นงานนอกเวลาทำการ)",
    "fieldname": "end_time",
    "fieldtype": "Datetime",
    "label": "เวลาจบ",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -220,7 +222,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-03 09:10:00.000000",
+ "modified": "2026-10-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Service Type",

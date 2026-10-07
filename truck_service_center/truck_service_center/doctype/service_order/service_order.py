@@ -4,7 +4,7 @@
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import cint, flt, now_datetime, time_diff_in_hours
+from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
 
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
 
@@ -28,6 +28,12 @@ ROW_TECHNICIAN_FIELDS = tuple(f"technician_{i}" for i in range(1, 11))
 
 # ช่องช่างระดับใบงาน — ช่องแรกชื่อ technician เฉย ๆ ที่เหลือมีเลขต่อท้าย
 PARENT_TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
+
+# เวลาเริ่ม-จบของแถวงาน ปกติได้จากปุ่มเริ่ม/จบในพอร์ทัลช่าง แต่ role เหล่านี้คีย์/แก้เองในฟอร์มได้
+# (เช่นคีย์ย้อนหลังงานที่ทำนอกเวลาทำการ) — ฝั่ง client ปลดล็อกช่องให้ด้วยชุดเดียวกัน
+# (WORK_TIME_EDITOR_ROLES ใน service_order.js)
+WORK_TIME_EDITOR_ROLES = {"Technician Manager", "Service Manager", "System Manager"}
+WORK_TIME_FIELDS = ("start_time", "end_time")
 
 # สถานะที่ถือว่าใบงานยัง "เปิด" อยู่ — ใช้หาว่าช่องจอดถูกใบอื่นใช้ค้างไว้หรือเปล่า
 # ประกาศที่นี่ ไม่ import EDITABLE_STATUSES จาก technician_portal เพราะฝั่งนั้น
@@ -66,6 +72,17 @@ def get_default_selling_rate(item_code, price_list=None):
 	return flt(item.standard_rate) or flt(item.valuation_rate)
 
 
+def _to_second(value):
+	"""datetime ตัดเศษวินาทีทิ้ง — ค่าว่างคืน None (get_datetime(None) จะคืนเวลาปัจจุบัน)
+
+	ค่าจาก DB มี microsecond แต่ค่าที่ฟอร์มส่งกลับมาอาจถูกตัดไปแล้ว ถ้าเทียบตรง ๆ
+	การ save เรื่องอื่นของผู้ใช้ที่ไม่มีสิทธิ์จะถูกมองว่าแก้เวลา
+	"""
+	if not value:
+		return None
+	return get_datetime(value).replace(microsecond=0)
+
+
 class ServiceOrder(Document):
 	def validate(self):
 		self.validate_status_change()
@@ -79,6 +96,7 @@ class ServiceOrder(Document):
 		self.calculate_totals()
 		self.apply_default_bay()
 		self.sync_row_technicians_to_parent()
+		self.validate_work_times()
 		self.compute_actual_time()
 		self.warn_bay_issues()
 		self.calculate_wht()
@@ -593,6 +611,45 @@ class ServiceOrder(Document):
 			return
 
 		self.actual_time = flt(time_diff_in_hours(max(ends), min(starts)), 2)
+
+	def validate_work_times(self):
+		"""ตรวจเวลาเริ่ม-จบที่ถูกแก้ในรอบนี้ — ใครแก้ได้ และค่าที่แก้สมเหตุสมผลไหม
+
+		ตรวจเฉพาะแถวที่ค่าเปลี่ยน ข้อมูลเก่าที่ไม่ได้แตะจึงไม่ทำให้ save ไม่ผ่าน
+		พอร์ทัลช่างตั้ง flags.allow_work_time_stamp ตอน stamp เวลาจากปุ่มเริ่ม/จบ
+		"""
+		before = self.get_doc_before_save()
+		old_rows = {row.name: row for row in before.service_types} if before else {}
+
+		changed_rows = []
+		for row in self.service_types:
+			old = old_rows.get(row.name)
+			if any(
+				_to_second(row.get(f)) != _to_second(old.get(f) if old else None) for f in WORK_TIME_FIELDS
+			):
+				changed_rows.append(row)
+
+		if not changed_rows:
+			return
+
+		if not self.flags.allow_work_time_stamp and not (WORK_TIME_EDITOR_ROLES & set(frappe.get_roles())):
+			frappe.throw(
+				"เฉพาะหัวหน้าช่างหรือผู้ดูแลระบบเท่านั้นที่แก้เวลาเริ่ม-จบของงานในฟอร์มได้ — ช่างให้กดเริ่ม/จบงานในพอร์ทัล",
+				frappe.PermissionError,
+				title="ไม่มีสิทธิ์แก้เวลาทำงาน",
+			)
+
+		now = now_datetime()
+		for row in changed_rows:
+			label = f"แถวที่ {row.idx} ({row.service_type or 'ไม่ระบุ'})"
+			start, end = _to_second(row.start_time), _to_second(row.end_time)
+
+			if end and not start:
+				frappe.throw(f"{label}: ต้องระบุเวลาเริ่มก่อนจึงจะระบุเวลาจบได้")
+			if start and end and end < start:
+				frappe.throw(f"{label}: เวลาจบต้องไม่ก่อนเวลาเริ่ม")
+			if (start and start > now) or (end and end > now):
+				frappe.throw(f"{label}: เวลาเริ่ม-จบต้องไม่เกินเวลาปัจจุบัน")
 
 	def warn_bay_issues(self):
 		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)"""
