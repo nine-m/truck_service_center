@@ -35,6 +35,11 @@ PARENT_TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 
 WORK_TIME_EDITOR_ROLES = {"Technician Manager", "Service Manager", "System Manager"}
 WORK_TIME_FIELDS = ("start_time", "end_time")
 
+STATUS_LOCKED_MESSAGE = (
+	"สถานะใบสั่งงานเปลี่ยนเองไม่ได้ — ใช้ปุ่ม รับรถ / พักงาน / ทำงานต่อ / จบงาน (ในฟอร์มหรือพอร์ทัลช่าง) "
+	"ส่วน Completed เกิดจากการ submit"
+)
+
 # สถานะที่ถือว่าใบงานยัง "เปิด" อยู่ — ใช้หาว่าช่องจอดถูกใบอื่นใช้ค้างไว้หรือเปล่า
 # ประกาศที่นี่ ไม่ import EDITABLE_STATUSES จาก technician_portal เพราะฝั่งนั้น
 # import receive_vehicle จากไฟล์นี้อยู่แล้ว (จะกลายเป็น circular import)
@@ -111,9 +116,20 @@ class ServiceOrder(Document):
 		self.update_material_issue_status()
 
 	def validate_status_change(self):
-		"""ป้องกันการย้อนสถานะจาก In Progress กลับเป็น Draft"""
+		"""สถานะเปลี่ยนได้ผ่านปุ่มเท่านั้น ผู้ใช้เลือกเองในฟอร์ม/API ไม่ได้
+
+		ทางที่ตั้ง flags.allow_status_change: receive_vehicle (รับรถ) และ set_status ของพอร์ทัล
+		(พักงาน / ทำงานต่อ / จบงาน — ปุ่มในฟอร์มก็เรียกตัวเดียวกัน) ส่วน Completed มาจาก
+		before_submit ซึ่งรันหลัง validate จึงไม่ผ่านด่านนี้
+		"""
 		if self.is_new():
+			# ใบ amend ได้สถานะติดมาจากใบที่ยกเลิก (amend คัด no_copy ด้วย) — ปล่อยไว้ตามเดิม
+			if self.status != "Draft" and not self.amended_from and not self.flags.allow_status_change:
+				frappe.throw(STATUS_LOCKED_MESSAGE, frappe.PermissionError, title="ไม่สามารถเปลี่ยนสถานะได้")
 			return
+
+		if self.has_value_changed("status") and not self.flags.allow_status_change:
+			frappe.throw(STATUS_LOCKED_MESSAGE, frappe.PermissionError, title="ไม่สามารถเปลี่ยนสถานะได้")
 
 		old_status = self.get_doc_before_save()
 		if old_status and old_status.status == "In Progress" and self.status == "Draft":
@@ -135,8 +151,8 @@ class ServiceOrder(Document):
 	def stamp_receive_on_progress(self):
 		"""ถือว่าการเปลี่ยนสถานะเป็น In Progress คือการรับรถ และบันทึกเวลานั้นไว้
 
-		ปุ่ม "รับรถ" (receive_vehicle) ยังเป็นทางหลักที่ผ่านการตรวจน้ำมันรับเข้า
-		แต่ status เป็น Select ที่แก้ด้วยมือในฟอร์มได้ ถ้าแก้ตรง ๆ ก็ให้ stamp ให้ด้วย
+		ปุ่ม "รับรถ" (receive_vehicle) เป็นทางหลักที่ผ่านการตรวจน้ำมันรับเข้า ตัวนี้เป็นตาข่ายรอง
+		ให้ทางอื่นที่ได้สิทธิ์เปลี่ยนสถานะ (validate_status_change) ยัง stamp ครบ
 		เพื่อให้ received_date สะท้อนเวลาที่เริ่มงานจริงเสมอ
 
 		ไม่เขียนทับค่าเดิม — receive_vehicle stamp มาก่อนเรียก save() อยู่แล้ว
@@ -1713,9 +1729,33 @@ def receive_vehicle(service_order):
 	doc.received_by = frappe.session.user
 	doc.received_date = now_datetime()
 	doc.status = "In Progress"
+	doc.flags.allow_status_change = True
 	doc.save()
 
 	return {"status": "ok"}
+
+
+@frappe.whitelist()
+def reopen_job(service_order):
+	"""เปิดงานที่จบแล้ว (รอส่งมอบรถ) กลับเป็นกำลังซ่อม — หัวหน้าช่าง/ผู้จัดการเท่านั้น
+
+	สถานะเลือกเองไม่ได้ (validate_status_change) และพอร์ทัลไม่มีทางย้อนจาก Ready for Delivery
+	ตัวนี้จึงเป็นทางเดียวที่แก้การกดจบงานผิด
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
+
+	if not (WORK_TIME_EDITOR_ROLES & set(frappe.get_roles())):
+		frappe.throw("เฉพาะหัวหน้าช่างหรือผู้จัดการเท่านั้นที่เปิดงานอีกครั้งได้", frappe.PermissionError)
+
+	if doc.docstatus != 0 or doc.status != "Ready for Delivery":
+		frappe.throw("เปิดงานอีกครั้งได้เฉพาะใบที่ยังไม่ submit และอยู่ในสถานะรอส่งมอบรถ")
+
+	doc.status = "In Progress"
+	doc.flags.allow_status_change = True
+	doc.save()
+
+	return {"status": doc.status}
 
 
 @frappe.whitelist()

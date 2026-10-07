@@ -179,6 +179,9 @@ frappe.ui.form.on("Service Order", {
 				});
 			}).addClass("btn-primary");
 		}
+
+		// ปุ่มเปลี่ยนสถานะเหมือนในพอร์ทัลช่าง — ช่องสถานะเลือกเองไม่ได้แล้ว
+		add_status_buttons(frm);
 	},
 
 	customer: function (frm) {
@@ -1989,6 +1992,111 @@ function restore_deleted_locked_rows(frm) {
 }
 
 // ฟังก์ชันป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
+// ปุ่มเปลี่ยนสถานะ = เส้นทางเดียวกับ ALLOWED_TRANSITIONS ใน technician_portal.py (Draft → In Progress
+// ใช้ปุ่ม "รับรถ" ด้านบน) และยิง set_status ตัวเดียวกับพอร์ทัล จึงได้ด่าน _validate_completion ครบ
+const STATUS_BUTTONS = {
+	"In Progress": [
+		{ status: "Ready for Delivery", label: "จบงาน", primary: true },
+		{ status: "On Hold", label: "พักงาน" },
+	],
+	"On Hold": [{ status: "In Progress", label: "ทำงานต่อ", primary: true }],
+};
+
+// ชุดเดียวกับ MANAGER_ROLES ของพอร์ทัล — นอกจากนี้ต้องเป็นช่างในใบงาน (ด่านชั้นที่ 2 ของ _get_editable_job)
+const STATUS_MANAGER_ROLES = ["Technician Manager", "Service Manager", "System Manager"];
+const PARENT_TECHNICIAN_FIELDS = ["technician"].concat(
+	Array.from({ length: 9 }, (_, i) => `technician_${i + 2}`)
+);
+
+function can_change_status(frm) {
+	if (STATUS_MANAGER_ROLES.some((role) => frappe.user.has_role(role))) return true;
+	return PARENT_TECHNICIAN_FIELDS.some((f) => frm.doc[f] === frappe.session.user);
+}
+
+function add_status_buttons(frm) {
+	if (frm.doc.docstatus !== 0 || frm.is_new() || !can_change_status(frm)) return;
+
+	// ย้อนจากจบงานไม่มีในพอร์ทัล — หัวหน้าช่าง/ผู้จัดการแก้การกดจบผิดได้จากฟอร์มเท่านั้น
+	if (
+		frm.doc.status === "Ready for Delivery" &&
+		STATUS_MANAGER_ROLES.some((role) => frappe.user.has_role(role))
+	) {
+		frm.add_custom_button("เปิดงานอีกครั้ง", function () {
+			frappe.confirm("เปิดงานนี้กลับเป็นกำลังซ่อม?", function () {
+				frappe.call({
+					method: "truck_service_center.truck_service_center.doctype.service_order.service_order.reopen_job",
+					args: { service_order: frm.doc.name },
+					freeze: true,
+					callback: (r) => !r.exc && frm.reload_doc(),
+				});
+			});
+		});
+	}
+
+	(STATUS_BUTTONS[frm.doc.status] || []).forEach(function (action) {
+		const btn = frm.add_custom_button(action.label, function () {
+			const run = () => call_set_status(frm, action.status);
+			const go = () => (frm.is_dirty() ? frm.save().then(run) : run());
+
+			if (action.status === "Ready for Delivery") {
+				confirm_complete(frm, go);
+			} else {
+				frappe.confirm(`ยืนยัน${action.label}?`, go);
+			}
+		});
+		if (action.primary) btn.addClass("btn-primary");
+	});
+}
+
+function call_set_status(frm, status) {
+	frappe.call({
+		method: "truck_service_center.api.technician_portal.set_status",
+		args: { service_order: frm.doc.name, status: status },
+		freeze: true,
+		callback: function (r) {
+			if (r.exc) return;
+			frm.reload_doc();
+			frappe.show_alert({ message: __("เปลี่ยนสถานะเรียบร้อย"), indicator: "green" });
+		},
+	});
+}
+
+function confirm_complete(frm, proceed) {
+	// เหมือน confirmComplete ของพอร์ทัล: บอกสิ่งที่ยังขาดก่อน (server ตรวจซ้ำใน _validate_completion
+	// ซึ่งรวมเรื่องใบเบิกอะไหล่ด้วย) ส่วนเลขไมล์ที่ยังไม่อัปเดตเป็นแค่คำถามยืนยัน
+	const missing = [];
+	const unfinished = (frm.doc.service_types || []).filter((r) => !r.end_time);
+	if (unfinished.length) {
+		missing.push(
+			`จบงานให้ครบทุกรายการ — ยังไม่จบ: ${unfinished
+				.map((r) => frappe.utils.escape_html(r.service_type || "(ไม่ระบุ)"))
+				.join(", ")}`
+		);
+	}
+	if (!frm.doc.fuel_level_out) missing.push("สถานะน้ำมันออก");
+
+	if (missing.length) {
+		frappe.msgprint({
+			title: __("ข้อมูลไม่ครบ"),
+			indicator: "orange",
+			message: "กรุณาบันทึกข้อมูลต่อไปนี้ก่อนจบงาน<br>" + missing.map((m) => `• ${m}`).join("<br>"),
+		});
+		return;
+	}
+
+	const ask = (baseline) => {
+		const mileage = flt(frm.doc.current_mileage);
+		const unchanged = !mileage || (baseline && mileage === flt(baseline));
+		const msg = unchanged
+			? `ยังไม่ได้อัปเดตเลขไมล์ของงานนี้ (ปัจจุบัน ${format_number(mileage)} กม.)<br><br>ยืนยันจบงานโดยไม่เปลี่ยนเลขไมล์?`
+			: "ยืนยันจบงานนี้? (สถานะจะเป็นรอส่งมอบรถ)";
+		frappe.confirm(msg, proceed);
+	};
+
+	if (!frm.doc.vehicle) return ask(null);
+	frappe.db.get_value("Vehicle", frm.doc.vehicle, "current_mileage", (r) => ask(r && r.current_mileage));
+}
+
 // ชุดเดียวกับ WORK_TIME_EDITOR_ROLES ใน service_order.py — server ตรวจซ้ำใน validate_work_times เสมอ
 const WORK_TIME_EDITOR_ROLES = ["Technician Manager", "Service Manager", "System Manager"];
 

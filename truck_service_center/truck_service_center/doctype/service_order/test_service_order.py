@@ -628,6 +628,46 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual(so.actual_time, 1.5)
 
+	# ── สถานะเปลี่ยนได้ผ่านปุ่มเท่านั้น ─────────────────────────────────────────────
+
+	def run_status_check(self, old_status, new_status, allowed=False, **fields):
+		"""เรียก validate_status_change โดยจำลองสถานะก่อน save (old_status None = ใบใหม่)"""
+		so = make_order(status=new_status, **fields)
+		so.flags.allow_status_change = allowed
+		before = make_order(status=old_status) if old_status else None
+
+		with (
+			patch.object(so, "is_new", return_value=old_status is None),
+			patch.object(so, "get_doc_before_save", return_value=before),
+		):
+			so.validate_status_change()
+
+	def test_user_cannot_pick_status(self):
+		with self.assertRaises(frappe.PermissionError):
+			self.run_status_check("In Progress", "Ready for Delivery")
+
+	def test_status_button_path_allowed(self):
+		"""ปุ่มจบงาน/พักงาน (set_status) และรับรถตั้ง flag ไว้ → เปลี่ยนได้"""
+		self.run_status_check("In Progress", "Ready for Delivery", allowed=True)
+		self.run_status_check("In Progress", "On Hold", allowed=True)
+
+	def test_unchanged_status_saves_freely(self):
+		self.run_status_check("In Progress", "In Progress")
+
+	def test_new_order_must_start_as_draft(self):
+		self.run_status_check(None, "Draft")
+		with self.assertRaises(frappe.PermissionError):
+			self.run_status_check(None, "In Progress")
+
+	def test_amendment_keeps_copied_status(self):
+		"""ใบ amend ได้สถานะติดมาจากใบที่ยกเลิก — ไม่ถือว่าผู้ใช้เลือกเอง"""
+		self.run_status_check(None, "Completed", amended_from="SO-OLD")
+
+	def test_button_path_still_cannot_reach_completed(self):
+		"""แม้มี flag ก็ยังเลือก Completed ระหว่าง draft ไม่ได้ (เกิดจาก submit เท่านั้น)"""
+		with self.assertRaises(frappe.ValidationError):
+			self.run_status_check("Ready for Delivery", "Completed", allowed=True)
+
 	# ── คีย์เวลาเริ่ม-จบเองในฟอร์ม (หัวหน้าช่าง/ผู้ดูแลระบบ) ──────────────────────
 
 	def run_work_time_check(self, before_rows, after_rows, roles=("Technician",), portal=False, **fields):

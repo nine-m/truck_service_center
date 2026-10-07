@@ -387,7 +387,7 @@ def _validate_completion(doc):
 
 @frappe.whitelist()
 def set_status(service_order, status):
-	"""เปลี่ยนสถานะงานตามเส้นทางที่อนุญาตเท่านั้น
+	"""เปลี่ยนสถานะงานตามเส้นทางที่อนุญาตเท่านั้น — ใช้ทั้งพอร์ทัลและปุ่มในฟอร์ม desk
 
 	Draft → In Progress ส่งต่อให้ receive_vehicle ของ controller เดิม
 	เพื่อให้ยัง stamp ผู้รับรถ/เวลา และบังคับกรอกน้ำมันรับเข้าเหมือนทำผ่าน desk
@@ -410,6 +410,8 @@ def set_status(service_order, status):
 		receive_vehicle(doc.name)
 	else:
 		doc.status = status
+		# สถานะถูกล็อกไม่ให้เลือกเอง (validate_status_change) — endpoint นี้คือทางที่อนุญาต
+		doc.flags.allow_status_change = True
 		doc.save()
 
 	return {"value": status}
