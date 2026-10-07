@@ -580,6 +580,23 @@ class ServiceOrder(Document):
 			if not row.service_bay:
 				row.service_bay = self.service_bay
 
+	def bay_assignment_changed(self):
+		"""ใบใหม่ / ช่องจอดหลักเปลี่ยน / มีแถวงานใหม่หรือแถวที่ประเภทบริการ-ช่องจอดเปลี่ยน
+
+		เรียกหลัง apply_default_bay จึงเทียบช่องจอดที่มีผลจริงของแถว (ใบเดิมก็ถูกเติมไว้แบบเดียวกัน)
+		"""
+		before = self.get_doc_before_save()
+		if not before:
+			return True
+
+		if before.service_bay != self.service_bay:
+			return True
+
+		old_pairs = {row.name: (row.service_type, row.service_bay) for row in before.service_types}
+		return any(
+			old_pairs.get(row.name) != (row.service_type, row.service_bay) for row in self.service_types
+		)
+
 	def sync_row_technicians_to_parent(self):
 		"""รวมช่างจากทุกแถวงานขึ้นมาไว้ที่ระดับใบงาน
 
@@ -701,7 +718,14 @@ class ServiceOrder(Document):
 				row.time_entered_on = now_datetime()
 
 	def warn_bay_issues(self):
-		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)"""
+		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)
+
+		เตือนเฉพาะรอบที่การจัดช่องจอดเปลี่ยน — ถ้าเตือนทุกครั้งที่ save ใบที่ผู้ใช้รับทราบแล้ว
+		ว่าช่องจอดไม่ตรงประเภท (และตั้งใจใช้แบบนั้น) จะเด้งเตือนซ้ำทุกการแก้เรื่องอื่น
+		"""
+		if not self.bay_assignment_changed():
+			return
+
 		for warning in get_bay_warnings(self):
 			frappe.msgprint(warning, indicator="orange")
 

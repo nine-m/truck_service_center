@@ -628,6 +628,34 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual(so.actual_time, 1.5)
 
+	# ── เตือนช่องจอดเฉพาะตอนที่การจัดช่องจอดเปลี่ยน ─────────────────────────────
+
+	def bay_changed(self, before, after):
+		"""before/after = (ช่องจอดหลัก, [แถว]) — before None = ใบใหม่"""
+		so = make_order(service_bay=after[0], labor_rows=after[1])
+		old = make_order(service_bay=before[0], labor_rows=before[1]) if before else None
+		with patch.object(so, "get_doc_before_save", return_value=old):
+			return so.bay_assignment_changed()
+
+	def test_bay_warning_skipped_when_bays_unchanged(self):
+		"""แก้เรื่องอื่นในใบงาน → ไม่เตือนช่องจอดซ้ำ"""
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01", "remark": "เดิม"}]
+		changed = [{**rows[0], "remark": "แก้หมายเหตุ"}]
+		self.assertFalse(self.bay_changed(("BAY-01", rows), ("BAY-01", changed)))
+
+	def test_bay_warning_when_row_bay_or_service_type_changes(self):
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01"}]
+		self.assertTrue(
+			self.bay_changed(("BAY-01", rows), ("BAY-01", [{**rows[0], "service_bay": "BAY-02"}]))
+		)
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-01", [{**rows[0], "service_type": "ST-B"}])))
+
+	def test_bay_warning_when_main_bay_changes_or_row_added(self):
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01"}]
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-02", rows)))
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-01", [*rows, {"service_type": "ST-B"}])))
+		self.assertTrue(self.bay_changed(None, ("BAY-01", rows)))
+
 	# ── สถานะเปลี่ยนได้ผ่านปุ่มเท่านั้น ─────────────────────────────────────────────
 
 	def run_status_check(self, old_status, new_status, allowed=False, **fields):
