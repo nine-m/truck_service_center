@@ -2146,13 +2146,25 @@ function parse_time_input(text) {
 	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// ค่าในฐานข้อมูลเป็นเวลาตาม time zone ของระบบ แต่ช่อง Datetime ของ Frappe แสดงตาม time zone ของผู้ใช้
+// หน้าต่างคีย์เวลาจึงทำงานเป็นเวลาของผู้ใช้ แล้วแปลงกลับเป็นของระบบตอนบันทึก (แบบเดียวกับ control Datetime)
+function work_time_user_moment(text) {
+	const tz = frappe.boot.time_zone && frappe.boot.time_zone.user;
+	return tz ? moment.tz(text, "YYYY-MM-DD HH:mm", tz) : moment(text, "YYYY-MM-DD HH:mm");
+}
+
+function work_time_to_system(m) {
+	const tz = frappe.boot.time_zone && frappe.boot.time_zone.system;
+	return (tz ? m.clone().tz(tz) : m).format("YYYY-MM-DD HH:mm:ss");
+}
+
 function open_work_time_dialog(frm) {
 	// แทนการเลื่อน slider ชั่วโมง/นาทีของ datepicker — วันที่ใช้ input date ของเบราว์เซอร์ เวลาพิมพ์ตัวเลข
 	// ค่าที่ได้ลงแถวงานแล้ว save ปกติ server ตรวจซ้ำ + ประทับร่องรอยใน validate_work_times
 	const rows = frm.doc.service_types || [];
 	const split = (value) => {
 		if (!value) return { date: "", time: "" };
-		const m = moment(value);
+		const m = frappe.datetime.convert_to_user_tz(value, false);
 		return { date: m.format("YYYY-MM-DD"), time: m.format("HH:mm") };
 	};
 
@@ -2240,7 +2252,7 @@ function read_work_time_dialog($table) {
 		} else if (!start_date || !start_time) {
 			result.error = "ต้องระบุวันและเวลาเริ่ม";
 		} else {
-			result.start = moment(`${start_date} ${start_time}`, "YYYY-MM-DD HH:mm");
+			result.start = work_time_user_moment(`${start_date} ${start_time}`);
 			if (end_time) {
 				if (!end_date) {
 					end_date = start_date;
@@ -2248,7 +2260,7 @@ function read_work_time_dialog($table) {
 						end_date = moment(start_date).add(1, "day").format("YYYY-MM-DD");
 					}
 				}
-				result.end = moment(`${end_date} ${end_time}`, "YYYY-MM-DD HH:mm");
+				result.end = work_time_user_moment(`${end_date} ${end_time}`);
 			} else if (end_date) {
 				result.error = "ระบุวันจบแล้วต้องระบุเวลาจบด้วย";
 			}
@@ -2292,8 +2304,9 @@ function save_work_time_dialog(frm, dialog) {
 		return;
 	}
 
-	const fmt = (m) => (m ? m.format("YYYY-MM-DD HH:mm:ss") : null);
-	const same = (a, b) => (a ? moment(a).format("YYYY-MM-DD HH:mm") : null) === (b ? b.format("YYYY-MM-DD HH:mm") : null);
+	// เทียบเป็นเวลาของระบบระดับนาที (ตัดวินาทีทิ้ง)
+	const fmt = (m) => (m ? work_time_to_system(m) : null);
+	const same = (a, b) => (a ? a.slice(0, 16) : null) === (b ? fmt(b).slice(0, 16) : null);
 
 	let changed = 0;
 	results.forEach((r) => {
@@ -2328,7 +2341,7 @@ function show_manual_work_time_notice(frm) {
 		(r) =>
 			`${frappe.utils.escape_html(r.service_type || "-")} — ${frappe.utils.escape_html(
 				r.time_entered_by || "-"
-			)} (${frappe.datetime.str_to_user(r.time_entered_on)})`
+			)} (${frappe.datetime.str_to_user(frappe.datetime.convert_to_user_tz(r.time_entered_on))})`
 	);
 	frm.dashboard.add_comment(
 		`<b>เวลาทำงานถูกคีย์เองในฟอร์ม ${rows.length} รายการ:</b> ${lines.join(" · ")}`,
