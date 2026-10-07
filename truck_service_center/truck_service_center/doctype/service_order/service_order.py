@@ -83,6 +83,13 @@ def _to_second(value):
 	return get_datetime(value).replace(microsecond=0)
 
 
+def _copy_work_time_audit(row, source):
+	"""คัดร่องรอยการคีย์เวลาจากแถว source (None = ล้างทิ้ง)"""
+	row.time_manually_entered = cint(source.time_manually_entered) if source else 0
+	row.time_entered_by = source.time_entered_by if source else None
+	row.time_entered_on = source.time_entered_on if source else None
+
+
 class ServiceOrder(Document):
 	def validate(self):
 		self.validate_status_change()
@@ -617,9 +624,12 @@ class ServiceOrder(Document):
 
 		ตรวจเฉพาะแถวที่ค่าเปลี่ยน ข้อมูลเก่าที่ไม่ได้แตะจึงไม่ทำให้ save ไม่ผ่าน
 		พอร์ทัลช่างตั้ง flags.allow_work_time_stamp ตอน stamp เวลาจากปุ่มเริ่ม/จบ
+		แถวที่ถูกคีย์เวลาเองจะถูกประทับร่องรอยไว้ (stamp_manual_work_time)
 		"""
 		before = self.get_doc_before_save()
 		old_rows = {row.name: row for row in before.service_types} if before else {}
+		# ใบ amend ได้เวลาและร่องรอยติดมาจากใบที่ยกเลิก — คงของเดิมไว้ ไม่นับเป็นการคีย์ใหม่
+		is_amendment = self.is_new() and self.amended_from
 
 		changed_rows = []
 		for row in self.service_types:
@@ -628,10 +638,19 @@ class ServiceOrder(Document):
 				_to_second(row.get(f)) != _to_second(old.get(f) if old else None) for f in WORK_TIME_FIELDS
 			):
 				changed_rows.append(row)
+			elif not is_amendment:
+				# ร่องรอยเป็นของ server — คืนค่าจากรอบก่อนเสมอ กันการล้างธงผ่าน API
+				_copy_work_time_audit(row, old)
 
-		if not changed_rows:
-			return
+		if changed_rows:
+			self.check_changed_work_times(changed_rows)
+			if not is_amendment:
+				self.stamp_manual_work_time(changed_rows)
 
+		self.has_manual_work_time = int(any(row.time_manually_entered for row in self.service_types))
+
+	def check_changed_work_times(self, changed_rows):
+		"""role ของผู้แก้ + ความสมเหตุสมผลของเวลา เฉพาะแถวที่เวลาเปลี่ยน"""
 		if not self.flags.allow_work_time_stamp and not (WORK_TIME_EDITOR_ROLES & set(frappe.get_roles())):
 			frappe.throw(
 				"เฉพาะหัวหน้าช่างหรือผู้ดูแลระบบเท่านั้นที่แก้เวลาเริ่ม-จบของงานในฟอร์มได้ — ช่างให้กดเริ่ม/จบงานในพอร์ทัล",
@@ -650,6 +669,20 @@ class ServiceOrder(Document):
 				frappe.throw(f"{label}: เวลาจบต้องไม่ก่อนเวลาเริ่ม")
 			if (start and start > now) or (end and end > now):
 				frappe.throw(f"{label}: เวลาเริ่ม-จบต้องไม่เกินเวลาปัจจุบัน")
+
+	def stamp_manual_work_time(self, changed_rows):
+		"""ประทับว่าแถวนี้ถูกคีย์เวลาเองในฟอร์ม โดยใคร เมื่อไร
+
+		stamp จากปุ่มในพอร์ทัลไม่ประทับ แต่ก็ไม่ลบร่องรอยเดิม — แถวที่คีย์เวลาเริ่มเองแล้ว
+		ช่างกดจบในพอร์ทัลยังนับเป็นคีย์เอง ล้างเวลาทั้งคู่ (reset) แล้วร่องรอยหายไปด้วย
+		"""
+		for row in changed_rows:
+			if not row.start_time and not row.end_time:
+				_copy_work_time_audit(row, None)
+			elif not self.flags.allow_work_time_stamp:
+				row.time_manually_entered = 1
+				row.time_entered_by = frappe.session.user
+				row.time_entered_on = now_datetime()
 
 	def warn_bay_issues(self):
 		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)"""

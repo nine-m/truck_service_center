@@ -89,7 +89,7 @@
 						</span>
 						{% if line.start_label or line.end_label %}
 						<span class="tsc-line-sub">
-							เริ่ม {{ line.start_label or "-" }} &middot; จบ {{ line.end_label or "-" }}
+							เริ่ม {{ line.start_label or "-" }} &middot; จบ {{ line.end_label or "-" }}{% if line.manual_time %} &middot; คีย์เวลาเอง{% endif %}
 						</span>
 						{% endif %}
 						{% if line.remark %}<span class="tsc-line-note">{{ line.remark }}</span>{% endif %}

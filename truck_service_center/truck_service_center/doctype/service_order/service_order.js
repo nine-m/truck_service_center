@@ -58,6 +58,7 @@ frappe.ui.form.on("Service Order", {
 
 		// หัวหน้าช่าง/ผู้ดูแลระบบคีย์เวลาเริ่ม-จบของงานเองได้ (เช่นคีย์ย้อนหลังงานนอกเวลาทำการ)
 		allow_work_time_editing(frm);
+		show_manual_work_time_notice(frm);
 
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
 		// ต้องรับรถก่อนถึงจะเบิกอะไหล่ได้ — ถ้ายังไม่รับรถจะเห็นแค่ปุ่ม "รับรถ"
@@ -2000,6 +2001,24 @@ function allow_work_time_editing(frm) {
 	["start_time", "end_time"].forEach(function (fieldname) {
 		grid.update_docfield_property(fieldname, "read_only", can_edit ? 0 : 1);
 	});
+}
+
+function show_manual_work_time_notice(frm) {
+	// ร่องรอยให้คนตรวจใบงานเห็นทันทีว่าเวลาจริงมีส่วนที่ไม่ได้มาจากปุ่มในพอร์ทัล
+	const rows = (frm.doc.service_types || []).filter((r) => r.time_manually_entered);
+	if (!rows.length) return;
+
+	const lines = rows.map(
+		(r) =>
+			`${frappe.utils.escape_html(r.service_type || "-")} — ${frappe.utils.escape_html(
+				r.time_entered_by || "-"
+			)} (${frappe.datetime.str_to_user(r.time_entered_on)})`
+	);
+	frm.dashboard.add_comment(
+		`<b>เวลาทำงานถูกคีย์เองในฟอร์ม ${rows.length} รายการ:</b> ${lines.join(" · ")}`,
+		"orange",
+		true
+	);
 }
 
 function preview_actual_time(frm) {

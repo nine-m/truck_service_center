@@ -61,6 +61,7 @@
   "time_section",
   "estimated_time",
   "actual_time",
+  "has_manual_work_time",
   "priority",
   "service_bay",
   "pricing_section",
@@ -414,6 +415,16 @@
    "description": "คำนวณอัตโนมัติจากเวลาเริ่ม-จบของงานแต่ละรายการ (เวลาเริ่มแรกสุด ถึงเวลาจบท้ายสุด)"
   },
   {
+   "default": "0",
+   "description": "มีงานอย่างน้อยหนึ่งรายการที่เวลาเริ่ม-จบถูกคีย์เองในฟอร์ม (ดูรายละเอียดในแถวงาน)",
+   "fieldname": "has_manual_work_time",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "มีการคีย์เวลาเอง",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "default": "Medium",
    "fieldname": "priority",
    "fieldtype": "Select",
@@ -680,7 +691,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-03 14:00:00.000000",
+ "modified": "2026-10-07 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

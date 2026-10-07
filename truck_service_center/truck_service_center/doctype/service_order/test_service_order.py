@@ -630,9 +630,9 @@ class UnitTestServiceOrder(UnitTestCase):
 
 	# ── คีย์เวลาเริ่ม-จบเองในฟอร์ม (หัวหน้าช่าง/ผู้ดูแลระบบ) ──────────────────────
 
-	def run_work_time_check(self, before_rows, after_rows, roles=("Technician",), portal=False):
+	def run_work_time_check(self, before_rows, after_rows, roles=("Technician",), portal=False, **fields):
 		"""เรียก validate_work_times โดยจำลองแถวก่อน save และ role ของผู้ใช้"""
-		so = make_order(labor_rows=after_rows)
+		so = make_order(labor_rows=after_rows, **fields)
 		before = make_order(labor_rows=before_rows) if before_rows is not None else None
 		so.flags.allow_work_time_stamp = portal
 
@@ -641,6 +641,8 @@ class UnitTestServiceOrder(UnitTestCase):
 			patch("frappe.get_roles", return_value=list(roles)),
 		):
 			so.validate_work_times()
+
+		return so
 
 	def test_technician_cannot_edit_work_time_in_form(self):
 		"""ช่างทั่วไปแก้เวลาในฟอร์มไม่ได้ ต้องกดเริ่ม/จบในพอร์ทัล"""
@@ -701,6 +703,90 @@ class UnitTestServiceOrder(UnitTestCase):
 		"""ใบใหม่ (ไม่มี doc ก่อน save) ที่มีเวลามาด้วย ถือว่าแก้เวลา"""
 		with self.assertRaises(frappe.PermissionError):
 			self.run_work_time_check(None, [{"start_time": "2026-09-01 08:00:00"}], roles=("Service User",))
+
+	# ── ร่องรอยการคีย์เวลาเอง ────────────────────────────────────────────────────
+
+	def test_manual_entry_stamps_trace(self):
+		"""คีย์เวลาในฟอร์ม → แถวถูกติ๊กว่าคีย์เอง พร้อมผู้คีย์/เวลาที่คีย์ และใบงานถูกติ๊กด้วย"""
+		so = self.run_work_time_check(
+			[{"name": "r1"}, {"name": "r2"}],
+			[{"name": "r1", "start_time": "2026-09-01 20:00:00"}, {"name": "r2"}],
+			roles=("Technician Manager",),
+		)
+
+		row, untouched = so.service_types
+		self.assertEqual(row.time_manually_entered, 1)
+		self.assertEqual(row.time_entered_by, frappe.session.user)
+		self.assertTrue(row.time_entered_on)
+		self.assertFalse(untouched.time_manually_entered)
+		self.assertEqual(so.has_manual_work_time, 1)
+
+	def test_portal_stamp_leaves_no_trace(self):
+		so = self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00"}],
+			portal=True,
+		)
+
+		self.assertFalse(so.service_types[0].time_manually_entered)
+		self.assertEqual(so.has_manual_work_time, 0)
+
+	def test_portal_finish_keeps_manual_trace(self):
+		"""คีย์เวลาเริ่มเองแล้วช่างกดจบในพอร์ทัล — ยังนับเป็นแถวที่คีย์เอง"""
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "end_time": "2026-09-01 10:00:00", **trace}],
+			portal=True,
+		)
+
+		self.assertEqual(so.service_types[0].time_manually_entered, 1)
+		self.assertEqual(so.service_types[0].time_entered_by, "boss@x")
+
+	def test_reset_clears_manual_trace(self):
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", **trace}],
+			roles=("Technician Manager",),
+		)
+
+		self.assertFalse(so.service_types[0].time_manually_entered)
+		self.assertIsNone(so.service_types[0].time_entered_by)
+		self.assertEqual(so.has_manual_work_time, 0)
+
+	def test_client_cannot_clear_manual_trace(self):
+		"""ส่งธงเป็น 0 มาโดยไม่แตะเวลา → server คืนร่องรอยจากรอบก่อน"""
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "time_manually_entered": 0}],
+		)
+
+		self.assertEqual(so.service_types[0].time_manually_entered, 1)
+		self.assertEqual(so.service_types[0].time_entered_by, "boss@x")
+		self.assertEqual(so.has_manual_work_time, 1)
+
+	def test_amendment_keeps_original_trace(self):
+		"""ใบ amend ได้เวลาติดมาจากใบเดิม — ไม่ถูกประทับใหม่เป็นชื่อคนที่ amend"""
+		so = self.run_work_time_check(
+			None,
+			[
+				{"start_time": "2026-09-01 08:00:00"},
+				{
+					"start_time": "2026-09-01 09:00:00",
+					"time_manually_entered": 1,
+					"time_entered_by": "boss@x",
+				},
+			],
+			roles=("Service Manager",),
+			amended_from="SO-OLD",
+		)
+
+		plain, manual = so.service_types
+		self.assertFalse(plain.time_manually_entered)
+		self.assertEqual(manual.time_entered_by, "boss@x")
+		self.assertEqual(so.has_manual_work_time, 1)
 
 	# ── ช่างจากแถวงาน sync ขึ้นระดับใบงาน ──────────────────────────────────────
 
