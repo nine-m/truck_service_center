@@ -32,7 +32,9 @@ MANAGER_ROLES = {"Technician Manager", "Service Manager", "System Manager"}
 EDITABLE_STATUSES = {"Draft", "In Progress", "On Hold"}
 
 # ตรงกับ options ของฟิลด์ fuel_level_in / fuel_level_out
-FUEL_LEVELS = ("หมด", "1/4", "ครึ่ง", "3/4", "เต็ม")
+# NOT CHECK = ไม่ได้ตรวจระดับน้ำมัน — นับเป็นค่าที่บันทึกแล้ว ผ่านด่านรับรถ/ปิดงาน/submit ได้
+FUEL_NOT_CHECKED = "NOT CHECK"
+FUEL_LEVELS = ("หมด", "1/4", "ครึ่ง", "3/4", "เต็ม", FUEL_NOT_CHECKED)
 
 # เปลี่ยนสถานะได้เฉพาะเส้นทางเหล่านี้ (Draft → In Progress ต้องผ่านการรับรถ)
 ALLOWED_TRANSITIONS = {

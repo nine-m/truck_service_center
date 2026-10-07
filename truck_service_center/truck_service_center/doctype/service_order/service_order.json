@@ -385,7 +385,7 @@
    "fieldname": "fuel_level_in",
    "fieldtype": "Select",
    "label": "สถานะน้ำมันรับเข้า",
-   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม\nNOT CHECK"
   },
   {
    "fieldname": "column_break_fuel",
@@ -395,7 +395,7 @@
    "fieldname": "fuel_level_out",
    "fieldtype": "Select",
    "label": "สถานะน้ำมันออก",
-   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม\nNOT CHECK"
   },
   {
    "fieldname": "time_section",
@@ -694,7 +694,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-07 12:00:00.000000",
+ "modified": "2026-10-07 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",
