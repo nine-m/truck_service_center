@@ -58,6 +58,7 @@ frappe.ui.form.on("Service Order", {
 
 		// หัวหน้าช่าง/ผู้ดูแลระบบคีย์เวลาเริ่ม-จบของงานเองได้ (เช่นคีย์ย้อนหลังงานนอกเวลาทำการ)
 		allow_work_time_editing(frm);
+		add_work_time_button(frm);
 		show_manual_work_time_notice(frm);
 
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
@@ -2109,6 +2110,213 @@ function allow_work_time_editing(frm) {
 	["start_time", "end_time"].forEach(function (fieldname) {
 		grid.update_docfield_property(fieldname, "read_only", can_edit ? 0 : 1);
 	});
+}
+
+function can_edit_work_time() {
+	return WORK_TIME_EDITOR_ROLES.some((role) => frappe.user.has_role(role));
+}
+
+function add_work_time_button(frm) {
+	if (frm.doc.docstatus !== 0 || frm.is_new() || !can_edit_work_time()) return;
+	if (!(frm.doc.service_types || []).length) return;
+
+	frm.add_custom_button("คีย์เวลาทำงาน", () => open_work_time_dialog(frm));
+}
+
+function parse_time_input(text) {
+	// รับได้ทั้ง 2030 / 20:30 / 20.30 / 830 / 8 → "20:30" ฯลฯ; ว่างคืน "" ; ผิดรูปคืน null
+	const raw = (text || "").trim();
+	if (!raw) return "";
+
+	let hours, minutes;
+	const parts = raw.split(/[:.\s]/).filter(Boolean);
+	if (parts.length === 2) {
+		[hours, minutes] = parts;
+	} else if (/^\d{1,4}$/.test(raw)) {
+		hours = raw.length <= 2 ? raw : raw.slice(0, -2);
+		minutes = raw.length <= 2 ? "0" : raw.slice(-2);
+	} else {
+		return null;
+	}
+
+	if (!/^\d{1,2}$/.test(hours) || !/^\d{1,2}$/.test(minutes)) return null;
+	const h = cint(hours);
+	const m = cint(minutes);
+	if (h > 23 || m > 59) return null;
+	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function open_work_time_dialog(frm) {
+	// แทนการเลื่อน slider ชั่วโมง/นาทีของ datepicker — วันที่ใช้ input date ของเบราว์เซอร์ เวลาพิมพ์ตัวเลข
+	// ค่าที่ได้ลงแถวงานแล้ว save ปกติ server ตรวจซ้ำ + ประทับร่องรอยใน validate_work_times
+	const rows = frm.doc.service_types || [];
+	const split = (value) => {
+		if (!value) return { date: "", time: "" };
+		const m = moment(value);
+		return { date: m.format("YYYY-MM-DD"), time: m.format("HH:mm") };
+	};
+
+	const body = rows
+		.map((row) => {
+			const start = split(row.start_time);
+			const end = split(row.end_time);
+			return `
+			<tr data-row="${row.name}">
+				<td class="tsc-wt-label">${row.idx}. ${frappe.utils.escape_html(row.service_type || "-")}</td>
+				<td><input type="date" class="form-control input-xs" data-f="start_date" value="${start.date}"></td>
+				<td><input type="text" class="form-control input-xs tsc-wt-time" data-f="start_time"
+					inputmode="numeric" placeholder="20:30" value="${start.time}"></td>
+				<td><input type="date" class="form-control input-xs" data-f="end_date" value="${end.date}"></td>
+				<td><input type="text" class="form-control input-xs tsc-wt-time" data-f="end_time"
+					inputmode="numeric" placeholder="22:00" value="${end.time}"></td>
+				<td class="tsc-wt-hours text-right"></td>
+			</tr>`;
+		})
+		.join("");
+
+	const dialog = new frappe.ui.Dialog({
+		title: "คีย์เวลาทำงาน",
+		size: "extra-large",
+		fields: [{ fieldtype: "HTML", fieldname: "table" }],
+		primary_action_label: "บันทึก",
+		primary_action: () => save_work_time_dialog(frm, dialog),
+	});
+
+	dialog.fields_dict.table.$wrapper.html(`
+		<style>
+			.tsc-wt-table td { vertical-align: middle; }
+			.tsc-wt-table .tsc-wt-time { width: 80px; }
+			.tsc-wt-table .is-invalid { border-color: var(--red-500); }
+			.tsc-wt-label { max-width: 240px; }
+		</style>
+		<p class="text-muted small">
+			พิมพ์เวลาเป็นตัวเลขได้เลย เช่น 2030, 20:30 หรือ 830 · วันจบเว้นว่างได้ (ใช้วันเดียวกับวันเริ่ม
+			และถ้าเวลาจบน้อยกว่าเวลาเริ่มจะถือเป็นวันถัดไป) · ล้างทั้งแถว = ล้างเวลาของงานนั้น
+		</p>
+		<div style="overflow-x:auto">
+			<table class="table table-bordered tsc-wt-table">
+				<thead><tr>
+					<th>งาน</th><th>วันเริ่ม</th><th>เวลาเริ่ม</th><th>วันจบ</th><th>เวลาจบ</th>
+					<th class="text-right">ชม.</th>
+				</tr></thead>
+				<tbody>${body}</tbody>
+			</table>
+		</div>
+		<div class="text-right"><b>เวลาจริงรวม: <span class="tsc-wt-total">-</span> ชม.</b></div>
+	`);
+
+	const $table = dialog.fields_dict.table.$wrapper;
+	$table.on("input change", "input", () => read_work_time_dialog($table));
+	$table.on("blur", ".tsc-wt-time", function () {
+		// จัดรูปให้เห็นว่าระบบเข้าใจว่าเวลาอะไร (2030 → 20:30)
+		const parsed = parse_time_input(this.value);
+		if (parsed) this.value = parsed;
+		read_work_time_dialog($table);
+	});
+
+	read_work_time_dialog($table);
+	dialog.show();
+}
+
+function read_work_time_dialog($table) {
+	// อ่านทุกแถว → { name, start, end, error } พร้อมอัปเดตชั่วโมงรายแถวและรวมบนหน้าจอ
+	const results = [];
+	$table.find("tbody tr").each(function () {
+		const $tr = $(this);
+		const val = (f) => $tr.find(`[data-f="${f}"]`);
+		const start_time = parse_time_input(val("start_time").val());
+		const end_time = parse_time_input(val("end_time").val());
+		const start_date = val("start_date").val();
+		let end_date = val("end_date").val();
+
+		val("start_time").toggleClass("is-invalid", start_time === null);
+		val("end_time").toggleClass("is-invalid", end_time === null);
+
+		const result = { name: $tr.data("row"), start: null, end: null, error: null };
+		if (start_time === null || end_time === null) {
+			result.error = "รูปแบบเวลาไม่ถูกต้อง";
+		} else if (!start_date && !start_time && !end_date && !end_time) {
+			// ทั้งแถวว่าง = ล้างเวลา
+		} else if (!start_date || !start_time) {
+			result.error = "ต้องระบุวันและเวลาเริ่ม";
+		} else {
+			result.start = moment(`${start_date} ${start_time}`, "YYYY-MM-DD HH:mm");
+			if (end_time) {
+				if (!end_date) {
+					end_date = start_date;
+					if (end_time < start_time) {
+						end_date = moment(start_date).add(1, "day").format("YYYY-MM-DD");
+					}
+				}
+				result.end = moment(`${end_date} ${end_time}`, "YYYY-MM-DD HH:mm");
+			} else if (end_date) {
+				result.error = "ระบุวันจบแล้วต้องระบุเวลาจบด้วย";
+			}
+
+			if (result.end && result.end.isBefore(result.start)) result.error = "เวลาจบก่อนเวลาเริ่ม";
+			const now = moment();
+			if (result.start.isAfter(now) || (result.end && result.end.isAfter(now))) {
+				result.error = "เวลาเกินเวลาปัจจุบัน";
+			}
+		}
+
+		const hours = result.end && !result.error ? result.end.diff(result.start, "minutes") / 60 : null;
+		$tr.find(".tsc-wt-hours").html(
+			result.error
+				? `<span class="text-danger small">${result.error}</span>`
+				: hours !== null
+				? format_number(hours, null, 2)
+				: "-"
+		);
+		results.push(result);
+	});
+
+	// เวลาจริงรวม = เริ่มแรกสุด → จบท้ายสุด (เหมือน compute_actual_time)
+	const starts = results.filter((r) => r.start && !r.error).map((r) => r.start);
+	const ends = results.filter((r) => r.end && !r.error).map((r) => r.end);
+	$table
+		.find(".tsc-wt-total")
+		.text(
+			starts.length && ends.length
+				? format_number(moment.max(ends).diff(moment.min(starts), "minutes") / 60, null, 2)
+				: "-"
+		);
+
+	return results;
+}
+
+function save_work_time_dialog(frm, dialog) {
+	const results = read_work_time_dialog(dialog.fields_dict.table.$wrapper);
+	if (results.some((r) => r.error)) {
+		frappe.msgprint({ title: "ข้อมูลไม่ถูกต้อง", indicator: "red", message: "กรุณาแก้แถวที่มีข้อความสีแดงก่อนบันทึก" });
+		return;
+	}
+
+	const fmt = (m) => (m ? m.format("YYYY-MM-DD HH:mm:ss") : null);
+	const same = (a, b) => (a ? moment(a).format("YYYY-MM-DD HH:mm") : null) === (b ? b.format("YYYY-MM-DD HH:mm") : null);
+
+	let changed = 0;
+	results.forEach((r) => {
+		const row = locals["Service Order Service Type"][r.name];
+		if (!row) return;
+		// เทียบระดับนาที — ไม่ทับค่าเดิมที่มีวินาทีจากปุ่มในพอร์ทัลถ้าผู้ใช้ไม่ได้แก้
+		if (!same(row.start_time, r.start)) {
+			row.start_time = fmt(r.start);
+			changed++;
+		}
+		if (!same(row.end_time, r.end)) {
+			row.end_time = fmt(r.end);
+			changed++;
+		}
+	});
+
+	if (!changed) {
+		dialog.hide();
+		return;
+	}
+
+	frm.dirty();
+	frm.save().then(() => dialog.hide());
 }
 
 function show_manual_work_time_notice(frm) {
