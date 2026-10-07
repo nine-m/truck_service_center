@@ -69,6 +69,18 @@ class UnitTestServicePackage(UnitTestCase):
 		pkg = make_package(labor_rows=[{"labor_rate": 1000}], discount_percent=10)
 		self.assertEqual(pkg.package_rate, 900)
 
+	def test_typed_rate_kept_with_rounded_percent(self):
+		"""คีย์ราคา 5,000 จาก 7,250 (ฟอร์มตั้ง % = 31.03 ให้) → ราคายังเป็น 5,000 ไม่ใช่ 5,000.33"""
+		pkg = make_package(labor_rows=[{"labor_rate": 7250}], package_rate=5000, discount_percent=31.03)
+		self.assertEqual(pkg.package_rate, 5000)
+		self.assertEqual(pkg.discount_percent, 31.03)
+		self.assertEqual(pkg.get_discount_amount(), 2250)
+
+	def test_changed_percent_recomputes_rate(self):
+		"""แก้ % ทีหลัง (ไม่ตรงกับราคาเดิม) → คิดราคาใหม่จาก %"""
+		pkg = make_package(labor_rows=[{"labor_rate": 1000}], package_rate=800, discount_percent=25)
+		self.assertEqual(pkg.package_rate, 750)
+
 	def test_negative_discount_rejected(self):
 		"""กรอกส่วนลดติดลบเอง → ยังต้องเตือน"""
 		with self.assertRaises(frappe.ValidationError):

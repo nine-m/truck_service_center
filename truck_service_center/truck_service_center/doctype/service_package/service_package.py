@@ -5,6 +5,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from truck_service_center.discounts import distribute_package_discount, percent_of
+
 
 class ServicePackage(Document):
 	def validate(self):
@@ -84,18 +86,26 @@ class ServicePackage(Document):
 		total_standard = total_labor + total_parts
 		self.total_standard_rate = total_standard
 
-		# คำนวณส่วนลดและราคาแพ็คเกจ
-		# ให้ discount_percent มีความสำคัญกว่า package_rate
-		# เพราะ package_rate เป็น reqd จึงมีค่าเสมอ ถ้าเช็ค package_rate ก่อน
-		# จะทำให้ branch ของ discount_percent ไม่มีทางถูกเรียก
-		if self.discount_percent and total_standard > 0:
-			discount_amount = total_standard * flt(self.discount_percent) / 100
-			self.package_rate = total_standard - discount_amount
-		elif self.package_rate and total_standard > 0:
-			discount_amount = total_standard - flt(self.package_rate)
-			# ราคาแพ็คเกจเท่ากับ/สูงกว่าราคามาตรฐาน = ไม่มีส่วนลด
-			# (ไม่คิดส่วนลดติดลบ เพราะจะไปติด validate_pricing)
-			self.discount_percent = (discount_amount / total_standard) * 100 if discount_amount > 0 else 0
+		# ราคาแพ็คเกจ (บาท) เป็นตัวหลัก % เป็นค่าที่คำนวณไว้แสดง — กติกาเดียวกับ resolve_line_discount
+		# คิดราคาจาก % เฉพาะเมื่อ % ไม่ตรงกับราคาที่มีอยู่ (ผู้ใช้เพิ่งแก้ % หรือราคามาตรฐานเปลี่ยน
+		# ซึ่งคง % ไว้) ไม่งั้นคีย์ราคา 5,000 จากราคามาตรฐาน 7,250 จะกลายเป็น 31.03% → 5,000.33
+		if not 0 <= flt(self.discount_percent) <= 100:
+			# ปล่อยค่าที่ผิดไว้ให้ validate_pricing ฟ้อง — ถ้าคำนวณต่อ % จะถูกปรับเป็น 0 เงียบ ๆ
+			return
+
+		if total_standard > 0:
+			discount_amount = max(total_standard - flt(self.package_rate), 0) if self.package_rate else 0
+			if flt(self.discount_percent) and percent_of(discount_amount, total_standard) != flt(
+				self.discount_percent, 2
+			):
+				self.package_rate = flt(total_standard - total_standard * flt(self.discount_percent) / 100, 2)
+			elif not self.package_rate:
+				self.package_rate = total_standard
+
+			# ราคาแพ็คเกจเท่ากับ/สูงกว่าราคามาตรฐาน = ไม่มีส่วนลด (ไม่คิดส่วนลดติดลบ)
+			self.discount_percent = percent_of(
+				max(total_standard - flt(self.package_rate), 0), total_standard
+			)
 		elif not self.package_rate:
 			self.package_rate = total_standard
 			self.discount_percent = 0
@@ -118,12 +128,12 @@ class ServicePackage(Document):
 				indicator="orange",
 			)
 
-		# ตรวจความสอดคล้องเฉพาะกรณีที่มีส่วนลด
+		# ตรวจความสอดคล้องเฉพาะกรณีที่มีส่วนลด — % ถูกปัด 2 ตำแหน่ง จึงเทียบที่ระดับ % ไม่ใช่ระดับบาท
 		# ถ้าไม่ใส่ส่วนลด ให้ระบุราคาแพ็คเกจได้อิสระ (สูงกว่าราคามาตรฐานได้ แค่เตือน)
 		if self.total_standard_rate > 0 and flt(self.discount_percent) > 0:
 			calculated_rate = flt(self.total_standard_rate) * (1 - flt(self.discount_percent) / 100)
-			rate_difference = abs(flt(self.package_rate) - calculated_rate)
-			if rate_difference > 0.01:
+			discount = flt(self.total_standard_rate) - flt(self.package_rate)
+			if percent_of(discount, self.total_standard_rate) != flt(self.discount_percent, 2):
 				frappe.throw(
 					f"ราคาแพ็คเกจไม่สอดคล้องกับส่วนลด<br>"
 					f"ราคามาตรฐาน: {self.total_standard_rate:.2f}<br>"
@@ -133,10 +143,8 @@ class ServicePackage(Document):
 				)
 
 	def get_discount_amount(self):
-		"""คำนวณจำนวนเงินส่วนลด"""
-		if self.discount_percent and self.total_standard_rate:
-			return flt(self.total_standard_rate) * flt(self.discount_percent) / 100
-		return 0
+		"""จำนวนเงินส่วนลด = ราคามาตรฐาน - ราคาแพ็คเกจ (ราคาแพ็คเกจเป็นตัวหลัก)"""
+		return flt(max(flt(self.total_standard_rate) - flt(self.package_rate), 0), 2)
 
 
 @frappe.whitelist()
@@ -150,8 +158,11 @@ def get_package_details(package_name):
 	if not package.is_active:
 		frappe.throw(f"แพ็คเกจ {package_name} ถูกปิดการใช้งานแล้ว")
 
+	# ส่วนลดต่อบรรทัดเป็นบาท ให้ฟอร์มที่ดึงแพ็คเกจใส่ค่าเดียวกับฝั่ง server (apply_service_packages)
+	labor_discounts, part_discounts = distribute_package_discount(package)
+
 	service_types = []
-	for st in package.package_service_types:
+	for st, discount in zip(package.package_service_types, labor_discounts, strict=True):
 		service_types.append(
 			{
 				"service_type": st.service_type,
@@ -159,12 +170,14 @@ def get_package_details(package_name):
 				"service_type_group": st.service_type_group,
 				"maintenance_type": st.maintenance_type,
 				"labor_rate": st.labor_rate,
+				"discount_amount": discount,
+				"discount_percentage": percent_of(discount, st.labor_rate),
 				"estimated_time": st.estimated_time,
 			}
 		)
 
 	parts = []
-	for p in package.package_parts:
+	for p, discount in zip(package.package_parts, part_discounts, strict=True):
 		parts.append(
 			{
 				"service_type": p.service_type,
@@ -174,6 +187,8 @@ def get_package_details(package_name):
 				"uom": p.uom,
 				"rate": p.rate,
 				"amount": p.amount,
+				"discount_amount": discount,
+				"discount_percentage": percent_of(discount, p.rate),
 			}
 		)
 

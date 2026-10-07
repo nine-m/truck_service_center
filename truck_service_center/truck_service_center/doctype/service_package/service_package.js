@@ -25,8 +25,8 @@ frappe.ui.form.on("Service Package", {
 				frm.set_value("discount_percent", 0);
 				return;
 			}
-			let discount_percent = ((total - package_rate) / total) * 100;
-			frm.set_value("discount_percent", discount_percent);
+			// ราคาแพ็คเกจ (บาท) เป็นตัวหลัก % ตามให้ตรง — กติกาเดียวกับ truck_service_center/discounts.py
+			frm.set_value("discount_percent", package_discount_percent(total, package_rate));
 		}
 	},
 
@@ -43,7 +43,9 @@ frappe.ui.form.on("Service Package", {
 				frm.set_value("discount_percent", 0);
 				return;
 			}
-			frm.set_value("package_rate", total - (total * dp) / 100);
+			// % ที่ตรงกับราคาอยู่แล้วแปลว่าถูกตั้งจากช่องราคา — ห้ามคิดราคากลับ ไม่งั้น 5,000 → 31.03% → 5,000.33
+			if (package_discount_percent(total, frm.doc.package_rate) === flt(dp, 2)) return;
+			frm.set_value("package_rate", flt(total - (total * dp) / 100, 2));
 		}
 	},
 
@@ -53,6 +55,12 @@ frappe.ui.form.on("Service Package", {
 		}
 	},
 });
+
+function package_discount_percent(total, package_rate) {
+	// ราคาเท่ากับ/สูงกว่าราคามาตรฐาน = ไม่มีส่วนลด
+	total = flt(total);
+	return total > 0 ? flt((Math.max(total - flt(package_rate), 0) / total) * 100, 2) : 0;
+}
 
 // === Service Package Service Type child table ===
 frappe.ui.form.on("Service Package Service Type", {

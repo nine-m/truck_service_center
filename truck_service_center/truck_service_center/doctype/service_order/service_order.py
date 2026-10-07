@@ -6,6 +6,7 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
 
+from truck_service_center.discounts import distribute_package_discount, percent_of, resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
 
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
@@ -290,10 +291,11 @@ class ServiceOrder(Document):
 			if not package.is_active:
 				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
 
-			discount_pct = flt(package.discount_percent)
+			# ส่วนลดแพ็คเกจแจกเป็นบาทต่อแถว ให้รวมแล้วตรงราคาแพ็คเกจ (ไม่ใส่ % ตรง ๆ ซึ่งเหลือเศษ)
+			labor_discounts, part_discounts = distribute_package_discount(package)
 
 			# เพิ่ม service types จาก package
-			for st in package.package_service_types:
+			for st, discount in zip(package.package_service_types, labor_discounts, strict=True):
 				self.append(
 					"service_types",
 					{
@@ -302,14 +304,15 @@ class ServiceOrder(Document):
 						"maintenance_type": st.maintenance_type,
 						"estimated_time": st.estimated_time,
 						"labor_charges": st.labor_rate,
-						"discount_percentage": discount_pct,
+						"discount_amount": discount,
+						"discount_percentage": percent_of(discount, st.labor_rate),
 						"service_package": pkg_name,
 					},
 				)
 
 			# เพิ่ม parts จาก package
 			default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-			for part in package.package_parts:
+			for part, discount in zip(package.package_parts, part_discounts, strict=True):
 				self.append(
 					"service_items",
 					{
@@ -318,7 +321,8 @@ class ServiceOrder(Document):
 						"qty": part.qty,
 						"uom": part.uom,
 						"rate": part.rate,
-						"discount_percentage": discount_pct,
+						"discount_amount": discount,
+						"discount_percentage": percent_of(discount, part.rate),
 						"warehouse": default_warehouse,
 						"service_package": pkg_name,
 						"service_type": part.service_type,
@@ -461,46 +465,29 @@ class ServiceOrder(Document):
 		self.outstanding_amount = flt(self.total_amount) - flt(self.paid_amount)
 
 	def _calculate_line_discount(self, item):
-		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item
-
-		Logic (inspired by ERPNext Sales Order):
-		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก rate
-		- ถ้ากรอก discount_amount (โดยไม่มี discount_percentage) → คำนวณ discount_percentage จาก rate
-		- amount = (rate - discount_per_unit) * qty
-		"""
+		"""ส่วนลดระดับบรรทัดของ Service Order Item (ต่อหน่วย) — บาทเป็นตัวหลัก ดู resolve_line_discount"""
 		rate = flt(item.rate)
 		qty = flt(item.qty)
 
-		if flt(item.discount_percentage) > 0:
-			# คำนวณ discount_amount จาก percentage
-			item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2)
+		item.discount_percentage, item.discount_amount = resolve_line_discount(
+			rate, item.discount_percentage, item.discount_amount
+		)
 
-		if flt(item.discount_amount) > 0 and rate > 0 and not flt(item.discount_percentage):
-			# คำนวณ discount_percentage จาก amount (ถ้ายังไม่มี percentage)
-			item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2)
-
-		# คำนวณ amount หลังส่วนลด
-		discount_per_unit = flt(item.discount_amount)
-		net_rate = flt(rate - discount_per_unit, 2)
+		net_rate = flt(rate - flt(item.discount_amount), 2)
 		if net_rate < 0:
 			net_rate = 0
 		item.amount = flt(net_rate * qty, 2)
 
 	def _calculate_service_type_discount(self, service_type):
-		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type
+		"""ส่วนลดระดับบรรทัดของ Service Order Service Type — บาทเป็นตัวหลัก ดู resolve_line_discount
 
-		Logic:
-		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก labor_charges
-		- ถ้ากรอก discount_amount → คำนวณ discount_percentage จาก labor_charges
-		- amount = labor_charges - discount_amount
+		amount = labor_charges - discount_amount
 		"""
 		labor = flt(service_type.labor_charges)
 
-		if flt(service_type.discount_percentage) > 0:
-			service_type.discount_amount = flt(labor * flt(service_type.discount_percentage) / 100, 2)
-
-		if flt(service_type.discount_amount) > 0 and labor > 0 and not flt(service_type.discount_percentage):
-			service_type.discount_percentage = flt(flt(service_type.discount_amount) / labor * 100, 2)
+		service_type.discount_percentage, service_type.discount_amount = resolve_line_discount(
+			labor, service_type.discount_percentage, service_type.discount_amount
+		)
 
 		discount = flt(service_type.discount_amount)
 		net_labor = flt(labor - discount, 2)

@@ -628,6 +628,37 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual(so.actual_time, 1.5)
 
+	# ── ส่วนลดรายบรรทัด: บาทเป็นตัวหลัก ───────────────────────────────────────────
+
+	def test_labor_discount_in_baht_has_no_satang(self):
+		"""ค่าแรง 300 คีย์ลด 100 บาท (ฟอร์มตั้ง % = 33.33 ให้) → ยอด 200.00 ไม่ใช่ 200.01"""
+		so = make_order(
+			labor_rows=[{"labor_charges": 300, "discount_percentage": 33.33, "discount_amount": 100}]
+		)
+		row = so.service_types[0]
+		self.assertEqual(row.discount_amount, 100)
+		self.assertEqual(row.amount, 200)
+		self.assertEqual(so.labor_charges, 200)
+
+	def test_part_discount_in_baht_has_no_satang(self):
+		so = make_order(
+			item_rows=[
+				{
+					"item_code": "X",
+					"qty": 2,
+					"rate": 300,
+					"discount_percentage": 33.33,
+					"discount_amount": 100,
+				}
+			]
+		)
+		self.assertEqual(so.service_items[0].amount, 400)
+
+	def test_labor_discount_in_percent_still_works(self):
+		so = make_order(labor_rows=[{"labor_charges": 300, "discount_percentage": 10}])
+		self.assertEqual(so.service_types[0].discount_amount, 30)
+		self.assertEqual(so.service_types[0].amount, 270)
+
 	# ── เตือนช่องจอดเฉพาะตอนที่การจัดช่องจอดเปลี่ยน ─────────────────────────────
 
 	def bay_changed(self, before, after):
