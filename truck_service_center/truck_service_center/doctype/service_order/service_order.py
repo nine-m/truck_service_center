@@ -8,6 +8,9 @@ from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hou
 
 from truck_service_center.discounts import distribute_package_discount, percent_of, resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
+from truck_service_center.truck_service_center.doctype.service_type_group.service_type_group import (
+	APPROVER_FALLBACK_ROLES,
+)
 
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
 # (lock_rows_with_submitted_material_issue ใน service_order.js)
@@ -46,6 +49,11 @@ STATUS_LOCKED_MESSAGE = (
 # import receive_vehicle จากไฟล์นี้อยู่แล้ว (จะกลายเป็น circular import)
 # รวม Ready for Delivery ด้วย — รถที่ปิดงานแล้วแต่ยังไม่ส่งมอบยังจอดกินช่องจอดอยู่
 OPEN_STATUSES = ("Draft", "In Progress", "On Hold", "Ready for Delivery")
+
+# สถานะอนุมัติใบเบิกอะไหล่ (Stock Entry.custom_approval_status) — ค่าว่าง = ใบเก่าก่อนมีขั้นอนุมัติ ถือว่าผ่าน
+APPROVAL_PENDING = "Pending"
+APPROVAL_APPROVED = "Approved"
+APPROVAL_REJECTED = "Rejected"
 
 
 def get_default_selling_rate(item_code, price_list=None):
@@ -538,19 +546,28 @@ class ServiceOrder(Document):
 			self.payment_status = "Partially Paid"
 
 	def update_material_issue_status(self):
-		"""อัพเดทสถานะ Material Issue ในแต่ละ Item"""
+		"""อัพเดทสถานะ Material Issue ในแต่ละ Item (รวมสถานะอนุมัติของใบเบิก Draft)
+
+		ใบเบิกที่ถูกไม่อนุมัติต้องไม่ผูกกับแถวอะไหล่ — reject_requisition ปลด link ให้แล้ว แต่ฟอร์ม
+		desk ที่เปิดค้างไว้ก่อนหน้ายังถือ link เก่า ถ้ากด save จะผูกกลับมาใหม่ จึงปลดซ้ำที่นี่ด้วย
+		"""
+		states = get_material_issue_states({item.material_issue for item in self.service_items})
+
 		for item in self.service_items:
-			if item.material_issue:
-				# ดึงสถานะจาก Stock Entry
-				status = frappe.db.get_value("Stock Entry", item.material_issue, "docstatus")
-				if status == 0:
-					item.material_issue_status = "Draft"
-				elif status == 1:
-					item.material_issue_status = "Submitted"
-				elif status == 2:
-					item.material_issue_status = "Cancelled"
-			else:
+			if not item.material_issue:
 				item.material_issue_status = None
+				continue
+
+			state = states.get(item.material_issue)
+			if not state:
+				continue
+
+			if state.docstatus == 0 and state.approval_status == APPROVAL_REJECTED:
+				item.material_issue = None
+				item.material_issue_status = None
+				continue
+
+			item.material_issue_status = material_issue_status_label(state.docstatus, state.approval_status)
 
 	# ── ช่องจอด / ช่างรายงาน / เวลาจริง ────────────────────────────────────────
 
@@ -1195,9 +1212,15 @@ def create_material_issue(service_order, item_rows=None):
 	แปลง index ของแถวเป็นตัวแถวจริง แล้วส่งต่อให้ create_material_issue_for_rows
 	ตัว index มาจาก dialog ฝั่ง client ที่ยังส่ง index มาเหมือนเดิม
 
+	แถวที่เลือกถูกแบ่งตามกลุ่มบริการ (split_rows_by_service_type_group) แล้วสร้างใบเบิก
+	หนึ่งใบต่อกลุ่ม — ผู้จัดการบน desk อนุมัติได้ทุกกลุ่มอยู่แล้ว ใบจึงถูกอนุมัติให้อัตโนมัติ
+
 	Args:
 		service_order: ชื่อของ Service Order
 		item_rows: list ของ row indices ที่ต้องการสร้าง Material Issue (ถ้าไม่ระบุจะสร้างทั้งหมด)
+
+	Returns:
+		list: ชื่อ Stock Entry ที่สร้าง (หนึ่งใบต่อกลุ่ม)
 	"""
 	import json
 
@@ -1213,17 +1236,34 @@ def create_material_issue(service_order, item_rows=None):
 	else:
 		rows = list(doc.service_items)
 
-	return create_material_issue_for_rows(doc, rows)
+	# กรองก่อนแบ่งกลุ่ม — กลุ่มที่เหลือแต่ค่าบริการ/ของที่เบิกแล้วจะ throw "ไม่มีรายการ" ทั้งที่กลุ่มอื่นเบิกได้
+	rows = [item for item in rows if not item.material_issue and _is_stock_item(item.item_code)]
+	if not rows:
+		frappe.throw("ไม่มีรายการที่สามารถสร้าง Material Issue ได้")
+
+	# หนึ่งใบต่อกลุ่มบริการ เพราะกลุ่มคือสิ่งที่กำหนดว่าใครเป็นผู้อนุมัติใบเบิก
+	return [
+		create_material_issue_for_rows(doc, group_rows, service_type_group=group)
+		for group, group_rows in split_rows_by_service_type_group(doc, rows).items()
+	]
 
 
-def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
+def _is_stock_item(item_code):
+	return bool(item_code) and bool(frappe.db.get_value("Item", item_code, "is_stock_item"))
+
+
+def create_material_issue_for_rows(doc, rows, ignore_permissions=False, service_type_group=None):
 	"""สร้างใบเบิกอะไหล่จากแถวที่ส่งมาตรง ๆ (ไม่ใช้ index — index เลื่อนได้เมื่อมีการลบแถว)
 
-	ตัวที่ทำงานจริงของทั้งปุ่มในหน้า desk และปุ่มสร้างใบเบิกรายงานในพอร์ทัลช่าง
+	ตัวที่ทำงานจริงของทั้งปุ่มในหน้า desk และปุ่มขออนุมัติเบิกรายกลุ่มในพอร์ทัลช่าง
 	ผู้เรียกต้องตรวจสิทธิ์มาก่อนแล้ว — ที่นี่ตรวจเฉพาะกฎทางธุรกิจ (ต้องรับรถก่อน)
 
 	ignore_permissions ส่งต่อไปที่ stock_entry.insert() เพราะ role Technician ไม่มีสิทธิ์
 	สร้าง Stock Entry — พอร์ทัลจึงตรวจ gate ของตัวเองให้ครบก่อนแล้วค่อยข้ามสิทธิ์ตรงนี้
+
+	ใบเบิกเกิดเป็น Draft สถานะ "รออนุมัติ" เสมอ (สต๊อก submit ไม่ได้จนกว่าจะอนุมัติ —
+	validate_requisition_approved) ยกเว้นผู้สร้างเป็นผู้อนุมัติของกลุ่มนั้นเอง (เช่นผู้จัดการบน desk)
+	ซึ่งจะถูกประทับเป็นผู้อนุมัติให้ทันที ไม่ต้องกดอนุมัติใบของตัวเองอีกรอบ
 	"""
 	# ต้องรับรถเข้ามาก่อนจึงจะเบิกอะไหล่ได้
 	# ยอมให้ status = In Progress ผ่านด้วย เพราะเอกสารเก่าที่เปลี่ยนสถานะด้วยมือ
@@ -1247,6 +1287,11 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
 	# owner ของ Stock Entry คือ session user ตอน insert — ช่างที่กดปุ่มในพอร์ทัล
 	# เก็บชื่อไว้ตั้งแต่ตอนนี้ จะได้ไม่ต้องไปไล่ resolve ตอน render หน้ารายการ
 	stock_entry.custom_created_by_name = get_user_display_name(frappe.session.user)
+	stock_entry.custom_requested_by = frappe.session.user
+	stock_entry.custom_service_type_group = service_type_group or None
+	stock_entry.custom_approval_status = APPROVAL_PENDING
+	if can_approve_requisition(stock_entry):
+		stamp_requisition_decision(stock_entry, APPROVAL_APPROVED)
 
 	items_added = []
 
@@ -1282,11 +1327,14 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False):
 	# อัพเดท Material Issue reference ใน Service Order Items
 	for item in items_added:
 		item.material_issue = stock_entry.name
-		item.material_issue_status = "Draft"
+		item.material_issue_status = material_issue_status_label(0, stock_entry.custom_approval_status)
 
 	doc.save(ignore_permissions=ignore_permissions)
 
-	frappe.msgprint(f"สร้าง Material Issue: {stock_entry.name}")
+	if stock_entry.custom_approval_status == APPROVAL_PENDING:
+		frappe.msgprint(f"สร้างใบเบิกอะไหล่ {stock_entry.name} แล้ว — รอหัวหน้างานอนุมัติ")
+	else:
+		frappe.msgprint(f"สร้าง Material Issue: {stock_entry.name} (อนุมัติแล้ว)")
 
 	return stock_entry.name
 
@@ -1479,6 +1527,123 @@ def select_unclaimed_requisition_rows(doc):
 		)
 
 	return [item for item in doc.service_items if not item.material_issue and not is_claimable(item)]
+
+
+def get_item_service_type_group(doc, item):
+	"""กลุ่มบริการของแถวอะไหล่ = กลุ่มของแถวงานที่จับคู่มันได้
+
+	เกณฑ์จับคู่ชุดเดียวกับ select_requisition_rows (service_type + service_package ถ้าแถวงานมี)
+	อ่านกลุ่มจาก Service Order Service Type.service_type_group (fetch_from จาก Service Type)
+	คืน None เมื่อไม่มีแถวงานไหนจับคู่ได้ (อะไหล่อื่น ๆ) หรือแถวงานที่จับคู่ได้ไม่มีกลุ่ม
+	"""
+	if not item.service_type:
+		return None
+
+	for row in doc.service_types:
+		if row.service_type != item.service_type:
+			continue
+		if row.service_package and item.service_package != row.service_package:
+			continue
+		return row.service_type_group or None
+
+	return None
+
+
+def select_group_requisition_rows(doc, service_type_group=None):
+	"""อะไหล่ที่ยังไม่ได้เบิกของกลุ่มบริการหนึ่ง — ใบเบิกหนึ่งใบต่อกลุ่ม
+
+	งานหลายรายการที่อยู่กลุ่มเดียวกันรวมเป็นใบเดียว เพราะผู้อนุมัติผูกกับกลุ่ม ไม่ใช่รายงาน
+	service_type_group ว่าง = กลุ่ม "ไม่มีกลุ่ม": อะไหล่ที่ไม่มีแถวงานจับคู่ได้
+	(select_unclaimed_requisition_rows) รวมกับอะไหล่ของงานที่ไม่ได้ตั้งกลุ่มไว้
+	"""
+	service_type_group = service_type_group or None
+	return [
+		item
+		for item in doc.service_items
+		if not item.material_issue and get_item_service_type_group(doc, item) == service_type_group
+	]
+
+
+def split_rows_by_service_type_group(doc, rows):
+	"""แบ่งแถวอะไหล่ตามกลุ่มบริการ — เรียงตามชื่อกลุ่ม กลุ่มว่าง (None) อยู่ท้ายสุด"""
+	groups = {}
+	for item in rows:
+		groups.setdefault(get_item_service_type_group(doc, item), []).append(item)
+
+	return dict(sorted(groups.items(), key=lambda pair: (pair[0] is None, pair[0] or "")))
+
+
+def get_requisition_approvers(service_type_group):
+	"""user ที่ถูกตั้งเป็นผู้อนุมัติใบเบิกของกลุ่ม (Service Type Group.supervisors)"""
+	if not service_type_group:
+		return set()
+
+	return set(
+		frappe.get_all(
+			"Service Type Group Supervisor",
+			filters={"parent": service_type_group, "parenttype": "Service Type Group"},
+			pluck="user",
+		)
+	)
+
+
+def can_approve_requisition(stock_entry, user=None):
+	"""user อนุมัติ/ไม่อนุมัติใบเบิกนี้ได้หรือไม่
+
+	ได้เมื่อเป็นผู้อนุมัติของกลุ่มที่ใบนั้นสังกัด หรือมี role ใน APPROVER_FALLBACK_ROLES
+	(หัวหน้าช่าง/ผู้จัดการ — อนุมัติแทนได้ทุกกลุ่ม) ใบที่ไม่มีกลุ่ม หรือกลุ่มที่ยังไม่ตั้ง
+	ผู้อนุมัติ จึงเหลือแต่ fallback roles ที่อนุมัติได้
+	"""
+	user = user or frappe.session.user
+	if APPROVER_FALLBACK_ROLES & set(frappe.get_roles(user)):
+		return True
+
+	group = stock_entry.get("custom_service_type_group")
+	return bool(group) and user in get_requisition_approvers(group)
+
+
+def stamp_requisition_decision(stock_entry, status, reason=None, user=None):
+	"""ประทับผลการพิจารณาใบเบิกลงเอกสาร (ยังไม่บันทึก) — คืน dict ของค่าที่ตั้ง
+
+	ใช้ทั้งตอนสร้าง (อนุมัติอัตโนมัติ) และตอนอนุมัติ/ไม่อนุมัติภายหลัง ซึ่งผู้เรียกเอา dict นี้
+	ไป db_set ต่อ — ใบที่ไม่อนุมัติก็เก็บผู้ตัดสินไว้ที่ custom_approved_by เช่นกัน
+	"""
+	user = user or frappe.session.user
+	values = {
+		"custom_approval_status": status,
+		"custom_approved_by": user,
+		"custom_approved_by_name": get_user_display_name(user),
+		"custom_approved_on": now_datetime(),
+		"custom_rejection_reason": reason if status == APPROVAL_REJECTED else None,
+	}
+	stock_entry.update(values)
+	return values
+
+
+def validate_requisition_approved(doc, method=None):
+	"""doc_events hook: Stock Entry before_submit — ใบเบิกของใบสั่งงานต้องอนุมัติแล้วจึง submit ได้
+
+	ช่างส่งใบเบิกถึงสต๊อกเองไม่ได้ ต้องผ่านหัวหน้างานกลุ่มก่อน สถานะว่าง = ใบเก่าก่อนมีขั้นอนุมัติ
+	หรือ Stock Entry ทั่วไปที่ไม่ได้มาจากใบสั่งงาน → ปล่อยผ่าน
+
+	ไม่ได้ล็อกการแก้รายการหลังอนุมัติแล้ว (จงใจ) — สต๊อกยังต้องปรับจำนวนได้เมื่อของขาด
+	"""
+	if not doc.get("custom_service_order"):
+		return
+
+	status = doc.get("custom_approval_status")
+	if status == APPROVAL_PENDING:
+		frappe.throw(
+			f"ใบเบิกอะไหล่ {doc.name} ยังไม่ได้รับอนุมัติจากหัวหน้างาน จึงยัง Submit ไม่ได้",
+			title="ใบเบิกยังไม่ได้รับอนุมัติ",
+		)
+	if status == APPROVAL_REJECTED:
+		frappe.throw(
+			f"ใบเบิกอะไหล่ {doc.name} ไม่ได้รับอนุมัติ"
+			+ (f" ({doc.get('custom_rejection_reason')})" if doc.get("custom_rejection_reason") else "")
+			+ " — ให้ช่างขอเบิกใหม่จากพอร์ทัล",
+			title="ใบเบิกไม่ได้รับอนุมัติ",
+		)
 
 
 def get_user_display_name(user):
@@ -1693,15 +1858,26 @@ def get_material_issue_summary(service_order):
 				stock_entry = frappe.db.get_value(
 					"Stock Entry",
 					item.material_issue,
-					["name", "docstatus", "posting_date", "total_amount"],
+					[
+						"name",
+						"docstatus",
+						"posting_date",
+						"total_amount",
+						"custom_approval_status",
+						"custom_approved_by_name",
+					],
 					as_dict=1,
 				)
 
 				if stock_entry:
-					status_map = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
 					material_issues[item.material_issue] = {
 						"name": stock_entry.name,
-						"status": status_map.get(stock_entry.docstatus, "Unknown"),
+						"docstatus": stock_entry.docstatus,
+						"status": material_issue_status_label(
+							stock_entry.docstatus, stock_entry.custom_approval_status
+						)
+						or "Unknown",
+						"approved_by_name": stock_entry.get("custom_approved_by_name"),
 						"posting_date": stock_entry.posting_date,
 						"total_amount": stock_entry.total_amount,
 						"item_count": 0,
@@ -1928,11 +2104,43 @@ def on_sales_invoice_change(doc, method=None):
 
 MATERIAL_ISSUE_STATUS_BY_DOCSTATUS = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
 
+# สถานะแถวอะไหล่ของใบเบิก Draft ที่ยังไม่ผ่านการอนุมัติ — Draft ธรรมดา = อนุมัติแล้ว/ใบเก่า รอ submit
+MATERIAL_ISSUE_STATUS_BY_APPROVAL = {APPROVAL_PENDING: "Pending Approval", APPROVAL_REJECTED: "Rejected"}
+
+
+def material_issue_status_label(docstatus, approval_status=None):
+	"""ค่าที่เขียนลง Service Order Item.material_issue_status จาก docstatus + สถานะอนุมัติ"""
+	if docstatus == 0 and approval_status in MATERIAL_ISSUE_STATUS_BY_APPROVAL:
+		return MATERIAL_ISSUE_STATUS_BY_APPROVAL[approval_status]
+	return MATERIAL_ISSUE_STATUS_BY_DOCSTATUS.get(docstatus)
+
+
+def get_material_issue_states(material_issues):
+	"""docstatus + สถานะอนุมัติของใบเบิกหลายใบใน query เดียว → {name: _dict(docstatus, approval_status)}
+
+	อ่านคอลัมน์สถานะอนุมัติเฉพาะเมื่อมีอยู่จริง — patch รุ่นเก่าที่ sync สถานะใบเบิกอาจรันก่อน
+	patch ที่สร้างฟิลด์นี้บน site ที่อัปเกรดข้ามหลายรุ่น
+	"""
+	names = [name for name in material_issues if name]
+	if not names:
+		return {}
+
+	has_approval = frappe.db.has_column("Stock Entry", "custom_approval_status")
+	rows = frappe.get_all(
+		"Stock Entry",
+		filters={"name": ["in", names]},
+		fields=["name", "docstatus", *(["custom_approval_status"] if has_approval else [])],
+	)
+	return {
+		row.name: frappe._dict(docstatus=row.docstatus, approval_status=row.get("custom_approval_status"))
+		for row in rows
+	}
+
 
 def sync_material_issue_status(material_issue, docstatus=None):
 	"""เขียนสถานะใบเบิกอะไหล่ลง Service Order Item ที่ผูกอยู่ (ลง DB จริง ไม่ใช่แค่หน้าจอ)
 
-	ใบเบิกถูกยกเลิก → ปลด link ทิ้งด้วย เพื่อให้แถวนั้นกลับไปเป็น "ยังไม่มีใบเบิก"
+	ใบเบิกถูกยกเลิก (หรือไม่อนุมัติ) → ปลด link ทิ้งด้วย เพื่อให้แถวนั้นกลับไปเป็น "ยังไม่มีใบเบิก"
 	เบิกใหม่ได้ (create_material_issue ข้ามแถวที่มี material_issue ทุกกรณี) และไม่ค้าง
 	validate_material_issues_for_submit ที่ต้องการใบเบิกสถานะ submitted
 	"""
@@ -1944,13 +2152,17 @@ def sync_material_issue_status(material_issue, docstatus=None):
 	if not rows:
 		return
 
+	state = get_material_issue_states({material_issue}).get(material_issue) or frappe._dict()
 	if docstatus is None:
-		docstatus = frappe.db.get_value("Stock Entry", material_issue, "docstatus")
+		docstatus = state.docstatus
 
-	if cint(docstatus) == 2:
+	# ยกเลิก หรือไม่อนุมัติ (ใบ Draft ที่ submit ไม่ได้อีกแล้ว) → ปลด link ให้ขอเบิกใหม่ได้
+	if cint(docstatus) == 2 or (cint(docstatus) == 0 and state.approval_status == APPROVAL_REJECTED):
 		values = {"material_issue": None, "material_issue_status": None}
 	else:
-		values = {"material_issue_status": MATERIAL_ISSUE_STATUS_BY_DOCSTATUS.get(cint(docstatus))}
+		values = {
+			"material_issue_status": material_issue_status_label(cint(docstatus), state.approval_status)
+		}
 
 	for row in rows:
 		frappe.db.set_value("Service Order Item", row.name, values, update_modified=False)

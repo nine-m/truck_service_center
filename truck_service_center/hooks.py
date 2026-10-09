@@ -160,6 +160,8 @@ doc_events = {
 		"on_cancel": f"{_service_order}.on_sales_invoice_change",
 	},
 	"Stock Entry": {
+		# ใบเบิกของใบสั่งงานต้องผ่านการอนุมัติของหัวหน้างานกลุ่มก่อน สต๊อกจึง submit ได้
+		"before_submit": f"{_service_order}.validate_requisition_approved",
 		"on_submit": f"{_service_order}.on_stock_entry_change",
 		"on_cancel": f"{_service_order}.on_stock_entry_change",
 	},
