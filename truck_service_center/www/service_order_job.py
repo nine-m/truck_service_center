@@ -34,6 +34,7 @@ from truck_service_center.truck_service_center.doctype.service_type_group.servic
 	APPROVER_FALLBACK_ROLES,
 )
 from truck_service_center.www.service_order_portal import (
+	NO_GROUP_LABEL,
 	PRIORITY_LABELS,
 	STATUS_LABELS,
 	STATUS_THEMES,
@@ -57,9 +58,6 @@ SERVICE_STATE_LABELS = {
 	"running": "กำลังทำ",
 	"done": "เสร็จแล้ว",
 }
-
-# ป้ายกลุ่มของอะไหล่ที่ไม่มีกลุ่มบริการ — ใบเบิกกลุ่มนี้หัวหน้าช่าง/ผู้จัดการเป็นผู้อนุมัติ
-NO_GROUP_LABEL = "อะไหล่อื่น ๆ / ไม่มีกลุ่ม"
 
 # สถานะใบเบิก → (ข้อความ, สีป้าย data-state) — ใบเก่าไม่มีสถานะอนุมัติ ถือว่าผ่านแล้ว
 REQUISITION_STATES = {

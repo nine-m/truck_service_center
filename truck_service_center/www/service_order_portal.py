@@ -12,6 +12,13 @@ from frappe import _
 from frappe.utils import format_datetime, now_datetime
 
 from truck_service_center.api.technician_portal import MANAGER_ROLES, TECHNICIAN_FIELDS
+from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+	APPROVAL_PENDING,
+	get_supervised_groups,
+)
+from truck_service_center.truck_service_center.doctype.service_type_group.service_type_group import (
+	APPROVER_FALLBACK_ROLES,
+)
 
 no_cache = 1
 
@@ -44,6 +51,9 @@ STATUS_LABELS = {
 	"On Hold": "พักงาน",
 }
 
+# ป้ายกลุ่มของอะไหล่ที่ไม่มีกลุ่มบริการ — ใบเบิกกลุ่มนี้หัวหน้าช่าง/ผู้จัดการเป็นผู้อนุมัติ
+NO_GROUP_LABEL = "อะไหล่อื่น ๆ / ไม่มีกลุ่ม"
+
 PRIORITY_LABELS = {
 	"Low": "ต่ำ",
 	"Medium": "ปานกลาง",
@@ -75,7 +85,96 @@ def get_context(context):
 	context.orders = get_open_orders(user, all_jobs=context.sees_all)
 	context.order_count = len(context.orders)
 
+	# ใบเบิกที่รอให้ผู้ใช้คนนี้อนุมัติ — หัวหน้างานกลุ่มเห็นเฉพาะกลุ่มของตน หัวหน้าช่าง/ผู้จัดการเห็นทุกใบ
+	context.pending_requisitions = get_pending_requisitions(
+		is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=get_supervised_groups(user)
+	)
+
 	return context
+
+
+def get_pending_requisitions(is_fallback=False, groups=(), limit=PAGE_LIMIT):
+	"""ใบเบิกอะไหล่ (Stock Entry Draft) ที่รออนุมัติ พร้อมรายการอะไหล่ — 4 query ไม่ว่าจะกี่ใบ
+
+	ใช้ frappe.get_all โดยเจตนา: หัวหน้างานกลุ่มไม่มีสิทธิ์ Stock Entry เลย ขอบเขตคือ filter
+	กลุ่มที่ผูกกับ session user ด้านล่าง (ด่านอนุมัติจริงอยู่ที่ approve_requisition)
+	"""
+	if not is_fallback and not groups:
+		return []
+
+	filters = {
+		"docstatus": 0,
+		"custom_approval_status": APPROVAL_PENDING,
+		"custom_service_order": ["is", "set"],
+	}
+	if not is_fallback:
+		filters["custom_service_type_group"] = ["in", list(groups)]
+
+	rows = frappe.get_all(
+		"Stock Entry",
+		filters=filters,
+		fields=[
+			"name",
+			"custom_service_order",
+			"custom_service_type_group",
+			"custom_created_by_name",
+			"creation",
+		],
+		order_by="creation asc",
+		limit_page_length=limit,
+	)
+	if not rows:
+		return []
+
+	lines = frappe.get_all(
+		"Stock Entry Detail",
+		filters={"parent": ["in", [row.name for row in rows]]},
+		fields=["parent", "item_code", "item_name", "qty", "uom"],
+		order_by="idx asc",
+	)
+	group_names = dict(
+		frappe.get_all(
+			"Service Type Group",
+			filters={"name": ["in", list({row.custom_service_type_group for row in rows} - {None})]},
+			fields=["name", "group_name"],
+			as_list=True,
+		)
+	)
+	orders = {
+		order.name: order
+		for order in frappe.get_all(
+			"Service Order",
+			filters={"name": ["in", list({row.custom_service_order for row in rows})]},
+			fields=["name", "truck_number", "vehicle"],
+		)
+	}
+
+	lines_by_entry = {}
+	for line in lines:
+		lines_by_entry.setdefault(line.parent, []).append(
+			frappe._dict(label=line.item_name or line.item_code, qty=_qty(line.qty), uom=line.uom or "")
+		)
+
+	for row in rows:
+		order = orders.get(row.custom_service_order) or frappe._dict()
+		row.service_order = row.custom_service_order
+		row.truck_label = order.truck_number or order.vehicle or "-"
+		row.group_label = (
+			group_names.get(row.custom_service_type_group) or row.custom_service_type_group
+			if row.custom_service_type_group
+			else NO_GROUP_LABEL
+		)
+		row.requested_by_name = row.custom_created_by_name or "-"
+		row.requested_at = format_datetime(row.creation, "dd/MM HH:mm")
+		row.lines = lines_by_entry.get(row.name, [])
+
+	return rows
+
+
+def _qty(value):
+	"""ตัด .0 ท้ายจำนวนเต็ม — 2.0 ชิ้นอ่านแปลก"""
+	number = float(value or 0)
+	return int(number) if number == int(number) else number
 
 
 def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
