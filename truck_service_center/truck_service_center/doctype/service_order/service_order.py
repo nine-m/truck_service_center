@@ -1587,6 +1587,18 @@ def get_requisition_approvers(service_type_group):
 	)
 
 
+def get_supervised_groups(user=None):
+	"""กลุ่มบริการที่ user ถูกตั้งเป็นผู้อนุมัติใบเบิก — ใช้ตอน render หลายใบพร้อมกัน (query เดียว)"""
+	user = user or frappe.session.user
+	return set(
+		frappe.get_all(
+			"Service Type Group Supervisor",
+			filters={"user": user, "parenttype": "Service Type Group"},
+			pluck="parent",
+		)
+	)
+
+
 def can_approve_requisition(stock_entry, user=None):
 	"""user อนุมัติ/ไม่อนุมัติใบเบิกนี้ได้หรือไม่
 

@@ -21,7 +21,11 @@
 		<div class="tsc-job-spec">{{ job.vehicle_spec }} &middot; {{ job.vehicle_type }} &middot; ข้อมูล ณ {{ fetched_at }}</div>
 	</header>
 
-	{% if not editable %}
+	{% if supervisor_view %}
+	<div class="tsc-locked">
+		คุณเปิดใบนี้ในฐานะหัวหน้างานกลุ่ม — ดูได้อย่างเดียว และอนุมัติใบเบิกของกลุ่มที่คุณดูแลได้ที่ส่วนอะไหล่
+	</div>
+	{% elif not editable %}
 	<div class="tsc-locked">
 		ใบสั่งงานนี้ปิดหรือถูก submit แล้ว — ดูได้อย่างเดียว หากต้องแก้ไขกรุณาติดต่อผู้จัดการ
 	</div>
@@ -156,21 +160,58 @@
 				<div class="tsc-part-group">
 					<div class="tsc-part-group-head">
 						<span class="tsc-part-group-title">{{ group.label }}</span>
-						{% for issue in group.issues %}
-						<span class="tsc-pkg tsc-issue">{{ issue }}</span>
-						{% endfor %}
-						{% if editable and group.pending %}
+						{% if editable and group.pending and group.can_request %}
 						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
-							data-action="requisition" data-row="{{ group.row_name }}">สร้างใบเบิก</button>
+							data-action="requisition" data-group="{{ group.group }}">ขออนุมัติเบิก</button>
 						{% endif %}
 					</div>
+					{% if group.jobs %}
+					<p class="tsc-group-jobs">งาน: {{ group.jobs | join(", ") }}</p>
+					{% endif %}
+
+					{% for issue in group.issues %}
+					<div class="tsc-issue-card">
+						<div class="tsc-issue-head">
+							<span class="tsc-issue-name">ใบเบิก {{ issue.name }}</span>
+							<span class="tsc-state" data-state="{{ issue.theme }}">{{ issue.status_label }}</span>
+						</div>
+						<div class="tsc-line-sub">
+							{% if issue.requested_by_name %}ผู้ขอเบิก {{ issue.requested_by_name }}{% endif %}
+							{%- if issue.approved_by_name %} &middot; {% if issue.status == "Rejected" %}ไม่อนุมัติโดย{% else %}อนุมัติโดย{% endif %} {{ issue.approved_by_name }}{% endif %}
+						</div>
+						{% if issue.reason %}
+						<div class="tsc-issue-reason">เหตุผล: {{ issue.reason }}</div>
+						{% endif %}
+						{% if issue.can_approve %}
+						<div class="tsc-row-actions">
+							<button type="button" class="tsc-btn tsc-btn-success tsc-btn-sm"
+								data-action="approve" data-issue="{{ issue.name }}">อนุมัติ</button>
+							<button type="button" class="tsc-btn tsc-btn-secondary tsc-btn-sm"
+								data-action="reject-open" data-issue="{{ issue.name }}">ไม่อนุมัติ</button>
+						</div>
+						<div class="tsc-reject-box" data-reject-box="{{ issue.name }}" hidden>
+							<div class="tsc-chips">
+								{% for preset in reject_presets %}
+								<button type="button" class="tsc-chip" data-action="reject-preset"
+									data-issue="{{ issue.name }}" data-value="{{ preset }}">{{ preset }}</button>
+								{% endfor %}
+							</div>
+							<textarea class="tsc-textarea" rows="2" maxlength="500"
+								data-reject-reason="{{ issue.name }}" placeholder="เหตุผลที่ไม่อนุมัติ (บังคับ)"></textarea>
+							<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-block"
+								data-action="reject" data-issue="{{ issue.name }}">ยืนยันไม่อนุมัติ</button>
+						</div>
+						{% endif %}
+					</div>
+					{% endfor %}
+
 					<ul class="tsc-lines">
 						{% for line in group.parts %}
 						<li>
 							<span class="tsc-line-main">{{ line.label }}</span>
 							<span class="tsc-line-sub">
 								{{ line.qty }} {{ line.uom }}
-								&middot; {% if line.issued %}เบิกแล้ว &middot; {{ line.material_issue }}{% elif line.material_issue %}ใบเบิก {{ line.material_issue }} &middot; รอ submit{% else %}ยังไม่เบิก{% endif %}
+								&middot; {% if line.issued %}เบิกแล้ว &middot; {{ line.material_issue }}{% elif line.pending_approval %}รออนุมัติ &middot; {{ line.material_issue }}{% elif line.material_issue %}ใบเบิก {{ line.material_issue }} &middot; รอ submit{% else %}ยังไม่เบิก{% endif %}
 								{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
 							</span>
 						</li>
@@ -200,7 +241,7 @@
 				{% if job.status == "Draft" %}
 				<p class="tsc-hint">ต้องเลือกสถานะน้ำมันรับเข้าก่อนจึงจะรับรถได้</p>
 				{% elif job.status == "In Progress" %}
-				<p class="tsc-hint">ต้องกดจบงานให้ครบทุกรายการ สร้างใบเบิกอะไหล่ให้ครบ และบันทึกสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
+				<p class="tsc-hint">ต้องกดจบงานให้ครบทุกรายการ ขออนุมัติเบิกอะไหล่ให้ครบ และบันทึกสถานะน้ำมันนำส่ง ก่อนจึงจะปิดงานได้</p>
 				{% endif %}
 			</div>
 			{% endif %}
@@ -373,7 +414,7 @@
 		}
 		// ใบเบิกสร้างแล้วหน้าจะ reload เสมอ ค่าที่ render มาจึงยังตรงกับเอกสาร
 		if (UNISSUED_PARTS && UNISSUED_PARTS.length) {
-			missing.push("• สร้างใบเบิกอะไหล่ให้ครบ (ยังไม่ได้เบิก " + UNISSUED_PARTS.join(", ") + ")");
+			missing.push("• ขออนุมัติเบิกอะไหล่ให้ครบ (ยังไม่ได้เบิก " + UNISSUED_PARTS.join(", ") + ")");
 		}
 		if (missing.length) {
 			window.alert("กรุณาบันทึกข้อมูลต่อไปนี้ก่อนปิดงาน\n" + missing.join("\n"));
@@ -397,7 +438,7 @@
 		});
 	}
 
-	// ── งานรายรายการ: เริ่ม / จบ / เริ่มใหม่ / ถอนช่าง / สร้างใบเบิก
+	// ── งานรายรายการ: เริ่ม / จบ / เริ่มใหม่ / ถอนช่าง / ขออนุมัติเบิก / อนุมัติใบเบิก
 	function reloadAfter(method, args, btn) {
 		call(method, args, btn, function () { window.location.reload(); });
 	}
@@ -418,11 +459,42 @@
 				}
 				break;
 			case "requisition":
-				if (window.confirm("ตรวจสอบรายการอะไหล่ถูกต้องแล้วใช่หรือไม่?")) {
-					reloadAfter("create_service_requisition", { row_name: row }, btn);
+				// หนึ่งใบต่อกลุ่มบริการ — ใบที่สร้างต้องรอหัวหน้างานกลุ่มอนุมัติก่อนสต๊อกจะ submit ได้
+				if (window.confirm("ตรวจสอบรายการอะไหล่ถูกต้องแล้ว ส่งขออนุมัติเบิกใช่หรือไม่?")) {
+					reloadAfter("create_group_requisition", { service_type_group: btn.dataset.group || "" }, btn);
 				}
 				break;
+			case "approve":
+				if (window.confirm("อนุมัติใบเบิก " + btn.dataset.issue + "?")) {
+					reloadAfter("approve_requisition", { stock_entry: btn.dataset.issue }, btn);
+				}
+				break;
+			case "reject-open":
+				rejectBox(btn.dataset.issue).hidden = false;
+				rejectReason(btn.dataset.issue).focus();
+				break;
+			case "reject-preset":
+				rejectReason(btn.dataset.issue).value = btn.dataset.value;
+				break;
+			case "reject":
+				var reason = rejectReason(btn.dataset.issue).value.trim();
+				if (!reason) {
+					toast("กรุณาระบุเหตุผลที่ไม่อนุมัติ", "red");
+					rejectReason(btn.dataset.issue).focus();
+					return;
+				}
+				reloadAfter("reject_requisition", { stock_entry: btn.dataset.issue, reason: reason }, btn);
+				break;
 		}
+	}
+
+	// ── ไม่อนุมัติใบเบิก: กล่องเหตุผลแยกต่อใบ (ใบงานหนึ่งอาจมีหลายใบรออนุมัติพร้อมกัน)
+	function rejectBox(issue) {
+		return document.querySelector('[data-reject-box="' + issue + '"]');
+	}
+
+	function rejectReason(issue) {
+		return document.querySelector('[data-reject-reason="' + issue + '"]');
 	}
 
 	// ── ช่องจอด: เตือนก่อนถ้าชนกับใบอื่น หรืองานต้องใช้หลุมแต่ช่องจอดไม่มีหลุม
@@ -674,6 +746,20 @@
 	}
 	.tsc-part-group-head .tsc-btn { margin-left: auto; }
 	.tsc-part-group-title { font-size: 0.875rem; font-weight: 600; }
+	.tsc-group-jobs { margin: -0.25rem 0 0.5rem; font-size: 0.8125rem; color: var(--text-muted); }
+
+	/* ── ใบเบิกของกลุ่ม: สถานะอนุมัติ + ปุ่มอนุมัติ/ไม่อนุมัติของหัวหน้างานกลุ่ม ── */
+	.tsc-issue-card {
+		display: grid; gap: 0.25rem; padding: 0.6rem 0.75rem; margin-bottom: 0.6rem;
+		border: 1px solid var(--border-color); border-radius: 8px; background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-issue-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.tsc-issue-name { font-size: 0.875rem; font-weight: 600; }
+	.tsc-issue-reason { font-size: 0.8125rem; color: #b42318; }
+	.tsc-state[data-state="approved"] { background: #dbeafe; border-color: #a9c7f5; }
+	.tsc-state[data-state="rejected"] { background: #fde2e1; border-color: #f5b5b1; }
+	.tsc-reject-box { margin-top: 0.4rem; }
+	.tsc-reject-box .tsc-chips { margin-bottom: 0.5rem; }
 
 	@media (max-width: 767px) {
 		.tsc-row-controls { grid-template-columns: 1fr; }
