@@ -42,8 +42,9 @@ child table ที่ทุกเอกสารใช้เหมือนก�
 **Whitelisted:** `check_service_due`, `get_vehicle_service_history`, `get_customer_contact_info`, `get_vehicle_expirations`
 
 ### Service Type Group (กลุ่มบริการ)
-`autoname = field:group_code`. ฟิลด์: `group_code`, `group_name`, `is_active`, `default_bay_type` (ประเภทช่องจอดเริ่มต้นของกลุ่ม), `remark`
+`autoname = field:group_code`. ฟิลด์: `group_code`, `group_name`, `is_active`, `default_bay_type` (ประเภทช่องจอดเริ่มต้นของกลุ่ม), `remark`, `supervisors` (ตาราง **Service Type Group Supervisor**: `user`, `full_name` — ผู้อนุมัติใบเบิกอะไหล่ของกลุ่ม)
 `default_bay_type` เป็นแค่ค่าตั้งต้นให้ `Service Type.bay_type` เท่านั้น ไม่ได้บังคับ — แก้รายตัวได้เสมอ
+`supervisors` ใส่ได้หลายคน คนใดคนหนึ่งอนุมัติก็ได้ — ต้องมี role **Technician Supervisor** (หรือ Technician Manager / Service Manager / System Manager) และห้ามชื่อซ้ำ กลุ่มที่ไม่ได้ตั้งผู้อนุมัติ ใบเบิกจะไปรอหัวหน้าช่าง/ผู้จัดการแทน
 กลุ่มมาตรฐาน (seed จาก [fixtures/create_service_type_groups.py](truck_service_center/fixtures/create_service_type_groups.py)): SU100 เครื่องล่าง, EL100 ไฟฟ้า, TY100 ยาง, OT100 อื่นๆ, RM100 ระบบการทำงาน, TR100 ส่งกำลัง, WE100 เชื่อม, CH100 ตัวถัง
 
 ### Service Type (ประเภทบริการ)
@@ -143,13 +144,20 @@ site ที่ยังไม่มี Bay Type เลยจะได้ข้�
 
 **Methods:** `apply_service_packages()`, `set_tax_defaults()`, `calculate_totals()` (รวมค่าแรงทุกบรรทัด + VAT ตาม tax_type; แถวอะไหล่ที่ไม่มีราคาใช้ `get_default_selling_rate()`: Item Price → standard_rate → ราคาทุนเป็นทางสุดท้าย), `calculate_wht()`, `update_payment_status()`, `update_material_issue_status()`, `update_vehicle_info()` (อัปเดตเลขไมล์/กำหนดบริการของรถ), `revert_vehicle_info()` (**on_cancel** — คืนข้อมูลบริการของรถจากใบงานที่เหลือ หรือล้างถ้าไม่มี), `create_sales_invoice()`, `complete_linked_service_appointment()` (ปิดใบนัดเมื่อ submit)
 
-**Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue` (ใบเบิก → ใบงาน), `push_to_material_issue` (ใบงาน → ใบเบิก Draft), `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบหรือจำนวนไม่ตรง)
+**Material Issue (ตัดสต็อกแยกราย Item):** อะไหล่แต่ละแถวมี `warehouse`, `material_issue` (ลิงก์ Stock Entry), `material_issue_status` (Pending Approval / Rejected / Draft / Submitted) — จัดการผ่าน whitelisted `create_material_issue`, `sync_material_issue` (ใบเบิก → ใบงาน), `push_to_material_issue` (ใบงาน → ใบเบิก Draft), `get_material_issue_summary`, และ `check_material_issues_before_submit` (กัน submit ถ้ายังไม่ได้เบิกครบหรือจำนวนไม่ตรง)
+
+**ใบเบิกอะไหล่ต้องผ่านการอนุมัติ:** ใบเบิก (Stock Entry Draft) ถูกสร้าง **หนึ่งใบต่อกลุ่มบริการ (Service Type Group)** — งานหลายรายการในกลุ่มเดียวกันรวมเป็นใบเดียว อะไหล่ที่ไม่ผูกงาน/งานที่ไม่มีกลุ่มรวมอยู่ใบ "ไม่มีกลุ่ม"
+1. ช่างกด **ขออนุมัติเบิก** ในพอร์ทัล (หรือผู้จัดการกด Create Material Issue บน desk) → ใบเบิกสถานะ **Pending** บันทึก **ผู้ขอเบิก** (`custom_created_by_name` / `custom_requested_by`)
+2. หัวหน้างานของกลุ่ม (`Service Type Group.supervisors`) หรือหัวหน้าช่าง/ผู้จัดการ **อนุมัติ** / **ไม่อนุมัติ (ต้องใส่เหตุผล)** — ทำได้ทั้งในพอร์ทัลและปุ่มบนฟอร์ม Stock Entry บันทึก **ผู้อนุมัติ** (`custom_approved_by_name`) และเวลา (`custom_approved_on`) ลงใบ + comment ทั้งใบเบิกและใบสั่งงาน
+3. สต๊อก submit ใบได้เฉพาะใบ **Approved** (`Stock Entry.before_submit` → `validate_requisition_approved`) — ใบเก่าที่สถานะอนุมัติว่างถือว่าผ่าน
+4. ใบที่ **ไม่อนุมัติ** ถูกปลดออกจากแถวอะไหล่ ช่างแก้แล้วขอเบิกใหม่ได้ ใบเดิมค้างไว้เป็นหลักฐาน (submit ไม่ได้)
+ผู้สร้างที่อนุมัติกลุ่มนั้นได้อยู่แล้ว (เช่นผู้จัดการบน desk) ใบจะถูกอนุมัติให้ทันที — หน้ารายการ Stock Entry กรองด้วย "สถานะอนุมัติ" / "กลุ่มบริการ" ได้ และมีคอลัมน์ผู้ขอเบิก/สถานะอนุมัติ/ผู้อนุมัติ
 **Whitelisted อื่น:** `get_item_rate`, `get_item_by_barcode`, `receive_vehicle`, `get_service_type_items`, `create_sales_invoice_from_service_order`
 
 **Workflow:**
 1. สร้าง Service Order (เลือกรถ → ดึงข้อมูลลูกค้า/รถ/ที่อยู่อัตโนมัติ) หรือถูกสร้างจาก Appointment/Quotation
 2. เลือกแพ็คเกจ (auto-load บริการ+อะไหล่) หรือเพิ่ม service_types / service_items เอง (พิมพ์หรือยิงบาร์โค้ด)
-3. เบิกอะไหล่ด้วยปุ่ม "Create Material Issue" (สร้าง Stock Entry ประเภท Material Issue) — ต้องกดเอง ไม่มีการสร้างอัตโนมัติ และต้อง submit ใบเบิกให้ครบก่อนจึงจะ submit ใบสั่งงานได้
+3. เบิกอะไหล่ด้วยปุ่ม "Create Material Issue" (สร้าง Stock Entry ประเภท Material Issue หนึ่งใบต่อกลุ่มบริการ) หรือช่างกด "ขออนุมัติเบิก" ในพอร์ทัล — ต้องกดเอง ไม่มีการสร้างอัตโนมัติ ใบเบิกต้องได้รับอนุมัติก่อนสต๊อกจะ submit ได้ และต้อง submit ใบเบิกให้ครบก่อนจึงจะ submit ใบสั่งงานได้
 4. Submit → ปิดใบนัดที่ผูกอยู่ + อัปเดตข้อมูลรถ
    เงื่อนไขก่อน submit (`before_submit`): มีประเภทบริการอย่างน้อย 1 รายการ, ยอดรวม > 0, เวลาทำงานจริง > 0, กรอก **สถานะน้ำมันรับเข้า/ออก** และ **ช่างผู้รับผิดชอบ 1** (`SUBMIT_REQUIRED_FIELDS`), และใบเบิกอะไหล่ครบ+จำนวนตรง
 5. สร้าง Sales Invoice (auto-submit ได้ตาม Settings)
@@ -228,6 +236,8 @@ Role ของแอป (seed จาก `create_default_roles()` ใน [install
 | **Service Manager** | ผู้จัดการศูนย์ — สิทธิ์เต็มทุก doctype รวมถึง cancel/delete และแก้ Settings |
 | **Service User** | ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิด+submit ใบสั่งงาน ลงทะเบียนรถ |
 | **Technician** | ช่าง — อ่านข้อมูลทั่วไป และแก้ไข Service Order (อัพเดทงาน/เวลาจริง) แต่สร้าง/submit ไม่ได้ |
+| **Technician Manager** | หัวหน้าช่าง — เห็น/แก้งานทุกใบในพอร์ทัลช่าง assign ช่าง และอนุมัติใบเบิกอะไหล่ได้ทุกกลุ่ม |
+| **Technician Supervisor** | หัวหน้างานกลุ่มบริการ — อนุมัติ/ไม่อนุมัติใบเบิกอะไหล่ของกลุ่มที่ตัวเองถูกตั้งไว้ใน `Service Type Group.supervisors` (ไม่ได้เห็นทุกใบหรือ assign ช่างเหมือนหัวหน้าช่าง) |
 
 และใช้ role มาตรฐานของ ERPNext เพิ่มเติม: **Stock User** (อ่าน Service Order เพื่อเบิกอะไหล่), **Accounts User** (อ่าน Service Order + Repair Quotation เพื่อออกบิล)
 
@@ -241,6 +251,7 @@ seed จาก `create_default_role_profiles()` ใน [install.py](truck_servic
 | **Service Manager** | Service Manager, Sales User, Accounts User, Stock User | ผู้จัดการกดออก Sales Invoice เอง (`create_sales_invoice` เรียก `insert()` ตรงๆ ไม่ได้ `ignore_permissions`) และดู/สร้างใบเบิกอะไหล่บน desk |
 | **Technician** | Technician | ใบเบิกจากพอร์ทัลใช้ `ignore_permissions=True` จึงไม่ต้องมี Stock User |
 | **Technician Manager** | Technician, Technician Manager | หัวหน้าช่างทำงานช่างด้วย ไม่ใช่แค่สิทธิ์ดูทุกใบ |
+| **Technician Supervisor** | Technician, Technician Supervisor | หัวหน้างานกลุ่มทำงานช่างด้วย อนุมัติใบเบิกผ่าน endpoint ของพอร์ทัล จึงไม่ต้องมีสิทธิ์ Stock Entry |
 
 > **user ใหม่ที่ไม่ได้รับ role ของแอปเลยจะมองไม่เห็นหน้าหลักของศูนย์บริการ** — frappe ตอบ `"No App"` ตอนล็อกอินแล้วส่งไป `/me` เพราะ workspace จะโผล่ก็ต่อเมื่อโมดูล `Truck Service Center` อยู่ใน `allow_modules` ซึ่งไล่มาจาก doctype ที่ user อ่านได้ อาการนี้ไม่ได้เกิดกับ Administrator/System Manager จึงมักไม่เจอตอนทดสอบ
 
@@ -251,7 +262,7 @@ seed จาก `create_default_role_profiles()` ใน [install.py](truck_servic
 
 | Doctype | Service Manager | Service User | Technician | Stock User | Accounts User |
 |---|---|---|---|---|---|
-| Service Order | ทั้งหมด + submit/cancel | create/write/submit | read/write | read | read |
+| Service Order | ทั้งหมด + submit/cancel | create/write/submit | read/write (Technician Manager / Technician Supervisor เท่ากัน) | read | read |
 | Service Appointment | ทั้งหมด + submit/cancel | create/write/submit/cancel | read | — | — |
 | Repair Quotation | ทั้งหมด | create/write | — | — | read |
 | Vehicle | ทั้งหมด | create/write | read | — | — |
@@ -264,9 +275,11 @@ seed จาก `create_default_role_profiles()` ใน [install.py](truck_servic
 
 หมายเหตุ: `Service Bay` และ `Bay Type` ให้ **Technician Manager อ่านได้ด้วย** (นอกเหนือจากตารางข้างบน) เพราะพอร์ทัลช่าง render ตัวเลือกช่องจอดพร้อมชื่อประเภทฝั่ง server
 
-หมายเหตุ: role `Technician` **ไม่มีสิทธิ์สร้าง Stock Entry** — ปุ่ม "สร้างใบเบิก" ในพอร์ทัลจึงเรียก
-`create_material_issue_for_rows(..., ignore_permissions=True)` หลังผ่าน gate ของพอร์ทัลเอง (`_get_row_job`)
+หมายเหตุ: role `Technician` **ไม่มีสิทธิ์สร้าง Stock Entry** — ปุ่ม "ขออนุมัติเบิก" ในพอร์ทัลจึงเรียก
+`create_material_issue_for_rows(..., ignore_permissions=True)` หลังผ่าน gate ของพอร์ทัลเอง (`_get_group_job` — ต้องอยู่บนงานในกลุ่มนั้น)
 และกฎ "ต้องรับรถก่อนเบิกอะไหล่" ยังถูกบังคับอยู่ภายในฟังก์ชันนั้น
+การอนุมัติ/ไม่อนุมัติก็ไม่ใช้สิทธิ์ Stock Entry เช่นกัน — ด่านคือ `can_approve_requisition` (หัวหน้างานของกลุ่ม หรือ Technician Manager / Service Manager / System Manager)
+ส่วนการ submit ใบเบิกยังเป็นสิทธิ์ของ Stock User / Service Manager ตามเดิม แต่ทำได้เฉพาะใบที่อนุมัติแล้ว
 
 หมายเหตุ: การ **cancel Service Order** สงวนให้ Service Manager (Service User submit ได้แต่ยกเลิกไม่ได้) และ whitelisted endpoint ทุกตัว (เช่น `receive_vehicle`, `create_material_issue`, `create_sales_invoice_from_service_order`) มี `check_permission` ตรวจสิทธิ์ตามตารางนี้ก่อนทำงานเสมอ
 
