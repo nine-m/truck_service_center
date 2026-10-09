@@ -6,7 +6,10 @@ import frappe
 # คอลัมน์ที่ต้องมีบนหน้ารายการ Stock Entry เรียงตามลำดับที่อยากให้แสดง
 WANTED_COLUMNS = [
 	("custom_service_order", "ใบสั่งงาน"),
-	("custom_created_by_name", "ผู้สร้างใบเบิก"),
+	("custom_created_by_name", "ผู้ขอเบิก"),
+	# ขั้นอนุมัติใบเบิก (patch add_requisition_approval_fields เรียกตัวนี้ซ้ำให้ site ที่ pin ไว้)
+	("custom_approval_status", "สถานะอนุมัติ"),
+	("custom_approved_by_name", "ผู้อนุมัติ"),
 ]
 
 # คอลัมน์รอบก่อนที่ถูกแทนที่ — ฟิลด์ถูกลบไปแล้ว ถ้าค้างใน layout จะได้ช่องว่าง
@@ -17,7 +20,7 @@ ANCHOR_FIELD = "stock_entry_type"
 
 
 def execute():
-	"""ดันคอลัมน์ใบสั่งงาน/ผู้สร้างใบเบิกเข้า layout ที่ผู้ใช้ pin ไว้
+	"""ดันคอลัมน์ใบสั่งงาน/ผู้ขอเบิก/สถานะอนุมัติ/ผู้อนุมัติเข้า layout ที่ผู้ใช้ pin ไว้
 
 	in_list_view บน Custom Field จะไม่มีผลเลยถ้า site นั้นมี List View Settings ของ
 	doctype นั้นอยู่ — setup_columns ฝั่ง client จะใช้ list_view_settings.fields แทน

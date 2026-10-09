@@ -29,7 +29,8 @@ CUSTOM_FIELDS = {
 			# เก็บเป็น "ชื่อ" ไม่ใช่ Link → User เพราะคอลัมน์นี้มีไว้ให้คนอ่าน
 			# frappe render Link → User เป็น user id (User ไม่ได้เปิด show_title_field_in_link)
 			# เป็น snapshot ตอนสร้าง ถ้าผู้ใช้เปลี่ยนชื่อทีหลัง ใบเก่าจะยังเป็นชื่อเดิม
-			"label": "ผู้สร้างใบเบิก",
+			# label เดิมคือ "ผู้สร้างใบเบิก" — ค่าที่เก็บเป็นคนกดสร้างอยู่แล้ว ซึ่งก็คือผู้ขอเบิก
+			"label": "ผู้ขอเบิก",
 			"fieldtype": "Data",
 			"insert_after": "custom_service_order",
 			"read_only": 1,
@@ -49,6 +50,87 @@ CUSTOM_FIELDS = {
 			"no_copy": 1,
 			"in_standard_filter": 1,
 			"print_hide": 1,
+		},
+		# ── การอนุมัติใบเบิกอะไหล่ (ช่างขอเบิก → หัวหน้างานกลุ่มอนุมัติ → สต๊อก submit) ──
+		{
+			"fieldname": "custom_service_type_group",
+			# ใบเบิกรวมอะไหล่ของทุกงานในกลุ่มบริการเดียวกันเป็นใบเดียว — กลุ่มนี้กำหนดว่าใครอนุมัติ
+			# ว่าง = อะไหล่ที่ไม่มีกลุ่ม (เพิ่มเอง/งานไม่มีกลุ่ม) → หัวหน้าช่าง/ผู้จัดการอนุมัติ
+			"label": "กลุ่มบริการ",
+			"fieldtype": "Link",
+			"options": "Service Type Group",
+			"insert_after": "custom_service_type",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_standard_filter": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "custom_approval_status",
+			# ว่าง = ใบเก่าที่สร้างก่อนมีขั้นอนุมัติ ถือว่าผ่าน (validate_requisition_approved)
+			# Pending / Rejected → submit ไม่ได้ — สต๊อกกรองหา Approved จากช่องกรองบนหัว list
+			"label": "สถานะอนุมัติ",
+			"fieldtype": "Select",
+			"options": "\nPending\nApproved\nRejected",
+			"insert_after": "custom_created_by_name",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_standard_filter": 1,
+			"in_list_view": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "custom_requested_by",
+			# user id ของผู้ขอเบิก — ใช้ทาง logic ส่วนคนอ่านดูชื่อที่ custom_created_by_name
+			"label": "ผู้ขอเบิก (user)",
+			"fieldtype": "Link",
+			"options": "User",
+			"insert_after": "custom_approval_status",
+			"read_only": 1,
+			"no_copy": 1,
+			"hidden": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "custom_approved_by",
+			# ผู้ตัดสินใบเบิก (อนุมัติหรือไม่อนุมัติ) — user id สำหรับ logic, ชื่ออยู่ฟิลด์ถัดไป
+			"label": "ผู้อนุมัติ (user)",
+			"fieldtype": "Link",
+			"options": "User",
+			"insert_after": "custom_requested_by",
+			"read_only": 1,
+			"no_copy": 1,
+			"hidden": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "custom_approved_by_name",
+			# เก็บเป็นชื่อ (Data) ด้วยเหตุผลเดียวกับ custom_created_by_name — คอลัมน์นี้มีไว้ให้คนอ่าน
+			# และพิมพ์ลงใบเบิกได้ (ไม่ print_hide)
+			"label": "ผู้อนุมัติ",
+			"fieldtype": "Data",
+			"insert_after": "custom_approved_by",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
+		},
+		{
+			"fieldname": "custom_approved_on",
+			"label": "วันเวลาที่อนุมัติ",
+			"fieldtype": "Datetime",
+			"insert_after": "custom_approved_by_name",
+			"read_only": 1,
+			"no_copy": 1,
+		},
+		{
+			"fieldname": "custom_rejection_reason",
+			"label": "เหตุผลที่ไม่อนุมัติ",
+			"fieldtype": "Small Text",
+			"insert_after": "custom_approved_on",
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+			"depends_on": "eval:doc.custom_approval_status=='Rejected'",
 		},
 	],
 	"Stock Entry Detail": [
