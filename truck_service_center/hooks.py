@@ -66,6 +66,7 @@ required_apps = ["erpnext"]
 role_home_page = {
 	"Technician": "service-order-portal",
 	"Technician Manager": "service-order-portal",
+	"Technician Supervisor": "service-order-portal",
 }
 
 # เส้นทางหน้ารายละเอียดงานของพอร์ทัลช่าง — <name> จะถูกส่งเข้า frappe.form_dict.name

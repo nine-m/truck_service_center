@@ -41,6 +41,12 @@ class TestDefaultRoleProfiles(IntegrationTestCase):
 			roles = {row.role for row in doc.roles}
 			self.assertIn(profile_name, roles, f"{profile_name} ไม่มี role ชื่อเดียวกัน")
 
+	def test_supervisor_profile_also_works_as_technician(self):
+		"""หัวหน้างานกลุ่มยังทำงานช่างด้วย — ต้องได้ Technician ติดมา ไม่ใช่แค่สิทธิ์อนุมัติใบเบิก"""
+		self.assertTrue(frappe.db.exists("Role", "Technician Supervisor"))
+		roles = {row.role for row in frappe.get_doc("Role Profile", "Technician Supervisor").roles}
+		self.assertTrue({"Technician", "Technician Supervisor"} <= roles)
+
 	def test_seeder_is_idempotent(self):
 		"""เรียกซ้ำต้องไม่เพิ่ม role ซ้ำ — patch กับ after_install เรียกตัวเดียวกัน"""
 		before = [row.role for row in frappe.get_doc("Role Profile", "Service User").roles]

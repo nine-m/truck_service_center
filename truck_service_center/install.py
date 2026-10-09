@@ -116,6 +116,9 @@ DEFAULT_ROLES = [
 	"Service User",  # ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิดใบสั่งงาน
 	"Technician",  # ช่าง — ดูงานและอัพเดทงานซ่อม
 	"Technician Manager",  # หัวหน้าช่าง — เห็นและอัพเดทงานได้ทุกใบในพอร์ทัลช่าง แม้ไม่ได้ถูก assign
+	# หัวหน้างานกลุ่มบริการ — อนุมัติใบเบิกอะไหล่ของกลุ่มที่ตัวเองดูแล (Service Type Group.supervisors)
+	# ไม่ได้อยู่ใน MANAGER_ROLES จึงไม่ได้สิทธิ์ assign/reset หรือเห็นทุกใบเหมือนหัวหน้าช่าง
+	"Technician Supervisor",
 ]
 
 
@@ -124,6 +127,8 @@ DEFAULT_ROLE_PROFILES = {
 	"Technician": ["Technician"],
 	# หัวหน้าช่างทำงานช่างด้วย จึงได้ Technician ติดไปด้วย ไม่ใช่แค่สิทธิ์ดูทุกใบ
 	"Technician Manager": ["Technician", "Technician Manager"],
+	# หัวหน้างานกลุ่มยังทำงานช่างด้วย — ได้ Technician ติดไปเหมือนหัวหน้าช่าง
+	"Technician Supervisor": ["Technician", "Technician Supervisor"],
 	# role ของแอปให้สิทธิ์เฉพาะ doctype ของแอปเท่านั้น ธุรการที่มีแค่ "Service User"
 	# จะเปิดใบสั่งงานไม่ได้จริง เพราะเลือก Customer/Item ไม่ได้ (อ่านไม่ได้ตั้งแต่แรก)
 	# จึงพ่วง role ของ ERPNext ที่จำเป็นมาใน profile ให้ครบตั้งแต่ตอนสร้าง user
