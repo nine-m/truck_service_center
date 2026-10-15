@@ -239,6 +239,9 @@ function set_bay_filter(frm) {
 		if (row && row.bay_type) filters.bay_type = row.bay_type;
 		return { filters: filters };
 	});
+	frm.set_query('bay_type', 'bay_allocations', function() {
+		return { filters: { 'is_active': 1 } };
+	});
 }
 
 function bay_status_badge(status) {

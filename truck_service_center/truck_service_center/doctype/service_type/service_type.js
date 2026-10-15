@@ -2,6 +2,13 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Service Type', {
+	setup: function(frm) {
+		// Bay Type ใช้ is_active ซึ่ง link search ของ Frappe ไม่กรองให้เอง — ซ่อนประเภทที่ปิดใช้งาน
+		frm.set_query('bay_type', function() {
+			return { filters: { 'is_active': 1 } };
+		});
+	},
+
 	refresh: function(frm) {
 		// เพิ่มฟังก์ชันช่วยเหลือ
 	},
