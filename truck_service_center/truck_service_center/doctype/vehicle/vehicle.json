@@ -38,6 +38,7 @@
   "next_service_due",
   "next_service_mileage",
   "maintenance_section",
+  "pm_truck_type",
   "service_interval_km",
   "service_interval_months",
   "oil_capacity",
@@ -96,7 +97,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "ประเภทรถ",
-   "options": "รถบรรทุก 4 ล้อ\nรถบรรทุก 6 ล้อ\nรถบรรทุก 10 ล้อ\nรถหัวลาก\nรถพ่วง",
+   "options": "รถบรรทุก 4 ล้อ\nรถบรรทุก 6 ล้อ\nรถบรรทุก 10 ล้อ\nรถหัวลาก\nรถพ่วง\nรถเครน\nรถโฟล์คลิฟท์\nรถขุด (แบคโฮ)\nรถตัก",
    "reqd": 1
   },
   {
@@ -251,6 +252,13 @@
    "label": "การบำรุงรักษา"
   },
   {
+   "description": "ใช้เติมให้อัตโนมัติในหน้าต่างแนะนำแพ็คเกจ PM",
+   "fieldname": "pm_truck_type",
+   "fieldtype": "Link",
+   "label": "รหัสประเภทรถ PM",
+   "options": "PM Truck Type"
+  },
+  {
    "fieldname": "service_interval_km",
    "fieldtype": "Float",
    "label": "ระยะบริการ (กม.)",
@@ -373,7 +381,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-02 02:21:57.118763",
+ "modified": "2026-10-15 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Vehicle",

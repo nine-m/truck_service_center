@@ -44,6 +44,9 @@ frappe.ui.form.on("Service Order", {
 		// ตั้งค่า filter สำหรับ service_package ในตาราง packages
 		setup_service_package_filter(frm);
 
+		// ปุ่มแนะนำแพ็คเกจ PM ตามเลขไมล์/ชั่วโมงทำงาน (public/js/pm_package_dialog.bundle.js)
+		truck_service_center.pm.add_button(frm);
+
 		// ตั้งค่า filter สำหรับ address ตาม customer
 		set_address_filters(frm);
 

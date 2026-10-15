@@ -3,12 +3,16 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import cint, flt
+
+# หน่วยที่หน้าต่างแนะนำแพ็คเกจ PM ส่งมา → ฟิลด์รอบของแพ็คเกจที่ใช้เทียบ
+PM_INTERVAL_FIELDS = {"km": "service_interval_km", "hours": "pm_interval_hours"}
 
 
 class ServicePackage(Document):
 	def validate(self):
 		self.validate_package_service_types()
+		self.validate_pm_fields()
 		self.populate_parts_from_service_types()
 		self.calculate_totals()
 		self.validate_pricing()
@@ -17,6 +21,22 @@ class ServicePackage(Document):
 		"""ตรวจสอบว่ามีประเภทบริการในแพ็คเกจ"""
 		if not self.package_service_types:
 			frappe.throw("กรุณาเพิ่มประเภทบริการในแพ็คเกจอย่างน้อย 1 รายการ")
+
+	def validate_pm_fields(self):
+		"""แพ็คเกจ PM ต้องมีทั้งรหัสประเภทรถและรอบอย่างน้อยหนึ่งค่า — ไม่ใส่อะไรเลย = แพ็คเกจทั่วไป
+
+		ตั้งครึ่ง ๆ กลาง ๆ ไม่ได้ทั้งสองทาง เพราะ get_pm_packages ต้องใช้ทั้งคู่ แพ็คเกจที่ขาดข้างใด
+		ข้างหนึ่งจะไม่ถูกแนะนำเลย ทั้งที่ฟอร์มดูเหมือนตั้งค่าไว้แล้ว
+		"""
+		intervals = [cint(self.get(field)) for field in PM_INTERVAL_FIELDS.values()]
+		if any(value < 0 for value in intervals):
+			frappe.throw("รอบ PM (กม. / ชั่วโมงทำงาน) ต้องไม่ติดลบ")
+
+		has_interval = any(value > 0 for value in intervals)
+		if self.pm_truck_type and not has_interval:
+			frappe.throw("แพ็คเกจ PM ต้องระบุรอบ กม. หรือ ชั่วโมงทำงาน อย่างน้อยหนึ่งค่า")
+		if has_interval and not self.pm_truck_type:
+			frappe.throw("ระบุรอบ PM แล้วต้องระบุรหัสประเภทรถ PM ด้วย — หรือล้างรอบทิ้งถ้าเป็นแพ็คเกจทั่วไป")
 
 	def populate_parts_from_service_types(self):
 		"""ดึงรายการอะไหล่จากประเภทบริการมาใส่ในตารางอะไหล่"""
@@ -190,6 +210,8 @@ def get_package_details(package_name):
 		"discount_amount": package.get_discount_amount(),
 		"validity_days": package.validity_days,
 		"service_interval_km": package.service_interval_km,
+		"pm_truck_type": package.pm_truck_type,
+		"pm_interval_hours": package.pm_interval_hours,
 		"max_services": package.max_services,
 		"description": package.description,
 		"service_types": service_types,
@@ -215,3 +237,48 @@ def get_active_packages():
 		order_by="package_type, package_rate",
 	)
 	return packages
+
+
+def match_pm_packages(packages, reading, interval_field):
+	"""แพ็คเกจที่ครบระยะ ณ เลขไมล์/ชั่วโมงทำงาน reading — หารรอบลงตัวคือครบระยะ
+
+	reading ที่เข้าหลายรอบได้ทุกแพ็คเกจที่เข้า (50,000 กม. → ทั้งรอบ 10,000 และ 50,000)
+	ไม่ปัดเลขให้ ผู้ใช้ใส่เลขกลมตามรอบเอง (325,759 → 330,000) แพ็คเกจรอบ 0 ถูกข้าม
+	"""
+	reading = cint(reading)
+	if reading <= 0:
+		return []
+
+	matched = [
+		pkg
+		for pkg in packages
+		if cint(pkg.get(interval_field)) > 0 and reading % cint(pkg.get(interval_field)) == 0
+	]
+	return sorted(matched, key=lambda pkg: cint(pkg.get(interval_field)))
+
+
+@frappe.whitelist()
+def get_pm_packages(pm_truck_type, reading, unit="km"):
+	"""แพ็คเกจ PM ที่ใช้ได้ของรหัสประเภทรถ ณ เลขไมล์ (unit="km") หรือชั่วโมงทำงาน (unit="hours")"""
+	interval_field = PM_INTERVAL_FIELDS.get(unit)
+	if not interval_field:
+		frappe.throw("หน่วยต้องเป็น km หรือ hours")
+	if not pm_truck_type:
+		frappe.throw("กรุณาเลือกรหัสประเภทรถ PM")
+	if cint(reading) <= 0:
+		frappe.throw("กรุณาระบุเลขไมล์หรือชั่วโมงทำงานมากกว่า 0")
+
+	packages = frappe.get_all(
+		"Service Package",
+		filters={"is_active": 1, "pm_truck_type": pm_truck_type, interval_field: [">", 0]},
+		fields=[
+			"name",
+			"package_code",
+			"package_name",
+			"package_rate",
+			"discount_percent",
+			"repair_time_hours",
+			f"{interval_field} as pm_interval",
+		],
+	)
+	return match_pm_packages(packages, reading, "pm_interval")
