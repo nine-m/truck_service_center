@@ -1,0 +1,89 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:pm_truck_type_code",
+ "creation": "2026-10-15 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "pm_truck_type_code",
+  "description"
+ ],
+ "fields": [
+  {
+   "description": "เช่น Hino500, Isuzu360, SANY-STC160",
+   "fieldname": "pm_truck_type_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "รหัสประเภทรถ PM",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "รายละเอียด"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-15 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "PM Truck Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "create": 1,
+   "write": 1,
+   "export": 1,
+   "share": 1,
+   "delete": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "create": 1,
+   "write": 1,
+   "export": 1,
+   "share": 1,
+   "delete": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User",
+   "create": 1,
+   "write": 1,
+   "export": 1,
+   "share": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
+  }
+ ],
+ "quick_entry": 1,
+ "search_fields": "description",
+ "sort_field": "pm_truck_type_code",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "pm_truck_type_code",
+ "track_changes": 1
+}

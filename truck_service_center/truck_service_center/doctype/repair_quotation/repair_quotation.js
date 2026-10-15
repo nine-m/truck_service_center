@@ -31,6 +31,11 @@ frappe.ui.form.on('Repair Quotation', {
 		set_address_filters(frm);
 		set_vehicle_filter(frm);
 
+		// ปุ่มแนะนำแพ็คเกจ PM — ไม่แสดงเมื่อใบเสนอราคาถูกล็อค (ดูท้าย refresh)
+		if (!['Rejected', 'Expired', 'Cancelled'].includes(frm.doc.status)) {
+			truck_service_center.pm.add_button(frm);
+		}
+
 		// ปุ่ม "สร้าง Service Order"
 		if (!frm.is_new() && !frm.doc.service_order
 			&& ['Open', 'Accepted', 'Draft'].includes(frm.doc.status)) {

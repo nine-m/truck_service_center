@@ -26,6 +26,7 @@
 	"root": true,
 	"globals": {
 		"frappe": true,
+		"truck_service_center": true,
 		"Vue": true,
 		"SetVueGlobals": true,
 		"__": true,

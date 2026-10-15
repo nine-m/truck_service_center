@@ -6,6 +6,9 @@ frappe.ui.form.on('Service Appointment', {
 		// ให้ยอดขยับตั้งแต่ตอนพิมพ์ ไม่ต้องรอออกจากช่อง
 		setup_live_row_calc(frm);
 
+		// ปุ่มแนะนำแพ็คเกจ PM ตามเลขไมล์/ชั่วโมงทำงาน (public/js/pm_package_dialog.bundle.js)
+		truck_service_center.pm.add_button(frm);
+
 		// ปุ่มสร้าง Service Order
 		if (frm.doc.docstatus === 1 && !frm.doc.service_order && frm.doc.status !== 'Cancelled') {
 			frm.add_custom_button(__('Create Service Order'), function() {

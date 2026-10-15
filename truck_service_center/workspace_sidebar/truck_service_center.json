@@ -137,6 +137,19 @@
   {
    "child": 1,
    "collapsible": 1,
+   "icon": "truck",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "PM Truck Type",
+   "link_to": "PM Truck Type",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "icon": "factory",
    "indent": 0,
    "keep_closed": 0,
@@ -277,7 +290,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-09-11 09:30:00.000000",
+ "modified": "2026-10-15 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",

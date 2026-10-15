@@ -15,6 +15,11 @@
   "is_active",
   "column_break_1",
   "description",
+  "pm_section",
+  "pm_truck_type",
+  "column_break_pm",
+  "service_interval_km",
+  "pm_interval_hours",
   "items_tab",
   "service_types_section",
   "package_service_types",
@@ -34,7 +39,6 @@
   "conditions_tab",
   "validity_section",
   "validity_days",
-  "service_interval_km",
   "column_break_3",
   "max_services",
   "notes"
@@ -173,7 +177,33 @@
   {
    "fieldname": "service_interval_km",
    "fieldtype": "Int",
-   "label": "ระยะทางระหว่างบริการ (กม.)"
+   "label": "ทำทุก ๆ (กม.)",
+   "depends_on": "pm_truck_type",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "pm_interval_hours",
+   "fieldtype": "Int",
+   "label": "ทำทุก ๆ (ชั่วโมงทำงาน)",
+   "depends_on": "pm_truck_type",
+   "non_negative": 1
+  },
+  {
+   "description": "เว้นว่างทั้งหมด = แพ็คเกจทั่วไป ระบบจะแนะนำแพ็คเกจนี้เมื่อเลขไมล์/ชั่วโมงทำงานหารรอบลงตัว",
+   "fieldname": "pm_section",
+   "fieldtype": "Section Break",
+   "label": "บำรุงรักษาตามระยะ (PM)"
+  },
+  {
+   "fieldname": "pm_truck_type",
+   "fieldtype": "Link",
+   "label": "รหัสประเภทรถ PM",
+   "options": "PM Truck Type",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_pm",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "column_break_3",
@@ -217,7 +247,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-03 09:10:00.000000",
+ "modified": "2026-10-15 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Package",

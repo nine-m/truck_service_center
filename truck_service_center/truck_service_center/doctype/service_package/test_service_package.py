@@ -4,6 +4,10 @@
 import frappe
 from frappe.tests import UnitTestCase
 
+from truck_service_center.truck_service_center.doctype.service_package.service_package import (
+	match_pm_packages,
+)
+
 
 def make_package(labor_rows=None, part_rows=None, **fields):
 	"""สร้าง Service Package ในหน่วยความจำ (ไม่ insert) แล้วคำนวณราคา
@@ -78,3 +82,73 @@ class UnitTestServicePackage(UnitTestCase):
 		"""ส่วนลดเกิน 100% → เตือน"""
 		with self.assertRaises(frappe.ValidationError):
 			make_package(labor_rows=[{"labor_rate": 1000}], discount_percent=120)
+
+
+# รอบตามตัวอย่างของผู้ใช้: Package1 ทุก 10,000 กม. / 500 ชม., Package2 ทุก 50,000 กม. / 2,500 ชม.
+PM_PACKAGES = [
+	{"name": "PKG-2", "service_interval_km": 50000, "pm_interval_hours": 2500},
+	{"name": "PKG-1", "service_interval_km": 10000, "pm_interval_hours": 500},
+]
+
+
+def matched_names(reading, interval_field="service_interval_km", packages=PM_PACKAGES):
+	return [pkg["name"] for pkg in match_pm_packages(packages, reading, interval_field)]
+
+
+class UnitTestPMPackageMatching(UnitTestCase):
+	"""ทดสอบการจับคู่แพ็คเกจ PM กับเลขไมล์/ชั่วโมงทำงาน (pure function ไม่แตะ DB)"""
+
+	def test_reading_on_both_cycles_recommends_both(self):
+		"""50,000 กม. หารลงตัวทั้งรอบ 10,000 และ 50,000 → แนะนำทั้งสองแพ็คเกจ เรียงรอบน้อยก่อน"""
+		self.assertEqual(matched_names(50000), ["PKG-1", "PKG-2"])
+
+	def test_reading_on_small_cycle_only(self):
+		self.assertEqual(matched_names(60000), ["PKG-1"])
+
+	def test_unrounded_reading_matches_nothing(self):
+		"""ระบบไม่ปัดเลขให้ — ผู้ใช้ต้องใส่เลขกลมเอง (325,759 → 330,000)"""
+		self.assertEqual(matched_names(325759), [])
+		self.assertEqual(matched_names(330000), ["PKG-1"])
+
+	def test_hours_use_their_own_interval(self):
+		self.assertEqual(matched_names(2500, "pm_interval_hours"), ["PKG-1", "PKG-2"])
+		self.assertEqual(matched_names(1000, "pm_interval_hours"), ["PKG-1"])
+
+	def test_zero_interval_is_skipped(self):
+		"""แพ็คเกจที่ไม่ได้ตั้งรอบของหน่วยนั้น (0) ต้องไม่ถูกแนะนำ — และห้ามหารด้วยศูนย์"""
+		packages = [{"name": "KM-ONLY", "service_interval_km": 10000, "pm_interval_hours": 0}]
+		self.assertEqual(matched_names(500, "pm_interval_hours", packages), [])
+
+	def test_non_positive_reading_matches_nothing(self):
+		self.assertEqual(matched_names(0), [])
+		self.assertEqual(matched_names(-10000), [])
+
+
+class UnitTestPMPackageFields(UnitTestCase):
+	"""ทดสอบกฎของ section PM บน Service Package (in-memory ไม่ insert)"""
+
+	def make(self, **fields):
+		pkg = frappe.new_doc("Service Package")
+		pkg.update(fields)
+		return pkg
+
+	def test_blank_pm_section_is_general_package(self):
+		self.make().validate_pm_fields()
+
+	def test_pm_package_with_interval_passes(self):
+		self.make(pm_truck_type="Hino500", service_interval_km=10000).validate_pm_fields()
+		self.make(pm_truck_type="SANY-STC160", pm_interval_hours=500).validate_pm_fields()
+
+	def test_type_without_interval_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.make(pm_truck_type="Hino500").validate_pm_fields()
+
+	def test_interval_without_type_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.make(service_interval_km=10000).validate_pm_fields()
+
+	def test_negative_interval_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.make(
+				pm_truck_type="Hino500", service_interval_km=10000, pm_interval_hours=-1
+			).validate_pm_fields()

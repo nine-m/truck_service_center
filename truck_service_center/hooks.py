@@ -27,6 +27,10 @@ required_apps = ["erpnext"]
 # include js, css files in header of desk.html
 # app_include_css = "/assets/truck_service_center/css/truck_service_center.css"
 # app_include_js = "/assets/truck_service_center/js/truck_service_center.js"
+# หน้าต่างแนะนำแพ็คเกจ PM ที่ Service Order / Repair Quotation / Service Appointment เรียกใช้ร่วมกัน
+# ใช้ชื่อ .bundle.js ให้ bench build ใส่ hash ในชื่อไฟล์ — path ตรง ๆ ไม่มีเวอร์ชันใน URL
+# เบราว์เซอร์จะ cache ไฟล์เก่าไว้ 12 ชม. (max-age=43200) แก้แล้วผู้ใช้ไม่เห็น
+app_include_js = ["pm_package_dialog.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/truck_service_center/css/truck_service_center.css"
