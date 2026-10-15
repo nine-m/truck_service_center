@@ -2,5 +2,9 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("Service Bay", {
-	// ฟอร์มเรียบ ๆ ไม่มี logic ฝั่ง client — ไฟล์นี้มีไว้ให้โครงสร้างครบตาม doctype อื่น
+	setup(frm) {
+		// Bay Type ใช้ฟิลด์ is_active ซึ่ง link search ของ Frappe ไม่กรองให้เอง
+		// (กรองอัตโนมัติเฉพาะ enabled/disabled) ต้องตั้ง query เองไม่งั้นประเภทที่ปิดแล้วยังโผล่
+		frm.set_query("bay_type", () => ({ filters: { is_active: 1 } }));
+	},
 });
