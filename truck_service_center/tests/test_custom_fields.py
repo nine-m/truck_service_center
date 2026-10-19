@@ -62,6 +62,53 @@ class TestStockEntryCustomFields(IntegrationTestCase):
 		self.assertEqual(field.fieldtype, "Data")
 		self.assertTrue(field.read_only)
 
+	def test_created_by_name_reads_as_requester(self):
+		"""ขั้นอนุมัติทำให้ใบเบิกมีสองฝั่ง — คนสร้างคือผู้ขอเบิก คู่กับผู้อนุมัติ"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_created_by_name")
+
+		self.assertEqual(field.label, "ผู้ขอเบิก")
+
+	def test_approval_status_is_filterable_column(self):
+		"""สต๊อกต้องกรองหาใบที่อนุมัติแล้วได้จากหัว list และเห็นสถานะเป็นคอลัมน์"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_approval_status")
+
+		self.assertIsNotNone(field, "ไม่พบฟิลด์ custom_approval_status บน Stock Entry")
+		self.assertEqual(field.fieldtype, "Select")
+		self.assertEqual(field.options.split("\n"), ["", "Pending", "Approved", "Rejected"])
+		self.assertTrue(field.in_standard_filter)
+		self.assertTrue(field.in_list_view)
+		self.assertTrue(field.read_only)
+
+	def test_approval_fields_are_system_owned(self):
+		"""ผู้ขอ/ผู้อนุมัติ/กลุ่มระบบเป็นคนเขียน — แก้เองไม่ได้ และไม่ติดไปตอน duplicate/amend"""
+		meta = frappe.get_meta("Stock Entry")
+		for fieldname in (
+			"custom_service_type_group",
+			"custom_requested_by",
+			"custom_approved_by",
+			"custom_approved_by_name",
+			"custom_approved_on",
+			"custom_rejection_reason",
+		):
+			field = meta.get_field(fieldname)
+			self.assertIsNotNone(field, f"ไม่พบฟิลด์ {fieldname} บน Stock Entry")
+			self.assertTrue(field.read_only, f"{fieldname} ต้อง read_only")
+			self.assertTrue(field.no_copy, f"{fieldname} ต้อง no_copy")
+
+	def test_approver_name_is_a_list_view_column(self):
+		"""ผู้อนุมัติต้องขึ้นเป็นคอลัมน์ และเก็บเป็นชื่อ (Data) ไม่ใช่ user id"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_approved_by_name")
+
+		self.assertEqual(field.fieldtype, "Data")
+		self.assertTrue(field.in_list_view)
+
+	def test_service_type_group_is_a_standard_filter(self):
+		"""กรองใบเบิกตามกลุ่มบริการได้ — กลุ่มคือสิ่งที่บอกว่าใครเป็นผู้อนุมัติ"""
+		field = frappe.get_meta("Stock Entry").get_field("custom_service_type_group")
+
+		self.assertEqual(field.options, "Service Type Group")
+		self.assertTrue(field.in_standard_filter)
+
 	def test_superseded_owner_field_is_gone(self):
 		"""ฟิลด์รอบก่อน (ผู้เปิดใบสั่งงาน) ต้องถูกลบ ไม่ค้างเป็นคอลัมน์ว่าง"""
 		self.assertIsNone(frappe.get_meta("Stock Entry").get_field("custom_service_order_owner"))
@@ -125,7 +172,14 @@ class TestStockEntryListColumns(IntegrationTestCase):
 
 		self.assertEqual(
 			self._pinned_fieldnames(),
-			["stock_entry_type", "custom_service_order", "custom_created_by_name", "purpose"],
+			[
+				"stock_entry_type",
+				"custom_service_order",
+				"custom_created_by_name",
+				"custom_approval_status",
+				"custom_approved_by_name",
+				"purpose",
+			],
 		)
 
 	def test_patch_is_idempotent(self):
@@ -156,7 +210,7 @@ class TestStockEntryListColumns(IntegrationTestCase):
 		self._set_pinned_columns(
 			[
 				{"fieldname": "stock_entry_type", "label": "Stock Entry Type"},
-				{"fieldname": "custom_created_by_name", "label": "ผู้สร้างใบเบิก"},
+				{"fieldname": "custom_created_by_name", "label": "ผู้ขอเบิก"},
 				{"fieldname": "purpose", "label": "Purpose"},
 				{"fieldname": "custom_service_order", "label": "ใบสั่งงาน"},
 			]
@@ -166,7 +220,14 @@ class TestStockEntryListColumns(IntegrationTestCase):
 
 		self.assertEqual(
 			self._pinned_fieldnames(),
-			["stock_entry_type", "custom_service_order", "custom_created_by_name", "purpose"],
+			[
+				"stock_entry_type",
+				"custom_service_order",
+				"custom_created_by_name",
+				"custom_approval_status",
+				"custom_approved_by_name",
+				"purpose",
+			],
 		)
 
 	def test_patch_keeps_user_widths_and_order(self):

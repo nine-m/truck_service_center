@@ -658,11 +658,12 @@ frappe.ui.form.on("Service Order", {
 								args: { service_order: frm.doc.name },
 								callback: function (r) {
 									if (r.message) {
+										// สร้างหนึ่งใบต่อกลุ่มบริการ — server คืนเป็น list
 										frappe.show_alert(
 											{
 												message: __(
 													"สร้าง Material Issue {0} เรียบร้อยแล้ว<br>กรุณา Submit ใบเบิกอะไหล่ก่อน แล้วจึง Submit Service Order อีกครั้ง",
-													[r.message]
+													[[].concat(r.message).join(", ")]
 												),
 												indicator: "green",
 											},
@@ -1664,10 +1665,11 @@ function show_material_issue_summary(frm) {
 						")</h5></div>";
 
 					summary.material_issues.forEach(function (issue) {
+						// Pending Approval / Draft (อนุมัติแล้ว รอ submit) เป็นสีเหลืองเหมือนกัน — ยังไม่ได้ตัดสต็อก
 						let badge_class =
 							issue.status === "Submitted"
 								? "success"
-								: issue.status === "Draft"
+								: issue.docstatus === 0 && issue.status !== "Rejected"
 								? "warning"
 								: "danger";
 
@@ -1694,10 +1696,15 @@ function show_material_issue_summary(frm) {
 							issue.posting_date +
 							" | Items: " +
 							issue.item_count +
+							(issue.approved_by_name
+								? " | " +
+								  (issue.status === "Rejected" ? "ไม่อนุมัติโดย " : "อนุมัติโดย ") +
+								  frappe.utils.escape_html(issue.approved_by_name)
+								: "") +
 							"</small>";
 
 						// ใบเบิก Draft ยังแก้ได้ทั้งสองฝั่ง จึงต้องให้ผู้ใช้เลือกทิศทางเอง
-						if (issue.status === "Draft") {
+						if (issue.docstatus === 0) {
 							html += '<br><div class="btn-group" style="margin-top: 5px;">';
 							html +=
 								'<button class="btn btn-xs btn-default" title="เอาจำนวนในใบเบิกมาทับใบสั่งงาน" ' +
@@ -1762,7 +1769,8 @@ function create_material_issue_dialog(frm) {
 		callback: function (r) {
 			if (r.message) {
 				frappe.show_alert({
-					message: __("Material Issue {0} created", [r.message]),
+					// สร้างหนึ่งใบต่อกลุ่มบริการ — server คืนเป็น list
+					message: __("Material Issue {0} created", [[].concat(r.message).join(", ")]),
 					indicator: "green",
 				});
 				// Reload เพื่อ update สถานะ Material Issue
@@ -1826,14 +1834,18 @@ function update_material_issue_statuses(frm) {
 			filters: {
 				name: ["in", material_issues],
 			},
-			fields: ["name", "docstatus"],
+			fields: ["name", "docstatus", "custom_approval_status"],
 		},
 		callback: function (r) {
 			if (r.message) {
-				// สร้าง map ของสถานะ
+				// สร้าง map ของสถานะ — ตรงกับ material_issue_status_label ฝั่ง server
 				let status_map = {};
 				r.message.forEach(function (entry) {
-					if (entry.docstatus === 0) {
+					if (entry.docstatus === 0 && entry.custom_approval_status === "Pending") {
+						status_map[entry.name] = "Pending Approval";
+					} else if (entry.docstatus === 0 && entry.custom_approval_status === "Rejected") {
+						status_map[entry.name] = "Rejected";
+					} else if (entry.docstatus === 0) {
 						status_map[entry.name] = "Draft";
 					} else if (entry.docstatus === 1) {
 						status_map[entry.name] = "Submitted";

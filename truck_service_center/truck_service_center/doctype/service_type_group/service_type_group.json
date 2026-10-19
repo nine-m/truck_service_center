@@ -12,7 +12,9 @@
   "column_break_1",
   "is_active",
   "default_bay_type",
-  "remark"
+  "remark",
+  "section_break_supervisors",
+  "supervisors"
  ],
  "fields": [
   {
@@ -52,11 +54,23 @@
    "fieldname": "remark",
    "fieldtype": "Small Text",
    "label": "หมายเหตุ"
+  },
+  {
+   "description": "ผู้ที่อนุมัติใบเบิกอะไหล่ของงานในกลุ่มนี้ได้ (ต้องมี role Technician Supervisor) — คนใดคนหนึ่งอนุมัติก็ได้ ถ้าไม่ระบุ หัวหน้าช่าง/ผู้จัดการศูนย์เป็นผู้อนุมัติ",
+   "fieldname": "section_break_supervisors",
+   "fieldtype": "Section Break",
+   "label": "ผู้อนุมัติใบเบิกอะไหล่"
+  },
+  {
+   "fieldname": "supervisors",
+   "fieldtype": "Table",
+   "label": "หัวหน้างานกลุ่ม",
+   "options": "Service Type Group Supervisor"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-11 09:10:00.000000",
+ "modified": "2026-10-09 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Type Group",

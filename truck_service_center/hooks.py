@@ -48,6 +48,8 @@ app_include_js = ["pm_package_dialog.bundle.js"]
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+# ปุ่มอนุมัติ/ไม่อนุมัติใบเบิกอะไหล่บนฟอร์ม Stock Entry — โหลดจากไฟล์ตรง ไม่ต้อง bench build
+doctype_js = {"Stock Entry": "public/js/stock_entry.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -70,6 +72,7 @@ app_include_js = ["pm_package_dialog.bundle.js"]
 role_home_page = {
 	"Technician": "service-order-portal",
 	"Technician Manager": "service-order-portal",
+	"Technician Supervisor": "service-order-portal",
 }
 
 # เส้นทางหน้ารายละเอียดงานของพอร์ทัลช่าง — <name> จะถูกส่งเข้า frappe.form_dict.name
@@ -163,6 +166,8 @@ doc_events = {
 		"on_cancel": f"{_service_order}.on_sales_invoice_change",
 	},
 	"Stock Entry": {
+		# ใบเบิกของใบสั่งงานต้องผ่านการอนุมัติของหัวหน้างานกลุ่มก่อน สต๊อกจึง submit ได้
+		"before_submit": f"{_service_order}.validate_requisition_approved",
 		"on_submit": f"{_service_order}.on_stock_entry_change",
 		"on_cancel": f"{_service_order}.on_stock_entry_change",
 	},

@@ -13,13 +13,18 @@ from frappe.utils import escape_html, flt, now_datetime
 
 from truck_service_center.queries import get_technician_users
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+	APPROVAL_APPROVED,
+	APPROVAL_PENDING,
+	APPROVAL_REJECTED,
 	ROW_TECHNICIAN_FIELDS,
+	can_approve_requisition,
 	collect_material_issue_problems,
 	create_material_issue_for_rows,
 	get_bay_warnings,
 	receive_vehicle,
-	select_requisition_rows,
-	select_unclaimed_requisition_rows,
+	select_group_requisition_rows,
+	stamp_requisition_decision,
+	sync_material_issue_status,
 )
 
 # ช่องช่างผู้รับผิดชอบทั้ง 10 ช่องของ Service Order (แบน ไม่ใช่ child table)
@@ -314,36 +319,149 @@ def set_service_bay(service_order, row_name, service_bay=None):
 	return {"value": row.service_bay or "", "warnings": get_bay_warnings(doc)}
 
 
-# ══════════ ใบเบิกอะไหล่รายงาน ══════════
+# ══════════ ใบเบิกอะไหล่รายกลุ่มบริการ + การอนุมัติ ══════════
+
+# เหตุผลไม่อนุมัติยาวสุดเท่านี้ — เป็นข้อความสั้นให้ช่างรู้ว่าต้องแก้อะไร ไม่ใช่รายงาน
+MAX_REJECTION_REASON = 500
+
+
+def _get_group_job(service_order, service_type_group):
+	"""ใบงานสำหรับขออนุมัติเบิกอะไหล่ของกลุ่มบริการหนึ่ง
+
+	กลุ่มที่มีชื่อ: ช่างต้องอยู่บนแถวงานอย่างน้อยหนึ่งแถวในกลุ่มนั้น (หรือเป็นหัวหน้าช่าง)
+	— เกณฑ์เดียวกับ _get_row_job เพียงขยายจาก "แถวนี้" เป็น "แถวใดแถวหนึ่งในกลุ่ม"
+	กลุ่มว่าง (อะไหล่อื่น ๆ / งานไม่มีกลุ่ม) ไม่ผูกกับแถวไหนแน่นอน จึงใช้ _get_editable_job ระดับใบ
+	เหมือนกลุ่ม "อะไหล่อื่น ๆ" เดิม
+	"""
+	doc = _get_editable_job(service_order)
+
+	if service_type_group and not _is_manager():
+		rows = [row for row in doc.service_types if row.service_type_group == service_type_group]
+		if not any(_user_on_row(row, frappe.session.user) for row in rows):
+			frappe.throw(_("คุณไม่ได้รับผิดชอบงานในกลุ่มบริการนี้"), frappe.PermissionError)
+
+	return doc
 
 
 @frappe.whitelist()
-def create_service_requisition(service_order, row_name=None):
-	"""สร้างใบเบิกอะไหล่จากพอร์ทัล — ของงานรายการหนึ่ง หรือของกลุ่ม "อะไหล่อื่น ๆ"
+def create_group_requisition(service_order, service_type_group=None):
+	"""ขออนุมัติเบิกอะไหล่จากพอร์ทัล — หนึ่งใบต่อกลุ่มบริการ
 
-	row_name ว่าง = กลุ่มอะไหล่ที่ไม่มีแถวงานไหนจับคู่ได้ (ไม่มี service_type) ซึ่งไม่มี
-	ปุ่มรายงานไหนเบิกให้ได้เลย ถ้าไม่เปิดทางนี้ ใบที่มีอะไหล่กลุ่มนั้นจะปิดงานไม่ได้ตลอดไป
-	เพราะ _validate_completion บังคับให้เบิกครบก่อนปิด
+	งานหลายรายการที่อยู่กลุ่มเดียวกันรวมเป็นใบเดียว เพราะผู้อนุมัติผูกกับกลุ่ม
+	ใบเกิดเป็น Stock Entry Draft สถานะ "รออนุมัติ" — สต๊อก submit ไม่ได้จนกว่าหัวหน้างานกลุ่ม
+	(หรือหัวหน้าช่าง/ผู้จัดการ) จะอนุมัติ ส่วนผู้ขอที่อนุมัติกลุ่มนั้นได้เองจะถูกอนุมัติให้ทันที
 
 	role Technician ไม่มีสิทธิ์สร้าง Stock Entry จึงต้องส่ง ignore_permissions ลงไป
-	ด่านจริงคือ gate ด้านบน — รายงานใช้ _get_row_job (ต้องเป็นช่างของงานรายการนั้น)
-	ส่วนกลุ่มอะไหล่อื่นไม่ผูกกับรายงานไหน จึงใช้ _get_editable_job ระดับใบเหมือน
-	ปุ่มอื่นที่แก้ทั้งใบ ส่วนกฎ "ต้องรับรถก่อน" ยังถูกบังคับใน create_material_issue_for_rows
-	การแก้ไขใบเบิกหลังสร้างแล้วยังต้องทำผ่าน desk ตามเดิม
+	ด่านจริงคือ _get_group_job ส่วนกฎ "ต้องรับรถก่อน" ยังถูกบังคับใน create_material_issue_for_rows
 	"""
-	if row_name:
-		doc, row = _get_row_job(service_order, row_name)
-		rows = select_requisition_rows(doc, row)
-	else:
-		doc = _get_editable_job(service_order)
-		rows = select_unclaimed_requisition_rows(doc)
+	service_type_group = service_type_group or None
+	doc = _get_group_job(service_order, service_type_group)
 
+	rows = select_group_requisition_rows(doc, service_type_group)
 	if not rows:
-		frappe.throw(_("ไม่มีอะไหล่ที่ยังไม่ได้เบิกสำหรับงานนี้"))
+		frappe.throw(_("ไม่มีอะไหล่ที่ยังไม่ได้เบิกในกลุ่มนี้"))
 
-	material_issue = create_material_issue_for_rows(doc, rows, ignore_permissions=True)
+	material_issue = create_material_issue_for_rows(
+		doc, rows, ignore_permissions=True, service_type_group=service_type_group
+	)
 
-	return {"value": material_issue}
+	return {
+		"value": material_issue,
+		"approval_status": frappe.db.get_value("Stock Entry", material_issue, "custom_approval_status"),
+	}
+
+
+def _get_pending_requisition(stock_entry):
+	"""ใบเบิกที่ผู้ใช้ปัจจุบันพิจารณาได้ — ต้องเป็นใบของใบสั่งงาน, Draft, รออนุมัติ และเป็นผู้อนุมัติ
+
+	ล็อกแถว (for_update) กันสองคนกดพร้อมกันแล้วได้ผลซ้อน
+	ไม่ตรวจสิทธิ์ doctype ของ Stock Entry — หัวหน้างานกลุ่มไม่มีสิทธิ์ Stock Entry เลย
+	ด่านจริงคือ can_approve_requisition
+	"""
+	if not frappe.db.exists("Stock Entry", stock_entry):
+		frappe.throw(_("ไม่พบใบเบิก {0}").format(stock_entry))
+
+	doc = frappe.get_doc("Stock Entry", stock_entry, for_update=True)
+
+	if not doc.get("custom_service_order"):
+		frappe.throw(_("{0} ไม่ใช่ใบเบิกอะไหล่ของใบสั่งงาน").format(doc.name))
+
+	if doc.docstatus != 0:
+		frappe.throw(_("ใบเบิก {0} ถูก submit หรือยกเลิกไปแล้ว").format(doc.name))
+
+	if doc.get("custom_approval_status") != APPROVAL_PENDING:
+		frappe.throw(_("ใบเบิก {0} ไม่ได้อยู่ในสถานะรออนุมัติแล้ว").format(doc.name))
+
+	if not can_approve_requisition(doc):
+		frappe.throw(_("คุณไม่ใช่ผู้อนุมัติใบเบิกของกลุ่มบริการนี้"), frappe.PermissionError)
+
+	return doc
+
+
+def _record_decision(stock_entry, status, reason=None):
+	"""บันทึกผลพิจารณา + ซิงค์สถานะลงแถวอะไหล่ + ทิ้ง comment ไว้ทั้งสองเอกสาร
+
+	ใช้ db_set ไม่ใช่ save — ใบเบิกอาจถูกสต๊อกแก้จำนวนค้างไว้ และผู้อนุมัติไม่มีสิทธิ์ Stock Entry
+	"""
+	values = stamp_requisition_decision(stock_entry, status, reason=reason)
+	stock_entry.db_set(values)
+
+	# ไม่อนุมัติ → sync ปลด link ออกจากแถวอะไหล่ ช่างจะได้แก้แล้วขอเบิกใหม่ได้
+	# (ใบ Rejected ค้างไว้เป็นหลักฐาน และ submit ไม่ได้เพราะ validate_requisition_approved)
+	sync_material_issue_status(stock_entry.name, 0)
+
+	who = values["custom_approved_by_name"]
+	if status == APPROVAL_APPROVED:
+		text = _("อนุมัติใบเบิกอะไหล่ {0} โดย {1}").format(stock_entry.name, who)
+	else:
+		text = _("ไม่อนุมัติใบเบิกอะไหล่ {0} โดย {1} — เหตุผล: {2}").format(
+			stock_entry.name, who, escape_html(reason)
+		)
+
+	stock_entry.add_comment("Info", text)
+	frappe.get_doc("Service Order", stock_entry.custom_service_order).add_comment("Info", text)
+
+	return {"value": status, "approved_by_name": who}
+
+
+@frappe.whitelist()
+def approve_requisition(stock_entry):
+	"""หัวหน้างานกลุ่ม (หรือหัวหน้าช่าง/ผู้จัดการ) อนุมัติใบเบิก — สต๊อกจึง submit ได้"""
+	doc = _get_pending_requisition(stock_entry)
+	return _record_decision(doc, APPROVAL_APPROVED)
+
+
+@frappe.whitelist()
+def reject_requisition(stock_entry, reason=None):
+	"""ไม่อนุมัติใบเบิก — ต้องระบุเหตุผล แถวอะไหล่ถูกปลด link ให้ช่างขอเบิกใหม่ได้"""
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("กรุณาระบุเหตุผลที่ไม่อนุมัติ"))
+	if len(reason) > MAX_REJECTION_REASON:
+		frappe.throw(_("เหตุผลยาวเกินไป (สูงสุด {0} ตัวอักษร)").format(MAX_REJECTION_REASON))
+
+	doc = _get_pending_requisition(stock_entry)
+	return _record_decision(doc, APPROVAL_REJECTED, reason=reason)
+
+
+@frappe.whitelist()
+def get_requisition_actions(stock_entry):
+	"""ปุ่มอนุมัติ/ไม่อนุมัติบนฟอร์ม Stock Entry (desk) ควรขึ้นหรือไม่ — ด่านจริงอยู่ที่ endpoint ข้างบน"""
+	values = frappe.db.get_value(
+		"Stock Entry",
+		stock_entry,
+		["docstatus", "custom_service_order", "custom_approval_status", "custom_service_type_group"],
+		as_dict=True,
+	)
+	if not values:
+		return {"can_approve": False}
+
+	pending = (
+		values.docstatus == 0
+		and values.custom_service_order
+		and values.custom_approval_status == APPROVAL_PENDING
+	)
+	return {"can_approve": bool(pending) and can_approve_requisition(values)}
 
 
 def _validate_completion(doc):

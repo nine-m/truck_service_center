@@ -8,12 +8,17 @@ from frappe.tests import UnitTestCase
 
 from truck_service_center.api.technician_portal import _validate_completion
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+	can_approve_requisition,
 	get_bay_warnings,
 	get_user_display_name,
+	material_issue_status_label,
+	select_group_requisition_rows,
 	select_requisition_rows,
 	select_unclaimed_requisition_rows,
+	split_rows_by_service_type_group,
+	validate_requisition_approved,
 )
-from truck_service_center.www.service_order_job import _build_parts, _group_parts
+from truck_service_center.www.service_order_job import NO_GROUP_LABEL, _build_parts, _group_parts
 
 
 def stub_db_get_value(stock_items=(), submitted_issues=()):
@@ -555,8 +560,10 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		groups = _group_parts([], parts)
 
-		self.assertEqual(groups[0].label, "อะไหล่อื่น ๆ")
+		self.assertEqual(groups[0].label, NO_GROUP_LABEL)
 		self.assertEqual(groups[0].pending, 1)
+		# กลุ่มว่างไม่ผูกกับแถวไหน — ใครอยู่ในใบงานก็ขอเบิกได้ (ด่านจริงคือ _get_group_job)
+		self.assertTrue(groups[0].can_request)
 
 	def test_portal_view_hides_requisition_button_for_service_only_group(self):
 		"""กลุ่มที่มีแต่ค่าบริการต้องไม่โชว์ปุ่มสร้างใบเบิก — กดไปก็ throw ว่าไม่มีอะไรให้เบิก"""
@@ -1036,3 +1043,209 @@ class UnitTestServiceOrder(UnitTestCase):
 		)
 
 		self.assertEqual(select_requisition_rows(so, so.service_types[0]), [])
+
+
+class UnitTestRequisitionApproval(UnitTestCase):
+	"""ใบเบิกรวมตามกลุ่มบริการ + ขั้นอนุมัติของหัวหน้างานกลุ่ม"""
+
+	def make_grouped_order(self):
+		"""ใบงานที่มีสองงานในกลุ่ม ENG, หนึ่งงานกลุ่ม EL, หนึ่งงานไม่มีกลุ่ม และอะไหล่เพิ่มเอง"""
+		return make_order(
+			labor_rows=[
+				{"service_type": "ST-OIL", "service_type_group": "ENG"},
+				{"service_type": "ST-FILTER", "service_type_group": "ENG"},
+				{"service_type": "ST-LAMP", "service_type_group": "EL"},
+				{"service_type": "ST-MISC"},
+			],
+			item_rows=[
+				{"item_code": "OIL", "service_type": "ST-OIL"},
+				{"item_code": "FILTER", "service_type": "ST-FILTER"},
+				{"item_code": "BULB", "service_type": "ST-LAMP"},
+				{"item_code": "RAG", "service_type": "ST-MISC"},
+				{"item_code": "BOLT"},
+				{"item_code": "OIL-OLD", "service_type": "ST-OIL", "material_issue": "MAT-STE-0001"},
+			],
+		)
+
+	# ── รวมใบตามกลุ่ม ─────────────────────────────────────────────────────────
+
+	def test_service_types_in_one_group_share_one_requisition(self):
+		"""งานหลายรายการในกลุ่มเดียวกันต้องรวมเป็นใบเดียว ข้ามของที่เบิกไปแล้ว"""
+		so = self.make_grouped_order()
+
+		rows = select_group_requisition_rows(so, "ENG")
+
+		self.assertEqual([row.item_code for row in rows], ["OIL", "FILTER"])
+
+	def test_other_group_gets_its_own_requisition(self):
+		"""คนละกลุ่ม = คนละผู้อนุมัติ จึงต้องแยกใบ"""
+		so = self.make_grouped_order()
+
+		self.assertEqual([row.item_code for row in select_group_requisition_rows(so, "EL")], ["BULB"])
+
+	def test_no_group_bucket_takes_unclaimed_and_ungrouped_parts(self):
+		"""อะไหล่ที่ไม่มีงานจับคู่ได้ กับอะไหล่ของงานที่ไม่มีกลุ่ม รวมอยู่ใบ "ไม่มีกลุ่ม" ใบเดียว"""
+		so = self.make_grouped_order()
+
+		self.assertEqual([row.item_code for row in select_group_requisition_rows(so, None)], ["RAG", "BOLT"])
+		# ค่าว่างจากพอร์ทัลต้องหมายถึงกลุ่มเดียวกัน
+		self.assertEqual([row.item_code for row in select_group_requisition_rows(so, "")], ["RAG", "BOLT"])
+
+	def test_group_follows_package_matching(self):
+		"""แพ็คเกจไม่ตรงกับแถวงาน = จับคู่ไม่ได้ → ตกไปกลุ่มว่าง เหมือน select_requisition_rows"""
+		so = make_order(
+			labor_rows=[{"service_type": "ST-OIL", "service_package": "PKG-1", "service_type_group": "ENG"}],
+			item_rows=[
+				{"item_code": "OIL", "service_type": "ST-OIL", "service_package": "PKG-1"},
+				{"item_code": "OIL-2", "service_type": "ST-OIL", "service_package": "PKG-2"},
+			],
+		)
+
+		self.assertEqual([row.item_code for row in select_group_requisition_rows(so, "ENG")], ["OIL"])
+		self.assertEqual([row.item_code for row in select_group_requisition_rows(so, None)], ["OIL-2"])
+
+	def test_split_rows_puts_no_group_last(self):
+		"""desk สร้างใบตามลำดับกลุ่ม — กลุ่มว่างไว้ท้ายสุดเสมอ"""
+		so = self.make_grouped_order()
+		rows = [row for row in so.service_items if not row.material_issue]
+
+		groups = split_rows_by_service_type_group(so, rows)
+
+		self.assertEqual(list(groups), ["EL", "ENG", None])
+		self.assertEqual([row.item_code for row in groups["ENG"]], ["OIL", "FILTER"])
+
+	# ── ใครอนุมัติได้ ───────────────────────────────────────────────────────────
+
+	def check_can_approve(self, user, roles, group, supervisors=()):
+		stock_entry = frappe._dict(custom_service_type_group=group)
+		with (
+			patch("frappe.get_roles", return_value=list(roles)),
+			patch("frappe.get_all", return_value=list(supervisors)),
+		):
+			return can_approve_requisition(stock_entry, user)
+
+	def test_group_supervisor_can_approve(self):
+		self.assertTrue(
+			self.check_can_approve(
+				"sup@example.com", ["Technician", "Technician Supervisor"], "ENG", ["sup@example.com"]
+			)
+		)
+
+	def test_supervisor_of_another_group_cannot_approve(self):
+		"""หัวหน้างานอนุมัติได้เฉพาะกลุ่มที่ตัวเองดูแล"""
+		self.assertFalse(
+			self.check_can_approve(
+				"sup@example.com", ["Technician", "Technician Supervisor"], "EL", ["other@example.com"]
+			)
+		)
+
+	def test_plain_technician_cannot_approve(self):
+		"""ช่างส่งใบเบิกไปสต๊อกเองไม่ได้ — ต้องผ่านหัวหน้างานก่อน"""
+		self.assertFalse(self.check_can_approve("tech@example.com", ["Technician"], "ENG", []))
+
+	def test_fallback_roles_approve_any_group(self):
+		"""หัวหน้าช่าง/ผู้จัดการอนุมัติแทนได้ทุกกลุ่ม แม้ไม่ได้อยู่ในรายชื่อ"""
+		for role in ("Technician Manager", "Service Manager", "System Manager"):
+			self.assertTrue(self.check_can_approve("boss@example.com", [role], "ENG", []), role)
+
+	def test_no_group_requisition_is_for_fallback_roles_only(self):
+		"""ใบไม่มีกลุ่มไม่มีหัวหน้างานกลุ่ม — เหลือแต่หัวหน้าช่าง/ผู้จัดการ"""
+		self.assertFalse(
+			self.check_can_approve("sup@example.com", ["Technician", "Technician Supervisor"], None)
+		)
+		self.assertTrue(self.check_can_approve("boss@example.com", ["Technician Manager"], None))
+
+	# ── ด่าน submit ฝั่งสต๊อก ──────────────────────────────────────────────────
+
+	def make_stock_entry(self, status, service_order="SO-2026-00001"):
+		return frappe._dict(
+			name="MAT-STE-0009",
+			custom_service_order=service_order,
+			custom_approval_status=status,
+			custom_rejection_reason="ของยังมีในรถ" if status == "Rejected" else None,
+		)
+
+	def test_pending_requisition_cannot_be_submitted(self):
+		with self.assertRaises(frappe.ValidationError):
+			validate_requisition_approved(self.make_stock_entry("Pending"))
+
+	def test_rejected_requisition_cannot_be_submitted(self):
+		with self.assertRaises(frappe.ValidationError):
+			validate_requisition_approved(self.make_stock_entry("Rejected"))
+
+	def test_approved_requisition_can_be_submitted(self):
+		validate_requisition_approved(self.make_stock_entry("Approved"))
+
+	def test_legacy_requisition_without_status_passes(self):
+		"""ใบเก่าก่อนมีขั้นอนุมัติ (สถานะว่าง) ต้องไม่ติดค้าง"""
+		validate_requisition_approved(self.make_stock_entry(None))
+
+	def test_stock_entry_without_service_order_is_untouched(self):
+		"""Stock Entry ทั่วไปของสต๊อกที่ไม่ได้มาจากใบสั่งงาน ไม่เกี่ยวกับขั้นอนุมัตินี้"""
+		validate_requisition_approved(self.make_stock_entry("Pending", service_order=None))
+
+	# ── สถานะที่แถวอะไหล่เห็น ─────────────────────────────────────────────────
+
+	def test_row_status_reflects_approval_while_draft(self):
+		self.assertEqual(material_issue_status_label(0, "Pending"), "Pending Approval")
+		self.assertEqual(material_issue_status_label(0, "Rejected"), "Rejected")
+		self.assertEqual(material_issue_status_label(0, "Approved"), "Draft")
+		self.assertEqual(material_issue_status_label(0, None), "Draft")
+		self.assertEqual(material_issue_status_label(1, "Approved"), "Submitted")
+		self.assertEqual(material_issue_status_label(2, "Approved"), "Cancelled")
+
+	# ── พอร์ทัล: อะไหล่จัดกลุ่มตามกลุ่มบริการ ─────────────────────────────────
+
+	def build_portal_groups(self, so, issues=None, is_manager=False, user="tech@example.com"):
+		with patch("frappe.get_all", return_value=[row.item_code for row in so.service_items]):
+			parts = _build_parts(so)
+		service_types = [
+			frappe._dict(
+				name=row.name or row.service_type,
+				label=row.service_type,
+				package=row.service_package,
+				group=row.service_type_group or "",
+				mine=row.technician_1 == user,
+			)
+			for row in so.service_types
+		]
+		return _group_parts(
+			service_types, parts, group_names={"ENG": "เครื่องยนต์"}, issues=issues, is_manager=is_manager
+		)
+
+	def test_portal_groups_parts_by_service_type_group(self):
+		"""หนึ่งกลุ่มบนหน้าจอ = หนึ่งใบขออนุมัติเบิก งานหลายรายการในกลุ่มเดียวกันอยู่กล่องเดียว"""
+		so = self.make_grouped_order()
+
+		groups = self.build_portal_groups(so)
+
+		self.assertEqual([group.group for group in groups], ["ENG", "EL", ""])
+		self.assertEqual(groups[0].label, "เครื่องยนต์")
+		self.assertEqual(groups[0].jobs, ["ST-OIL", "ST-FILTER"])
+		self.assertEqual(groups[0].pending, 2)
+		self.assertEqual(groups[-1].label, NO_GROUP_LABEL)
+		self.assertEqual([part.label for part in groups[-1].parts], ["RAG", "BOLT"])
+
+	def test_portal_request_button_needs_a_row_in_the_group(self):
+		"""ช่างที่ไม่ได้อยู่บนงานไหนของกลุ่มจะไม่เห็นปุ่มขออนุมัติเบิกของกลุ่มนั้น"""
+		so = self.make_grouped_order()
+		so.service_types[0].technician_1 = "tech@example.com"
+
+		groups = {group.group: group for group in self.build_portal_groups(so)}
+
+		self.assertTrue(groups["ENG"].can_request)
+		self.assertFalse(groups["EL"].can_request)
+		self.assertTrue(groups[""].can_request)
+
+	def test_portal_shows_rejected_issue_only_while_group_needs_a_new_request(self):
+		"""ใบที่ไม่อนุมัติถูกปลดจากแถวแล้ว — โชว์เหตุผลตามกลุ่มของใบ เฉพาะตอนยังต้องขอใหม่"""
+		so = self.make_grouped_order()
+		rejected = frappe._dict(name="MAT-STE-0002", group="ENG", status="Rejected", reason="ผิดรุ่น")
+
+		groups = {
+			group.group: group for group in self.build_portal_groups(so, issues={"MAT-STE-0002": rejected})
+		}
+
+		# MAT-STE-0001 ยังผูกกับแถว OIL-OLD อยู่ ส่วนใบที่ไม่อนุมัติต่อท้ายตามกลุ่มของใบ
+		self.assertEqual([issue.name for issue in groups["ENG"].issues], ["MAT-STE-0001", "MAT-STE-0002"])
+		self.assertEqual(groups["EL"].issues, [])
