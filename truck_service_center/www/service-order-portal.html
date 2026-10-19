@@ -10,7 +10,7 @@
 			<div>
 				<h1 class="tsc-portal-title">งานของฉัน</h1>
 				<p class="tsc-portal-subtitle">
-					{% if sees_all %}หัวหน้าช่าง{% else %}ช่าง{% endif %}: {{ technician_name }}
+					{% if sees_all %}หัวหน้าช่าง{% elif is_supervisor %}หัวหน้างาน{% else %}ช่าง{% endif %}: {{ technician_name }}
 					&middot; งานที่ยังไม่จบ{% if sees_all %}ทั้งหมด{% endif %} {{ order_count }} รายการ
 					&middot; ข้อมูล ณ {{ fetched_at }}
 				</p>
@@ -78,7 +78,7 @@
 						<dt>ลูกค้า</dt>
 						<dd>{{ order.customer or "-" }}</dd>
 					</div>
-					{% if sees_all %}
+					{% if sees_all or is_supervisor %}
 					<div class="tsc-row">
 						<dt>ช่าง</dt>
 						<dd>{{ order.technician_labels | join(", ") if order.technician_labels else "ยังไม่มอบหมาย" }}</dd>

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import UnitTestCase
 
-from truck_service_center.api.technician_portal import _validate_completion
+from truck_service_center.api.technician_portal import _can_manage_row, _validate_completion
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	can_approve_requisition,
 	get_bay_warnings,
@@ -19,7 +19,12 @@ from truck_service_center.truck_service_center.doctype.service_order.service_ord
 	split_rows_by_service_type_group,
 	validate_requisition_approved,
 )
-from truck_service_center.www.service_order_job import NO_GROUP_LABEL, _build_parts, _group_parts
+from truck_service_center.www.service_order_job import (
+	NO_GROUP_LABEL,
+	_build_parts,
+	_build_service_rows,
+	_group_parts,
+)
 
 
 def stub_db_get_value(stock_items=(), submitted_issues=()):
@@ -1197,7 +1202,9 @@ class UnitTestRequisitionApproval(UnitTestCase):
 
 	# ── พอร์ทัล: อะไหล่จัดกลุ่มตามกลุ่มบริการ ─────────────────────────────────
 
-	def build_portal_groups(self, so, issues=None, is_manager=False, user="tech@example.com"):
+	def build_portal_groups(
+		self, so, issues=None, is_manager=False, user="tech@example.com", supervised_groups=frozenset(), job_access=True
+	):
 		with patch("frappe.get_all", return_value=[row.item_code for row in so.service_items]):
 			parts = _build_parts(so)
 		service_types = [
@@ -1211,7 +1218,13 @@ class UnitTestRequisitionApproval(UnitTestCase):
 			for row in so.service_types
 		]
 		return _group_parts(
-			service_types, parts, group_names={"ENG": "เครื่องยนต์"}, issues=issues, is_manager=is_manager
+			service_types,
+			parts,
+			group_names={"ENG": "เครื่องยนต์"},
+			issues=issues,
+			is_manager=is_manager,
+			supervised_groups=supervised_groups,
+			job_access=job_access,
 		)
 
 	def test_portal_groups_parts_by_service_type_group(self):
@@ -1237,6 +1250,43 @@ class UnitTestRequisitionApproval(UnitTestCase):
 		self.assertTrue(groups["ENG"].can_request)
 		self.assertFalse(groups["EL"].can_request)
 		self.assertTrue(groups[""].can_request)
+
+	# ── หัวหน้างานกลุ่ม: จัดการได้เฉพาะงานในกลุ่มที่ตัวเองดูแล ──────────────────
+
+	def test_supervisor_can_request_only_for_own_group(self):
+		"""หัวหน้างานที่ไม่ได้อยู่ในใบ ขอเบิกได้เฉพาะกลุ่มตน — กลุ่มว่างเป็นสิทธิ์ระดับใบ จึงขอไม่ได้"""
+		so = self.make_grouped_order()
+
+		groups = {
+			group.group: group
+			for group in self.build_portal_groups(so, supervised_groups={"ENG"}, job_access=False)
+		}
+
+		self.assertTrue(groups["ENG"].can_request)
+		self.assertFalse(groups["EL"].can_request)
+		self.assertFalse(groups[""].can_request)
+
+	def test_supervisor_manages_only_rows_in_own_group(self):
+		so = self.make_grouped_order()
+
+		with patch("frappe.get_all", return_value=[]):
+			rows = _build_service_rows(so, False, supervised_groups={"ENG"})
+			closed = _build_service_rows(so, False, supervised_groups={"ENG"}, doc_open=False)
+
+		self.assertEqual(
+			[(row.group, row.can_manage) for row in rows],
+			[(row.service_type_group or "", row.service_type_group == "ENG") for row in so.service_types],
+		)
+		self.assertFalse(any(row.can_manage for row in closed))
+
+	def test_api_row_scope_matches_supervised_groups(self):
+		"""ด่านจริงฝั่ง api — แถวไม่มีกลุ่มเป็นของหัวหน้าช่างเท่านั้น"""
+		with patch("truck_service_center.api.technician_portal._is_manager", return_value=False):
+			self.assertTrue(_can_manage_row(frappe._dict(service_type_group="ENG"), {"ENG"}))
+			self.assertFalse(_can_manage_row(frappe._dict(service_type_group="EL"), {"ENG"}))
+			self.assertFalse(_can_manage_row(frappe._dict(service_type_group=None), {"ENG"}))
+		with patch("truck_service_center.api.technician_portal._is_manager", return_value=True):
+			self.assertTrue(_can_manage_row(frappe._dict(service_type_group=None), set()))
 
 	def test_portal_shows_rejected_issue_only_while_group_needs_a_new_request(self):
 		"""ใบที่ไม่อนุมัติถูกปลดจากแถวแล้ว — โชว์เหตุผลตามกลุ่มของใบ เฉพาะตอนยังต้องขอใหม่"""

@@ -198,8 +198,8 @@ DEFAULT_ROLES = [
 	"Service User",  # ธุรการ/Service Advisor — รับรถ นัดหมาย เสนอราคา เปิดใบสั่งงาน
 	"Technician",  # ช่าง — ดูงานและอัพเดทงานซ่อม
 	"Technician Manager",  # หัวหน้าช่าง — เห็นและอัพเดทงานได้ทุกใบในพอร์ทัลช่าง แม้ไม่ได้ถูก assign
-	# หัวหน้างานกลุ่มบริการ — อนุมัติใบเบิกอะไหล่ของกลุ่มที่ตัวเองดูแล (Service Type Group.supervisors)
-	# ไม่ได้อยู่ใน MANAGER_ROLES จึงไม่ได้สิทธิ์ assign/reset หรือเห็นทุกใบเหมือนหัวหน้าช่าง
+	# หัวหน้างานกลุ่มบริการ — อนุมัติใบเบิก + assign/จัดการงานได้เฉพาะงานในกลุ่มที่ตัวเองดูแล
+	# (Service Type Group.supervisors) ไม่ได้อยู่ใน MANAGER_ROLES จึงไม่เห็น/แก้ทุกใบเหมือนหัวหน้าช่าง
 	"Technician Supervisor",
 ]
 
