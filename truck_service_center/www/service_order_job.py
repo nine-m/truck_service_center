@@ -103,13 +103,19 @@ def get_context(context):
 	is_assigned = any(doc.get(fieldname) == frappe.session.user for fieldname in TECHNICIAN_FIELDS)
 	supervised_groups = get_supervised_groups()
 
-	# หัวหน้างานกลุ่มที่ไม่ได้ถูก assign เปิดดูได้ (อ่านอย่างเดียว + ปุ่มอนุมัติ) เมื่อใบนี้มีใบเบิก
-	# ในกลุ่มที่ตัวเองดูแล — นับใบที่ตัดสินไปแล้วด้วย ไม่งั้นกดอนุมัติแล้ว reload จะเจอหน้า Not Permitted
+	# หัวหน้างานกลุ่มที่ไม่ได้ถูก assign เปิดได้เมื่อใบนี้มีงานในกลุ่มที่ตัวเองดูแล (จัดการได้เฉพาะแถว
+	# ในกลุ่ม + ปุ่มอนุมัติ ข้อมูลระดับใบดูได้อย่างเดียว) หรือมีใบเบิกในกลุ่มนั้น — นับใบเบิกที่ตัดสิน
+	# ไปแล้วด้วย ไม่งั้นแถวงานถูกลบหลังอนุมัติแล้ว reload จะเจอหน้า Not Permitted
 	supervisor_view = False
 	if not is_assigned and not is_manager:
-		if not _has_requisition_in_groups(doc.name, supervised_groups):
+		in_scope = any(row.service_type_group in supervised_groups for row in doc.service_types)
+		if not in_scope and not _has_requisition_in_groups(doc.name, supervised_groups):
 			frappe.throw(_("คุณไม่ได้เป็นช่างผู้รับผิดชอบใบสั่งงานนี้"), frappe.PermissionError)
 		supervisor_view = True
+
+	# doc_open = เอกสารยังแก้ได้ (ตรงกับ _ensure_open ของ api) ส่วน editable = แก้ข้อมูลระดับใบได้
+	# หัวหน้างานกลุ่มที่ไม่ได้อยู่ในใบ แก้ได้เฉพาะแถวงานในกลุ่มของตน (line.can_manage)
+	doc_open = doc.docstatus == 0 and doc.status in EDITABLE_STATUSES
 
 	# บังคับให้มี csrf token ในหน้า เพื่อให้ frappe.call ยิง POST ได้
 	frappe.sessions.get_csrf_token()
@@ -125,14 +131,17 @@ def get_context(context):
 		doc,
 		is_manager,
 		approver=frappe._dict(is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups),
+		doc_open=doc_open,
+		job_access=not supervisor_view,
 	)
 	context.fuel_levels = FUEL_LEVELS
 	context.remark_presets = REMARK_PRESETS
 	context.reject_presets = REJECT_PRESETS
 
 	# แก้ไขได้ก็ต่อเมื่อยังไม่ submit และงานยังไม่ปิด — ตรงกับที่ api บังคับไว้
-	# หัวหน้างานกลุ่มที่เข้ามาเพื่ออนุมัติใบเบิกดูได้อย่างเดียว (api ก็ไม่ให้เขาแก้อยู่แล้ว)
-	context.editable = doc.docstatus == 0 and doc.status in EDITABLE_STATUSES and not supervisor_view
+	# หัวหน้างานกลุ่มที่ไม่ได้อยู่ในใบ แก้ข้อมูลระดับใบไม่ได้ (api ก็ไม่ให้อยู่แล้ว)
+	context.doc_open = doc_open
+	context.editable = doc_open and not supervisor_view
 	context.supervisor_view = supervisor_view
 	context.status_actions = _build_status_actions(doc)
 
@@ -153,8 +162,9 @@ def get_context(context):
 	for bay in context.bays:
 		bay.bay_type_name = bay_type_names.get(bay.bay_type) or bay.bay_type
 
-	# รายชื่อช่างสำหรับ dropdown assign — เฉพาะหัวหน้าช่างเท่านั้นที่ต้องใช้
-	context.technician_options = _get_technician_options() if is_manager else []
+	# รายชื่อช่างสำหรับ dropdown assign — เฉพาะคนที่ assign ได้อย่างน้อยหนึ่งแถว
+	can_assign = any(line.can_manage for line in context.job.service_types)
+	context.technician_options = _get_technician_options() if can_assign else []
 
 	return context
 
@@ -191,16 +201,19 @@ def _get_technician_options():
 	return [frappe._dict(user=row.name, label=row.full_name or row.name) for row in rows]
 
 
-def _build_job_view(doc, is_manager=False, approver=None):
+def _build_job_view(doc, is_manager=False, approver=None, doc_open=True, job_access=True):
 	"""ดึงเฉพาะฟิลด์ที่ช่างต้องใช้ พร้อม format ให้เรียบร้อยตั้งแต่ฝั่ง python
 
 	approver = _dict(is_fallback, groups) ของผู้ใช้ปัจจุบัน — ใช้ตัดสินปุ่มอนุมัติรายใบเบิก
+	และ groups ชุดเดียวกันคือขอบเขตที่หัวหน้างานกลุ่มจัดการแถวงานได้
+	job_access = เป็นช่างในใบ/หัวหน้าช่าง (False = หัวหน้างานกลุ่มที่เข้ามาจากขอบเขตกลุ่ม)
 	"""
+	approver = approver or frappe._dict(is_fallback=False, groups=set())
 	# เลขไมล์ที่ผูกกับรถอยู่ คือค่าที่ระบบเติมให้ตอนสร้างใบงาน (service_order.js / service_appointment.py)
 	# หน้าเว็บใช้เทียบว่าช่างอัปเดตเลขไมล์ของงานนี้แล้วหรือยัง เพื่อถามยืนยันตอนปิดงาน
 	vehicle_mileage = frappe.db.get_value("Vehicle", doc.vehicle, "current_mileage") if doc.vehicle else None
 
-	service_types = _build_service_rows(doc, is_manager)
+	service_types = _build_service_rows(doc, is_manager, approver.groups, doc_open)
 	parts = _build_parts(doc)
 
 	return frappe._dict(
@@ -241,8 +254,10 @@ def _build_job_view(doc, is_manager=False, approver=None):
 			service_types,
 			parts,
 			group_names=_get_group_names({row.group for row in service_types} | {p.group for p in parts}),
-			issues=_get_requisitions(doc, approver or frappe._dict(is_fallback=False, groups=set())),
+			issues=_get_requisitions(doc, approver),
 			is_manager=is_manager,
+			supervised_groups=approver.groups,
+			job_access=job_access,
 		),
 		# ชื่ออะไหล่ที่ยังไม่มีใบเบิก — หน้าเว็บใช้เตือนก่อนกดปิดงาน ด่านจริงคือ
 		# _validate_completion ฝั่ง server
@@ -250,8 +265,11 @@ def _build_job_view(doc, is_manager=False, approver=None):
 	)
 
 
-def _build_service_rows(doc, is_manager):
-	"""แถวงานพร้อมสถานะที่ derive จาก timestamp และสิทธิ์กดปุ่มของ user ปัจจุบัน"""
+def _build_service_rows(doc, is_manager, supervised_groups=frozenset(), doc_open=True):
+	"""แถวงานพร้อมสถานะที่ derive จาก timestamp และสิทธิ์กดปุ่มของ user ปัจจุบัน
+
+	can_manage ตรงกับ _can_manage_row ของ api: หัวหน้าช่างทุกแถว หัวหน้างานกลุ่มเฉพาะแถวในกลุ่มตน
+	"""
 	user = frappe.session.user
 	full_names = _get_full_names(
 		{row.get(f) for row in doc.service_types for f in ROW_TECHNICIAN_FIELDS if row.get(f)}
@@ -273,7 +291,8 @@ def _build_service_rows(doc, is_manager):
 			if row.get(f)
 		]
 		mine = any(tech.user == user for tech in technicians)
-		allowed = mine or is_manager
+		manages = is_manager or (bool(row.service_type_group) and row.service_type_group in supervised_groups)
+		allowed = mine or manages
 
 		rows.append(
 			frappe._dict(
@@ -283,6 +302,8 @@ def _build_service_rows(doc, is_manager):
 				group=row.service_type_group or "",
 				# ช่างของแถวนี้ — ปุ่มขออนุมัติเบิกของกลุ่มขึ้นให้คนที่อยู่บนแถวใดแถวหนึ่งในกลุ่ม
 				mine=mine,
+				# assign/ถอนช่าง, ช่องจอดรายแถว, เริ่มใหม่ — ต้องเป็นเอกสารที่ยังแก้ได้ด้วย
+				can_manage=manages and doc_open,
 				position=row.repair_position or "",
 				estimated_time=_num(row.estimated_time),
 				remark=_plain_text(row.remark),
@@ -340,7 +361,15 @@ def _build_parts(doc):
 	]
 
 
-def _group_parts(service_types, parts, group_names=None, issues=None, is_manager=False):
+def _group_parts(
+	service_types,
+	parts,
+	group_names=None,
+	issues=None,
+	is_manager=False,
+	supervised_groups=frozenset(),
+	job_access=True,
+):
 	"""จัดกลุ่มอะไหล่ตามกลุ่มบริการ — หนึ่งกลุ่มคือใบขออนุมัติเบิกหนึ่งใบ
 
 	กลุ่มของอะไหล่มาจาก part.group (get_item_service_type_group ฝั่ง server) จะได้แสดงตรงกับ
@@ -387,7 +416,9 @@ def _group_parts(service_types, parts, group_names=None, issues=None, is_manager
 				# ไม่งั้นกลุ่มที่มีแต่ค่าบริการจะโชว์ปุ่มที่กดแล้ว throw "ไม่มีอะไหล่ที่ยังไม่ได้เบิก"
 				pending=pending,
 				# ตรงกับ _get_group_job: กลุ่มว่างใช้สิทธิ์ระดับใบ, กลุ่มที่มีชื่อต้องอยู่บนแถวในกลุ่ม
-				can_request=is_manager or not key or any(row.mine for row in rows),
+				# หรือเป็นหัวหน้างานของกลุ่มนั้น
+				can_request=is_manager
+				or (job_access if not key else (key in supervised_groups or any(row.mine for row in rows))),
 				issues=[issues.get(name) or frappe._dict(name=name, **_issue_state("")) for name in names],
 			)
 		)

@@ -4,7 +4,8 @@
 """พอร์ทัลช่าง — รายการใบสั่งงานที่ยังไม่จบ
 
 ช่างเห็นเฉพาะใบที่ตัวเองถูก assign ส่วน role ใน MANAGER_ROLES (เช่น Technician Manager)
-เห็นทุกใบ ช่างถูกส่งมาที่หน้านี้หลัง login ผ่าน hook `role_home_page`
+เห็นทุกใบ หัวหน้างานกลุ่มเห็นใบที่ตัวเองถูก assign + ใบที่มีงานในกลุ่มบริการที่ตัวเองดูแล
+ช่างถูกส่งมาที่หน้านี้หลัง login ผ่าน hook `role_home_page`
 """
 
 import frappe
@@ -82,12 +83,15 @@ def get_context(context):
 	context.is_technician = "Technician" in roles
 	# หัวหน้าช่าง/ผู้จัดการเห็นงานที่ยังไม่จบทุกใบ ไม่ใช่เฉพาะใบที่ถูก assign
 	context.sees_all = bool(MANAGER_ROLES & roles)
-	context.orders = get_open_orders(user, all_jobs=context.sees_all)
+	supervised_groups = get_supervised_groups(user)
+	# หัวหน้างานกลุ่มต้องเห็นว่าใบไหนมีช่างคนไหนแล้ว เพื่อ assign งานในกลุ่มของตน
+	context.is_supervisor = bool(supervised_groups) and not context.sees_all
+	context.orders = get_open_orders(user, all_jobs=context.sees_all, groups=supervised_groups)
 	context.order_count = len(context.orders)
 
 	# ใบเบิกที่รอให้ผู้ใช้คนนี้อนุมัติ — หัวหน้างานกลุ่มเห็นเฉพาะกลุ่มของตน หัวหน้าช่าง/ผู้จัดการเห็นทุกใบ
 	context.pending_requisitions = get_pending_requisitions(
-		is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=get_supervised_groups(user)
+		is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups
 	)
 
 	return context
@@ -177,16 +181,27 @@ def _qty(value):
 	return int(number) if number == int(number) else number
 
 
-def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
+def get_open_orders(user, all_jobs=False, groups=(), limit=PAGE_LIMIT):
 	"""ใบสั่งงานที่ยังไม่จบ ปกติเฉพาะใบที่ `user` เป็นช่างผู้รับผิดชอบ (ช่องใดช่องหนึ่งใน 10 ช่อง)
 
 	all_jobs=True สำหรับหัวหน้าช่าง/ผู้จัดการ — คืนทุกใบที่ยังไม่จบ รวมงานรอส่งมอบรถ
+	groups = กลุ่มบริการที่ user เป็นหัวหน้างาน — เพิ่มใบที่มีแถวงานในกลุ่มนั้นเข้ามาด้วย
+	(สถานะชุดเดียวกับหัวหน้าช่าง) ใช้ query เพิ่มหนึ่งครั้งหา parent จาก child table
 
 	ใช้ frappe.get_all (ignore_permissions=True) โดยเจตนา — ขอบเขตความปลอดภัยคือ
 	or_filters ที่ผูกกับ frappe.session.user ซึ่ง request แก้ไขไม่ได้
 	ถ้าวันหนึ่งเพิ่ม permission_query_conditions ให้ Service Order แล้ว
 	ให้เปลี่ยนมาใช้ frappe.get_list และลบ or_filters ชุดนี้ทิ้ง
 	"""
+	or_filters = None
+	statuses = MANAGER_STATUSES if all_jobs else OPEN_STATUSES
+	if not all_jobs:
+		or_filters = {fieldname: user for fieldname in TECHNICIAN_FIELDS}
+		group_orders = _get_orders_in_groups(groups)
+		if group_orders:
+			or_filters["name"] = ["in", group_orders]
+			statuses = MANAGER_STATUSES
+
 	rows = frappe.get_all(
 		"Service Order",
 		fields=[
@@ -199,10 +214,10 @@ def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
 			"priority",
 			*TECHNICIAN_FIELDS,
 		],
-		filters={"status": ["in", MANAGER_STATUSES if all_jobs else OPEN_STATUSES], "docstatus": ["<", 2]},
+		filters={"status": ["in", statuses], "docstatus": ["<", 2]},
 		# or_filters ถูกประกอบเป็นวงเล็บก้อนเดียว (grouped_or_conditions ใน db_query.py)
-		# จึงได้ ... AND (technician=u OR technician_2=u OR ...)
-		or_filters=None if all_jobs else {fieldname: user for fieldname in TECHNICIAN_FIELDS},
+		# จึงได้ ... AND (technician=u OR technician_2=u OR ... OR name in (...))
+		or_filters=or_filters,
 		# งานที่ค้างนานที่สุดอยู่บนสุด — เรียงแบบคิวงาน
 		order_by="service_date asc, modified asc",
 		limit_page_length=limit,
@@ -212,6 +227,26 @@ def get_open_orders(user, all_jobs=False, limit=PAGE_LIMIT):
 	_attach_technician_names(rows)
 
 	return [_decorate(row) for row in rows]
+
+
+def _get_orders_in_groups(groups):
+	"""ใบสั่งงานที่ยังเป็น draft และมีแถวงานในกลุ่มบริการที่ระบุ — query เดียว"""
+	if not groups:
+		return []
+
+	return list(
+		set(
+			frappe.get_all(
+				"Service Order Service Type",
+				filters={
+					"parenttype": "Service Order",
+					"service_type_group": ["in", list(groups)],
+					"docstatus": 0,
+				},
+				pluck="parent",
+			)
+		)
+	)
 
 
 def _attach_technician_names(rows):

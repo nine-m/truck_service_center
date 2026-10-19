@@ -21,11 +21,12 @@
 		<div class="tsc-job-spec">{{ job.vehicle_spec }} &middot; {{ job.vehicle_type }} &middot; ข้อมูล ณ {{ fetched_at }}</div>
 	</header>
 
-	{% if supervisor_view %}
+	{% if supervisor_view and doc_open %}
 	<div class="tsc-locked">
-		คุณเปิดใบนี้ในฐานะหัวหน้างานกลุ่ม — ดูได้อย่างเดียว และอนุมัติใบเบิกของกลุ่มที่คุณดูแลได้ที่ส่วนอะไหล่
+		คุณเปิดใบนี้ในฐานะหัวหน้างานกลุ่ม — assign ช่าง/จัดการงานได้เฉพาะงานในกลุ่มที่คุณดูแล
+		และอนุมัติใบเบิกของกลุ่มนั้นได้ที่ส่วนอะไหล่ ข้อมูลระดับใบงานดูได้อย่างเดียว
 	</div>
-	{% elif not editable %}
+	{% elif not doc_open %}
 	<div class="tsc-locked">
 		ใบสั่งงานนี้ปิดหรือถูก submit แล้ว — ดูได้อย่างเดียว หากต้องแก้ไขกรุณาติดต่อผู้จัดการ
 	</div>
@@ -100,7 +101,7 @@
 
 						<div class="tsc-techs">
 							{% for tech in line.technicians %}
-							<span class="tsc-tech">{{ tech.label }}{% if is_manager and editable %}<button type="button"
+							<span class="tsc-tech">{{ tech.label }}{% if line.can_manage %}<button type="button"
 									class="tsc-tech-x" data-action="unassign" data-row="{{ line.name }}"
 									data-value="{{ tech.user }}" aria-label="ถอน {{ tech.label }}">&times;</button>{% endif %}</span>
 							{% else %}
@@ -108,7 +109,7 @@
 							{% endfor %}
 						</div>
 
-						{% if is_manager and editable %}
+						{% if line.can_manage %}
 						<div class="tsc-row-controls">
 							<select class="tsc-select" data-action="assign" data-row="{{ line.name }}">
 								<option value="">+ เพิ่มช่าง…</option>
@@ -129,7 +130,7 @@
 						<span class="tsc-line-sub">ช่องจอด {{ line.service_bay }}</span>
 						{% endif %}
 
-						{% if editable %}
+						{% if doc_open %}
 						<div class="tsc-row-actions">
 							{% if line.can_start %}
 							<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
@@ -139,7 +140,7 @@
 							<button type="button" class="tsc-btn tsc-btn-success tsc-btn-sm"
 								data-action="finish" data-row="{{ line.name }}">จบงาน</button>
 							{% endif %}
-							{% if is_manager and line.state != "pending" %}
+							{% if line.can_manage and line.state != "pending" %}
 							<button type="button" class="tsc-btn tsc-btn-secondary tsc-btn-sm"
 								data-action="reset" data-row="{{ line.name }}">เริ่มใหม่</button>
 							{% endif %}
@@ -160,7 +161,7 @@
 				<div class="tsc-part-group">
 					<div class="tsc-part-group-head">
 						<span class="tsc-part-group-title">{{ group.label }}</span>
-						{% if editable and group.pending and group.can_request %}
+						{% if doc_open and group.pending and group.can_request %}
 						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
 							data-action="requisition" data-group="{{ group.group }}">ขออนุมัติเบิก</button>
 						{% endif %}

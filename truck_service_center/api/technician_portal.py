@@ -5,6 +5,8 @@
 
 เปิดเฉพาะสิ่งที่ช่างต้องแก้หน้างานจริง ไม่ได้เปิด doctype ทั้งใบ
 ทุก endpoint ตรวจ 3 ชั้น: สิทธิ์ write ของ doctype → ต้องเป็นช่างในใบนั้น → เอกสารต้องยังเป็น draft
+ชั้นกลางของ endpoint ระดับแถวงานยอมให้หัวหน้างานของกลุ่มบริการของแถวนั้นผ่านด้วย
+(เหมือนหัวหน้าช่าง แต่ขอบเขตแค่กลุ่มที่ตั้งไว้ใน Service Type Group.supervisors)
 """
 
 import frappe
@@ -21,6 +23,7 @@ from truck_service_center.truck_service_center.doctype.service_order.service_ord
 	collect_material_issue_problems,
 	create_material_issue_for_rows,
 	get_bay_warnings,
+	get_supervised_groups,
 	receive_vehicle,
 	select_group_requisition_rows,
 	stamp_requisition_decision,
@@ -59,24 +62,40 @@ def _is_assigned(doc, user):
 	return any(doc.get(fieldname) == user for fieldname in TECHNICIAN_FIELDS)
 
 
-def _get_editable_job(service_order):
-	"""โหลดใบงานพร้อมตรวจสิทธิ์ครบทุกชั้น — ทุก endpoint ต้องเรียกผ่านตัวนี้"""
+def _load_job(service_order):
+	"""ชั้นที่ 1 — สิทธิ์ write ระดับ doctype"""
 	doc = frappe.get_doc("Service Order", service_order)
-
-	# ชั้นที่ 1 — สิทธิ์ write ระดับ doctype
 	doc.check_permission("write")
+	return doc
 
-	# ชั้นที่ 2 — ต้องเป็นช่างในใบนี้จริง (ระดับ record ซึ่ง doctype permission ยังไม่มี)
-	if not _is_assigned(doc, frappe.session.user) and not (MANAGER_ROLES & set(frappe.get_roles())):
-		frappe.throw(_("คุณไม่ได้เป็นช่างผู้รับผิดชอบใบสั่งงานนี้"), frappe.PermissionError)
 
-	# ชั้นที่ 3 — แก้ได้เฉพาะเอกสารที่ยังไม่ submit และงานที่ยังไม่ปิด
+def _ensure_open(doc):
+	"""ชั้นที่ 3 — แก้ได้เฉพาะเอกสารที่ยังไม่ submit และงานที่ยังไม่ปิด"""
 	if doc.docstatus != 0:
 		frappe.throw(_("ใบสั่งงานนี้ถูก submit หรือยกเลิกแล้ว ไม่สามารถแก้ไขจากพอร์ทัลได้"))
 
 	if doc.status not in EDITABLE_STATUSES:
 		frappe.throw(_("ใบสั่งงานสถานะ {0} ไม่สามารถแก้ไขจากพอร์ทัลได้").format(doc.status))
 
+
+def _has_job_access(doc):
+	"""ชั้นที่ 2 ระดับใบงาน — เป็นช่างในใบนี้ หรือเป็นหัวหน้าช่าง/ผู้จัดการ"""
+	return _is_assigned(doc, frappe.session.user) or _is_manager()
+
+
+def _get_editable_job(service_order):
+	"""ใบงานสำหรับ endpoint ระดับใบ (น้ำมัน ไมล์ หมายเหตุ สถานะ ช่องจอดหลัก)
+
+	หัวหน้างานกลุ่มที่ไม่ได้อยู่ในใบงานผ่านด่านนี้ไม่ได้ — ขอบเขตของเขาคือแถวงานในกลุ่ม
+	ไม่ใช่ทั้งใบ (ถ้า assign ตัวเองลงแถวงาน ก็จะกลายเป็นช่างในใบและผ่านได้เอง)
+	"""
+	doc = _load_job(service_order)
+
+	# ชั้นที่ 2 — ต้องเป็นช่างในใบนี้จริง (ระดับ record ซึ่ง doctype permission ยังไม่มี)
+	if not _has_job_access(doc):
+		frappe.throw(_("คุณไม่ได้เป็นช่างผู้รับผิดชอบใบสั่งงานนี้"), frappe.PermissionError)
+
+	_ensure_open(doc)
 	return doc
 
 
@@ -84,18 +103,36 @@ def _is_manager():
 	return bool(MANAGER_ROLES & set(frappe.get_roles()))
 
 
-def _get_manager_job(service_order):
-	"""ใบงานที่หัวหน้าช่างเท่านั้นแก้ได้ — ใช้กับ assign/unassign/reset
+def _can_manage_row(row, supervised_groups=None):
+	"""จัดการแถวงานนี้แบบหัวหน้าได้ไหม (assign/ถอนช่าง, เริ่มใหม่, ช่องจอดรายแถว)
 
-	ผ่าน _get_editable_job ก่อนเสมอ เพื่อให้ยังได้ด่านครบทั้ง 3 ชั้นเหมือน endpoint อื่น
-	แล้วค่อยบวกเงื่อนไข role ทับอีกชั้น
+	หัวหน้าช่าง/ผู้จัดการได้ทุกแถว หัวหน้างานกลุ่มได้เฉพาะแถวที่ service_type_group
+	อยู่ในกลุ่มที่ตัวเองดูแล — แถวที่ไม่มีกลุ่มจึงเป็นของหัวหน้าช่างเท่านั้น
 	"""
-	doc = _get_editable_job(service_order)
+	if _is_manager():
+		return True
 
-	if not _is_manager():
-		frappe.throw(_("เฉพาะหัวหน้าช่างเท่านั้นที่ทำรายการนี้ได้"), frappe.PermissionError)
+	if supervised_groups is None:
+		supervised_groups = get_supervised_groups()
+	return bool(row.service_type_group) and row.service_type_group in supervised_groups
 
-	return doc
+
+def _get_row_manager_job(service_order, row_name):
+	"""ใบงาน + แถวงาน สำหรับงานระดับหัวหน้า (assign/unassign/reset)
+
+	ผ่านครบ 3 ชั้นเหมือน endpoint อื่น แต่ชั้นกลางเป็น _can_manage_row แทนการเป็นช่างในใบ
+	"""
+	doc = _load_job(service_order)
+	row = _get_service_row(doc, row_name)
+
+	if not _can_manage_row(row):
+		frappe.throw(
+			_("เฉพาะหัวหน้าช่าง หรือหัวหน้างานของกลุ่มบริการของงานนี้เท่านั้นที่ทำรายการนี้ได้"),
+			frappe.PermissionError,
+		)
+
+	_ensure_open(doc)
+	return doc, row
 
 
 def _get_service_row(doc, row_name):
@@ -112,17 +149,18 @@ def _user_on_row(row, user):
 
 
 def _get_row_job(service_order, row_name):
-	"""ใบงาน + แถวงาน สำหรับช่างที่ถูก assign ในแถวนั้น (หรือหัวหน้าช่าง)
+	"""ใบงาน + แถวงาน สำหรับช่างที่ถูก assign ในแถวนั้น (หรือหัวหน้าช่าง / หัวหน้างานของกลุ่มแถวนั้น)
 
 	ละเอียดกว่า _get_editable_job หนึ่งขั้น — ช่างที่อยู่ในใบงานแต่ไม่ได้รับงานรายการนี้
 	จะกดเริ่ม/จบ/เบิกอะไหล่ของรายการนั้นไม่ได้
 	"""
-	doc = _get_editable_job(service_order)
+	doc = _load_job(service_order)
 	row = _get_service_row(doc, row_name)
 
-	if not _user_on_row(row, frappe.session.user) and not _is_manager():
+	if not _user_on_row(row, frappe.session.user) and not _can_manage_row(row):
 		frappe.throw(_("คุณไม่ได้รับผิดชอบงานรายการนี้"), frappe.PermissionError)
 
+	_ensure_open(doc)
 	return doc, row
 
 
@@ -179,13 +217,12 @@ def set_remarks(service_order, remarks):
 
 @frappe.whitelist()
 def assign_technician(service_order, row_name, user):
-	"""หัวหน้าช่าง assign ช่างลงงานรายการหนึ่ง
+	"""หัวหน้าช่าง (หรือหัวหน้างานของกลุ่มงานนั้น) assign ช่างลงงานรายการหนึ่ง
 
 	assign ได้ตั้งแต่ Draft เพื่อให้วางแผนงานล่วงหน้าก่อนรับรถได้
 	ไม่ต้องเติมช่างขึ้นระดับใบงานเอง — sync_row_technicians_to_parent ใน validate ทำให้แล้ว
 	"""
-	doc = _get_manager_job(service_order)
-	row = _get_service_row(doc, row_name)
+	doc, row = _get_row_manager_job(service_order, row_name)
 
 	if user not in get_technician_users():
 		frappe.throw(_("ผู้ใช้ {0} ไม่ได้เป็นช่าง").format(user))
@@ -209,8 +246,7 @@ def unassign_technician(service_order, row_name, user):
 
 	ไม่ลบช่างออกจากระดับใบงาน เพราะเขาอาจยังรับงานรายการอื่นอยู่ และ sync เป็นทางเดียว
 	"""
-	doc = _get_manager_job(service_order)
-	row = _get_service_row(doc, row_name)
+	doc, row = _get_row_manager_job(service_order, row_name)
 
 	remaining = [row.get(f) for f in ROW_TECHNICIAN_FIELDS if row.get(f) and row.get(f) != user]
 
@@ -272,8 +308,7 @@ def reset_service(service_order, row_name):
 
 	ในพอร์ทัลเป็นทางเดียวที่แก้เวลาที่กดผิดได้ — ใน desk หัวหน้าช่างแก้เวลาในแถวงานเองได้ด้วย
 	"""
-	doc = _get_manager_job(service_order)
-	row = _get_service_row(doc, row_name)
+	doc, row = _get_row_manager_job(service_order, row_name)
 
 	row.start_time = None
 	row.end_time = None
@@ -309,9 +344,17 @@ def set_main_bay(service_order, service_bay=None):
 
 @frappe.whitelist()
 def set_service_bay(service_order, row_name, service_bay=None):
-	"""ตั้งช่องจอดของงานรายการหนึ่ง — ค่าว่างจะตกไปใช้ช่องจอดหลักตอน validate"""
-	doc = _get_editable_job(service_order)
+	"""ตั้งช่องจอดของงานรายการหนึ่ง — ค่าว่างจะตกไปใช้ช่องจอดหลักตอน validate
+
+	ช่างในใบ / หัวหน้าช่าง / หัวหน้างานของกลุ่มแถวนั้น
+	"""
+	doc = _load_job(service_order)
 	row = _get_service_row(doc, row_name)
+
+	if not _has_job_access(doc) and not _can_manage_row(row):
+		frappe.throw(_("คุณไม่ได้รับผิดชอบงานรายการนี้"), frappe.PermissionError)
+
+	_ensure_open(doc)
 
 	row.service_bay = _validate_bay(service_bay)
 	doc.save()
@@ -328,18 +371,22 @@ MAX_REJECTION_REASON = 500
 def _get_group_job(service_order, service_type_group):
 	"""ใบงานสำหรับขออนุมัติเบิกอะไหล่ของกลุ่มบริการหนึ่ง
 
-	กลุ่มที่มีชื่อ: ช่างต้องอยู่บนแถวงานอย่างน้อยหนึ่งแถวในกลุ่มนั้น (หรือเป็นหัวหน้าช่าง)
-	— เกณฑ์เดียวกับ _get_row_job เพียงขยายจาก "แถวนี้" เป็น "แถวใดแถวหนึ่งในกลุ่ม"
-	กลุ่มว่าง (อะไหล่อื่น ๆ / งานไม่มีกลุ่ม) ไม่ผูกกับแถวไหนแน่นอน จึงใช้ _get_editable_job ระดับใบ
+	กลุ่มที่มีชื่อ: ช่างต้องอยู่บนแถวงานอย่างน้อยหนึ่งแถวในกลุ่มนั้น (หรือเป็นหัวหน้าช่าง /
+	หัวหน้างานของกลุ่มนั้น) — เกณฑ์เดียวกับ _get_row_job เพียงขยายจาก "แถวนี้" เป็น "แถวใดแถวหนึ่งในกลุ่ม"
+	กลุ่มว่าง (อะไหล่อื่น ๆ / งานไม่มีกลุ่ม) ไม่ผูกกับแถวไหนแน่นอน จึงใช้สิทธิ์ระดับใบ
 	เหมือนกลุ่ม "อะไหล่อื่น ๆ" เดิม
 	"""
-	doc = _get_editable_job(service_order)
+	if not service_type_group:
+		return _get_editable_job(service_order)
 
-	if service_type_group and not _is_manager():
+	doc = _load_job(service_order)
+
+	if not _is_manager() and service_type_group not in get_supervised_groups():
 		rows = [row for row in doc.service_types if row.service_type_group == service_type_group]
 		if not any(_user_on_row(row, frappe.session.user) for row in rows):
 			frappe.throw(_("คุณไม่ได้รับผิดชอบงานในกลุ่มบริการนี้"), frappe.PermissionError)
 
+	_ensure_open(doc)
 	return doc
 
 
