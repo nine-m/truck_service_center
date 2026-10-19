@@ -64,6 +64,9 @@ frappe.ui.form.on("Service Order", {
 		add_work_time_button(frm);
 		show_manual_work_time_notice(frm);
 
+		// ปุ่มให้ระบบเลือกช่องจอดหลัก + ช่องจอดรายแถวให้ (เหมือน "จัด Bay ใหม่" ของนัดหมาย)
+		add_auto_bay_button(frm);
+
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
 		// ต้องรับรถก่อนถึงจะเบิกอะไหล่ได้ — ถ้ายังไม่รับรถจะเห็นแค่ปุ่ม "รับรถ"
 		if (
@@ -1467,6 +1470,91 @@ function confirm_bay_change(frm, args, on_cancel) {
 			);
 		},
 	});
+}
+
+// สถานะที่รถยังจอดอยู่ในศูนย์ — mirror OPEN_STATUSES ฝั่ง server
+const AUTO_BAY_STATUSES = ["Draft", "In Progress", "On Hold", "Ready for Delivery"];
+
+function add_auto_bay_button(frm) {
+	if (frm.doc.docstatus !== 0 || !AUTO_BAY_STATUSES.includes(frm.doc.status)) return;
+	if (!frm.has_perm("write")) return;
+
+	frm.add_custom_button(__("จัด Bay อัตโนมัติ"), function () {
+		auto_allocate_bays(frm);
+	});
+}
+
+// ถามระบบว่าควรใช้ช่องจอดไหน แล้วตั้งลงฟอร์ม (ยังไม่บันทึก) — ผู้ใช้ตรวจ/แก้ต่อได้ก่อนกดบันทึก
+// แถวที่เริ่มงานไปแล้วไม่ถูกย้ายช่อง (server ไม่ส่งกลับมา)
+function auto_allocate_bays(frm) {
+	if (!(frm.doc.service_types || []).length) {
+		frappe.msgprint(__("ยังไม่มีรายการงาน ให้เพิ่มงานก่อนจัดช่องจอด"));
+		return;
+	}
+
+	frappe.call({
+		method: "truck_service_center.truck_service_center.doctype.service_order.service_order.suggest_bay_assignment",
+		args: { doc: JSON.stringify(frm.doc) },
+		freeze: true,
+		callback: function (r) {
+			const plan = r && r.message;
+			if (!plan) return;
+
+			if (!plan.service_bay) {
+				frappe.msgprint({
+					title: __("จัดช่องจอดไม่ได้"),
+					indicator: "orange",
+					message: (plan.warnings || []).join("<br>") || __("ไม่มีช่องจอดที่เปิดใช้งาน"),
+				});
+				return;
+			}
+
+			const row_bays = plan.row_bays || {};
+			const will_change =
+				(frm.doc.service_bay && frm.doc.service_bay !== plan.service_bay) ||
+				(frm.doc.service_types || []).some(
+					(row) => row.service_bay && row.name in row_bays && row_bays[row.name] !== row.service_bay
+				);
+
+			const apply = () => apply_bay_plan(frm, plan);
+			if (will_change) {
+				frappe.confirm(__("มีช่องจอดที่ตั้งไว้แล้ว ระบบจะแทนที่ด้วยช่องที่จัดใหม่ ยืนยัน?"), apply);
+			} else {
+				apply();
+			}
+		},
+	});
+}
+
+function apply_bay_plan(frm, plan) {
+	// ตั้งค่าตรง ๆ ไม่ผ่าน set_value — trigger service_bay จะยิง confirm_bay_change ซ้ำ
+	// ทั้งที่คำเตือนชุดเดียวกันมากับ plan แล้ว
+	frm.doc.service_bay = plan.service_bay;
+	frm.__previous_bay = plan.service_bay;
+	(frm.doc.service_types || []).forEach(function (row) {
+		if (row.name in plan.row_bays) row.service_bay = plan.row_bays[row.name];
+	});
+	frm.refresh_field("service_bay");
+	frm.refresh_field("service_types");
+	frm.dirty();
+
+	const summary = (plan.summary || [])
+		.map((row) => `${frappe.utils.escape_html(row.service_bay)} — ${frappe.utils.escape_html(row.bay_type || "")} ${row.hours} ชม.`)
+		.join("<br>");
+	const warnings = (plan.warnings || []).map((w) => frappe.utils.escape_html(w)).join("<br>");
+
+	if (warnings) {
+		frappe.msgprint({
+			title: __("จัดช่องจอดแล้ว — มีข้อควรระวัง"),
+			indicator: "orange",
+			message: summary + "<br><br>" + warnings + "<br><br>" + __("อย่าลืมบันทึกเอกสาร"),
+		});
+	} else {
+		frappe.show_alert({
+			message: __("จัดช่องจอดเรียบร้อย — อย่าลืมบันทึกเอกสาร") + "<br>" + summary,
+			indicator: "green",
+		});
+	}
 }
 
 // เติมช่องจอดหลักลงแถวที่ยังว่าง — mirror ของ apply_default_bay ฝั่ง server
