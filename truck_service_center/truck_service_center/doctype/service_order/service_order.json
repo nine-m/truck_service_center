@@ -61,6 +61,7 @@
   "time_section",
   "estimated_time",
   "actual_time",
+  "has_manual_work_time",
   "priority",
   "service_bay",
   "pricing_section",
@@ -124,7 +125,10 @@
    "in_standard_filter": 1,
    "label": "สถานะ",
    "options": "Draft\nIn Progress\nReady for Delivery\nCompleted\nCancelled\nOn Hold",
-   "reqd": 1
+   "reqd": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "เปลี่ยนด้วยปุ่ม รับรถ / พักงาน / ทำงานต่อ / จบงาน — Completed เกิดจากการ submit"
   },
   {
    "fieldname": "column_break_1",
@@ -381,7 +385,7 @@
    "fieldname": "fuel_level_in",
    "fieldtype": "Select",
    "label": "สถานะน้ำมันรับเข้า",
-   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม\nNOT CHECK"
   },
   {
    "fieldname": "column_break_fuel",
@@ -391,7 +395,7 @@
    "fieldname": "fuel_level_out",
    "fieldtype": "Select",
    "label": "สถานะน้ำมันออก",
-   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม"
+   "options": "\nหมด\n1/4\nครึ่ง\n3/4\nเต็ม\nNOT CHECK"
   },
   {
    "fieldname": "time_section",
@@ -412,6 +416,16 @@
    "precision": "2",
    "read_only": 1,
    "description": "คำนวณอัตโนมัติจากเวลาเริ่ม-จบของงานแต่ละรายการ (เวลาเริ่มแรกสุด ถึงเวลาจบท้ายสุด)"
+  },
+  {
+   "default": "0",
+   "description": "มีงานอย่างน้อยหนึ่งรายการที่เวลาเริ่ม-จบถูกคีย์เองในฟอร์ม (ดูรายละเอียดในแถวงาน)",
+   "fieldname": "has_manual_work_time",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "มีการคีย์เวลาเอง",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "default": "Medium",
@@ -680,7 +694,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-03 14:00:00.000000",
+ "modified": "2026-10-07 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

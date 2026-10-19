@@ -32,7 +32,9 @@ MANAGER_ROLES = {"Technician Manager", "Service Manager", "System Manager"}
 EDITABLE_STATUSES = {"Draft", "In Progress", "On Hold"}
 
 # ตรงกับ options ของฟิลด์ fuel_level_in / fuel_level_out
-FUEL_LEVELS = ("หมด", "1/4", "ครึ่ง", "3/4", "เต็ม")
+# NOT CHECK = ไม่ได้ตรวจระดับน้ำมัน — นับเป็นค่าที่บันทึกแล้ว ผ่านด่านรับรถ/ปิดงาน/submit ได้
+FUEL_NOT_CHECKED = "NOT CHECK"
+FUEL_LEVELS = ("หมด", "1/4", "ครึ่ง", "3/4", "เต็ม", FUEL_NOT_CHECKED)
 
 # เปลี่ยนสถานะได้เฉพาะเส้นทางเหล่านี้ (Draft → In Progress ต้องผ่านการรับรถ)
 ALLOWED_TRANSITIONS = {
@@ -233,6 +235,8 @@ def start_service(service_order, row_name):
 		frappe.throw(_("งานรายการนี้เริ่มไปแล้ว"))
 
 	row.start_time = now_datetime()
+	# ช่างไม่มีสิทธิ์แก้เวลาในฟอร์ม แต่ stamp จากปุ่มนี้ได้ (ดู validate_work_times)
+	doc.flags.allow_work_time_stamp = True
 	doc.save()
 
 	return {"value": str(row.start_time)}
@@ -250,6 +254,8 @@ def finish_service(service_order, row_name):
 		frappe.throw(_("งานรายการนี้จบไปแล้ว"))
 
 	row.end_time = now_datetime()
+	# ช่างไม่มีสิทธิ์แก้เวลาในฟอร์ม แต่ stamp จากปุ่มนี้ได้ (ดู validate_work_times)
+	doc.flags.allow_work_time_stamp = True
 	doc.save()
 
 	return {"value": str(row.end_time)}
@@ -259,7 +265,7 @@ def finish_service(service_order, row_name):
 def reset_service(service_order, row_name):
 	"""หัวหน้าช่างล้างเวลาเริ่ม-จบ เพื่อเปิดงานรายการนั้นใหม่
 
-	เป็นทางเดียวที่แก้เวลาที่กดผิดได้ เพราะ actual_time เป็น read-only ทุกที่แล้ว
+	ในพอร์ทัลเป็นทางเดียวที่แก้เวลาที่กดผิดได้ — ใน desk หัวหน้าช่างแก้เวลาในแถวงานเองได้ด้วย
 	"""
 	doc = _get_manager_job(service_order)
 	row = _get_service_row(doc, row_name)
@@ -383,7 +389,7 @@ def _validate_completion(doc):
 
 @frappe.whitelist()
 def set_status(service_order, status):
-	"""เปลี่ยนสถานะงานตามเส้นทางที่อนุญาตเท่านั้น
+	"""เปลี่ยนสถานะงานตามเส้นทางที่อนุญาตเท่านั้น — ใช้ทั้งพอร์ทัลและปุ่มในฟอร์ม desk
 
 	Draft → In Progress ส่งต่อให้ receive_vehicle ของ controller เดิม
 	เพื่อให้ยัง stamp ผู้รับรถ/เวลา และบังคับกรอกน้ำมันรับเข้าเหมือนทำผ่าน desk
@@ -406,6 +412,8 @@ def set_status(service_order, status):
 		receive_vehicle(doc.name)
 	else:
 		doc.status = status
+		# สถานะถูกล็อกไม่ให้เลือกเอง (validate_status_change) — endpoint นี้คือทางที่อนุญาต
+		doc.flags.allow_status_change = True
 		doc.save()
 
 	return {"value": status}

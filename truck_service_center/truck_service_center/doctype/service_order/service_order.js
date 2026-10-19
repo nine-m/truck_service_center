@@ -59,6 +59,11 @@ frappe.ui.form.on("Service Order", {
 		// ป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
 		lock_rows_with_submitted_material_issue(frm);
 
+		// หัวหน้าช่าง/ผู้ดูแลระบบคีย์เวลาเริ่ม-จบของงานเองได้ (เช่นคีย์ย้อนหลังงานนอกเวลาทำการ)
+		allow_work_time_editing(frm);
+		add_work_time_button(frm);
+		show_manual_work_time_notice(frm);
+
 		// ปุ่มสร้าง Material Issue (สำหรับ items ที่ยังไม่มีใบเบิก)
 		// ต้องรับรถก่อนถึงจะเบิกอะไหล่ได้ — ถ้ายังไม่รับรถจะเห็นแค่ปุ่ม "รับรถ"
 		if (
@@ -178,6 +183,9 @@ frappe.ui.form.on("Service Order", {
 				});
 			}).addClass("btn-primary");
 		}
+
+		// ปุ่มเปลี่ยนสถานะเหมือนในพอร์ทัลช่าง — ช่องสถานะเลือกเองไม่ได้แล้ว
+		add_status_buttons(frm);
 	},
 
 	customer: function (frm) {
@@ -698,7 +706,7 @@ frappe.ui.form.on("Service Order Package", {
 				if (!r.message) return;
 				let pkg = r.message;
 				let pkg_name = row.service_package;
-				let discount_pct = flt(pkg.discount_percent);
+				// ส่วนลดต่อบรรทัดเป็นบาทจาก server — รวมแล้วตรงราคาแพ็คเกจพอดี
 
 				// เพิ่ม service types จาก package
 				(pkg.service_types || []).forEach(function (st) {
@@ -708,7 +716,8 @@ frappe.ui.form.on("Service Order Package", {
 					st_row.maintenance_type = st.maintenance_type;
 					st_row.estimated_time = st.estimated_time;
 					st_row.labor_charges = st.labor_rate;
-					st_row.discount_percentage = discount_pct;
+					st_row.discount_amount = flt(st.discount_amount);
+					st_row.discount_percentage = flt(st.discount_percentage);
 					st_row.service_package = pkg_name;
 				});
 
@@ -720,7 +729,8 @@ frappe.ui.form.on("Service Order Package", {
 					item_row.qty = part.qty;
 					item_row.uom = part.uom;
 					item_row.rate = part.rate;
-					item_row.discount_percentage = discount_pct;
+					item_row.discount_amount = flt(part.discount_amount);
+					item_row.discount_percentage = flt(part.discount_percentage);
 					item_row.service_package = pkg_name;
 					item_row.service_type = part.service_type;
 				});
@@ -786,6 +796,14 @@ frappe.ui.form.on("Service Order Package", {
 frappe.ui.form.on("Service Order Service Type", {
 	service_types_add: function (frm) {
 		calculate_totals(frm);
+	},
+
+	start_time: function (frm) {
+		preview_actual_time(frm);
+	},
+
+	end_time: function (frm) {
+		preview_actual_time(frm);
 	},
 
 	service_bay: function (frm, cdt, cdn) {
@@ -869,14 +887,14 @@ frappe.ui.form.on("Service Order Service Type", {
 
 	discount_percentage: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		if (flt(row.discount_percentage) > 0) {
-			let discount_amt = flt(
-				(flt(row.labor_charges) * flt(row.discount_percentage)) / 100,
-				2
-			);
-			frappe.model.set_value(cdt, cdn, "discount_amount", discount_amt);
+		// คิดบาทใหม่เฉพาะเมื่อ % ไม่ตรงกับบาทเดิม — ถ้าตรงอยู่แล้วแปลว่า % ถูกตั้งจากช่องบาท ห้ามคิดกลับ
+		if (!flt(row.discount_percentage)) {
+			if (flt(row.labor_charges) > 0) frappe.model.set_value(cdt, cdn, "discount_amount", 0);
 		} else {
-			frappe.model.set_value(cdt, cdn, "discount_amount", 0);
+			let values = resolve_line_discount(row.labor_charges, row.discount_percentage, row.discount_amount);
+			if (values.discount_amount !== flt(row.discount_amount)) {
+				frappe.model.set_value(cdt, cdn, "discount_amount", values.discount_amount);
+			}
 		}
 		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
@@ -884,11 +902,10 @@ frappe.ui.form.on("Service Order Service Type", {
 
 	discount_amount: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		if (flt(row.discount_amount) > 0 && flt(row.labor_charges) > 0) {
-			let pct = flt((flt(row.discount_amount) / flt(row.labor_charges)) * 100, 2);
+		// บาทคือค่าที่ผู้ใช้คีย์ — % แค่ตามให้ตรง
+		let pct = discount_percent_of(row.discount_amount, row.labor_charges);
+		if (pct !== flt(row.discount_percentage, 2)) {
 			frappe.model.set_value(cdt, cdn, "discount_percentage", pct);
-		} else if (flt(row.discount_amount) === 0) {
-			frappe.model.set_value(cdt, cdn, "discount_percentage", 0);
 		}
 		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
@@ -1114,12 +1131,14 @@ frappe.ui.form.on("Service Order Item", {
 
 	discount_percentage: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		// เมื่อเปลี่ยน discount_percentage → ล้าง discount_amount เพื่อให้คำนวณใหม่
-		if (flt(row.discount_percentage) > 0) {
-			let discount_amt = flt((flt(row.rate) * flt(row.discount_percentage)) / 100, 2);
-			frappe.model.set_value(cdt, cdn, "discount_amount", discount_amt);
+		// คิดบาทใหม่เฉพาะเมื่อ % ไม่ตรงกับบาทเดิม — ถ้าตรงอยู่แล้วแปลว่า % ถูกตั้งจากช่องบาท ห้ามคิดกลับ
+		if (!flt(row.discount_percentage)) {
+			if (flt(row.rate) > 0) frappe.model.set_value(cdt, cdn, "discount_amount", 0);
 		} else {
-			frappe.model.set_value(cdt, cdn, "discount_amount", 0);
+			let values = resolve_line_discount(row.rate, row.discount_percentage, row.discount_amount);
+			if (values.discount_amount !== flt(row.discount_amount)) {
+				frappe.model.set_value(cdt, cdn, "discount_amount", values.discount_amount);
+			}
 		}
 		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
@@ -1127,12 +1146,10 @@ frappe.ui.form.on("Service Order Item", {
 
 	discount_amount: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		// เมื่อเปลี่ยน discount_amount โดยตรง → คำนวณ discount_percentage
-		if (flt(row.discount_amount) > 0 && flt(row.rate) > 0) {
-			let pct = flt((flt(row.discount_amount) / flt(row.rate)) * 100, 2);
+		// บาทคือค่าที่ผู้ใช้คีย์ — % แค่ตามให้ตรง
+		let pct = discount_percent_of(row.discount_amount, row.rate);
+		if (pct !== flt(row.discount_percentage, 2)) {
 			frappe.model.set_value(cdt, cdn, "discount_percentage", pct);
-		} else if (flt(row.discount_amount) === 0) {
-			frappe.model.set_value(cdt, cdn, "discount_percentage", 0);
 		}
 		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
@@ -1227,28 +1244,37 @@ function set_row_value(row, fieldname, value) {
 	}
 }
 
+// mirror ของ truck_service_center/discounts.py (ต้องแก้คู่กัน) — ส่วนลดบาทเป็นตัวหลัก % เป็นค่าที่คำนวณไว้แสดง
+// % ปัด 2 ตำแหน่ง ถ้าคิดบาทกลับจาก % ทุกครั้งจะได้เศษ (300 ลด 100 → 33.33% → 99.99 → ยอด 200.01)
+function discount_percent_of(amount, base) {
+	return flt(base) > 0 ? flt((flt(amount) / flt(base)) * 100, 2) : 0;
+}
+
+// คิดบาทจาก % เฉพาะเมื่อ % ไม่ตรงกับบาทที่มีอยู่ (ผู้ใช้เพิ่งแก้ % หรือราคาฐานเปลี่ยน ซึ่งคง % ไว้)
+function resolve_line_discount(base, discount_percentage, discount_amount) {
+	base = flt(base);
+	let pct = flt(discount_percentage);
+	let amount = flt(discount_amount, 2);
+	if (base <= 0) return { discount_percentage: pct, discount_amount: amount };
+
+	if (pct && discount_percent_of(amount, base) !== flt(pct, 2)) {
+		amount = flt((base * pct) / 100, 2);
+	}
+	return { discount_percentage: discount_percent_of(amount, base), discount_amount: amount };
+}
+
 // คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item — คืนค่าใหม่โดยไม่แก้ค่าใน item
 function get_item_amounts(item) {
 	let rate = flt(item.rate);
 	let qty = flt(item.qty);
-	let discount_percentage = flt(item.discount_percentage);
-	let discount_amount = flt(item.discount_amount);
+	let values = resolve_line_discount(rate, item.discount_percentage, item.discount_amount);
 
-	if (discount_percentage > 0) {
-		// ถ้ามี discount_percentage → คำนวณ discount_amount
-		discount_amount = flt((rate * discount_percentage) / 100, 2);
-	} else if (discount_amount > 0 && rate > 0) {
-		// ถ้ามี discount_amount แต่ไม่มี discount_percentage → คำนวณ percentage
-		discount_percentage = flt((discount_amount / rate) * 100, 2);
-	}
-
-	// คำนวณ amount หลังส่วนลด
-	let net_rate = flt(rate - discount_amount, 2);
+	let net_rate = flt(rate - values.discount_amount, 2);
 	if (net_rate < 0) net_rate = 0;
 
 	return {
-		discount_percentage: discount_percentage,
-		discount_amount: discount_amount,
+		discount_percentage: values.discount_percentage,
+		discount_amount: values.discount_amount,
 		amount: flt(net_rate * qty, 2),
 	};
 }
@@ -1263,22 +1289,15 @@ function calculate_service_type_amount(frm, cdt, cdn) {
 // คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type — คืนค่าใหม่โดยไม่แก้ค่าใน row
 function get_service_type_amounts(row) {
 	let labor = flt(row.labor_charges);
-	let discount_percentage = flt(row.discount_percentage);
-	let discount_amount = flt(row.discount_amount);
-
-	if (discount_percentage > 0) {
-		discount_amount = flt((labor * discount_percentage) / 100, 2);
-	} else if (discount_amount > 0 && labor > 0) {
-		discount_percentage = flt((discount_amount / labor) * 100, 2);
-	}
+	let values = resolve_line_discount(labor, row.discount_percentage, row.discount_amount);
 
 	// amount = labor_charges หลังส่วนลด
-	let net_labor = flt(labor - discount_amount, 2);
+	let net_labor = flt(labor - values.discount_amount, 2);
 	if (net_labor < 0) net_labor = 0;
 
 	return {
-		discount_percentage: discount_percentage,
-		discount_amount: discount_amount,
+		discount_percentage: values.discount_percentage,
+		discount_amount: values.discount_amount,
 		amount: flt(net_labor, 2),
 	};
 }
@@ -1980,6 +1999,375 @@ function restore_deleted_locked_rows(frm) {
 }
 
 // ฟังก์ชันป้องกันการแก้ไขแถวที่มี Material Issue ที่ submit แล้ว
+// ปุ่มเปลี่ยนสถานะ = เส้นทางเดียวกับ ALLOWED_TRANSITIONS ใน technician_portal.py (Draft → In Progress
+// ใช้ปุ่ม "รับรถ" ด้านบน) และยิง set_status ตัวเดียวกับพอร์ทัล จึงได้ด่าน _validate_completion ครบ
+const STATUS_BUTTONS = {
+	"In Progress": [
+		{ status: "Ready for Delivery", label: "จบงาน", primary: true },
+		{ status: "On Hold", label: "พักงาน" },
+	],
+	"On Hold": [{ status: "In Progress", label: "ทำงานต่อ", primary: true }],
+};
+
+// ชุดเดียวกับ MANAGER_ROLES ของพอร์ทัล — นอกจากนี้ต้องเป็นช่างในใบงาน (ด่านชั้นที่ 2 ของ _get_editable_job)
+const STATUS_MANAGER_ROLES = ["Technician Manager", "Service Manager", "System Manager"];
+const PARENT_TECHNICIAN_FIELDS = ["technician"].concat(
+	Array.from({ length: 9 }, (_, i) => `technician_${i + 2}`)
+);
+
+function can_change_status(frm) {
+	if (STATUS_MANAGER_ROLES.some((role) => frappe.user.has_role(role))) return true;
+	return PARENT_TECHNICIAN_FIELDS.some((f) => frm.doc[f] === frappe.session.user);
+}
+
+function add_status_buttons(frm) {
+	if (frm.doc.docstatus !== 0 || frm.is_new() || !can_change_status(frm)) return;
+
+	// ย้อนจากจบงานไม่มีในพอร์ทัล — หัวหน้าช่าง/ผู้จัดการแก้การกดจบผิดได้จากฟอร์มเท่านั้น
+	if (
+		frm.doc.status === "Ready for Delivery" &&
+		STATUS_MANAGER_ROLES.some((role) => frappe.user.has_role(role))
+	) {
+		frm.add_custom_button("เปิดงานอีกครั้ง", function () {
+			frappe.confirm("เปิดงานนี้กลับเป็นกำลังซ่อม?", function () {
+				frappe.call({
+					method: "truck_service_center.truck_service_center.doctype.service_order.service_order.reopen_job",
+					args: { service_order: frm.doc.name },
+					freeze: true,
+					callback: (r) => !r.exc && frm.reload_doc(),
+				});
+			});
+		});
+	}
+
+	(STATUS_BUTTONS[frm.doc.status] || []).forEach(function (action) {
+		const btn = frm.add_custom_button(action.label, function () {
+			const run = () => call_set_status(frm, action.status);
+			const go = () => (frm.is_dirty() ? frm.save().then(run) : run());
+
+			if (action.status === "Ready for Delivery") {
+				confirm_complete(frm, go);
+			} else {
+				frappe.confirm(`ยืนยัน${action.label}?`, go);
+			}
+		});
+		if (action.primary) btn.addClass("btn-primary");
+	});
+}
+
+function call_set_status(frm, status) {
+	frappe.call({
+		method: "truck_service_center.api.technician_portal.set_status",
+		args: { service_order: frm.doc.name, status: status },
+		freeze: true,
+		callback: function (r) {
+			if (r.exc) return;
+			frm.reload_doc();
+			frappe.show_alert({ message: __("เปลี่ยนสถานะเรียบร้อย"), indicator: "green" });
+		},
+	});
+}
+
+function confirm_complete(frm, proceed) {
+	// เหมือน confirmComplete ของพอร์ทัล: บอกสิ่งที่ยังขาดก่อน (server ตรวจซ้ำใน _validate_completion
+	// ซึ่งรวมเรื่องใบเบิกอะไหล่ด้วย) ส่วนเลขไมล์ที่ยังไม่อัปเดตเป็นแค่คำถามยืนยัน
+	const missing = [];
+	const unfinished = (frm.doc.service_types || []).filter((r) => !r.end_time);
+	if (unfinished.length) {
+		missing.push(
+			`จบงานให้ครบทุกรายการ — ยังไม่จบ: ${unfinished
+				.map((r) => frappe.utils.escape_html(r.service_type || "(ไม่ระบุ)"))
+				.join(", ")}`
+		);
+	}
+	if (!frm.doc.fuel_level_out) missing.push("สถานะน้ำมันออก");
+
+	if (missing.length) {
+		frappe.msgprint({
+			title: __("ข้อมูลไม่ครบ"),
+			indicator: "orange",
+			message: "กรุณาบันทึกข้อมูลต่อไปนี้ก่อนจบงาน<br>" + missing.map((m) => `• ${m}`).join("<br>"),
+		});
+		return;
+	}
+
+	const ask = (baseline) => {
+		const mileage = flt(frm.doc.current_mileage);
+		const unchanged = !mileage || (baseline && mileage === flt(baseline));
+		const msg = unchanged
+			? `ยังไม่ได้อัปเดตเลขไมล์ของงานนี้ (ปัจจุบัน ${format_number(mileage)} กม.)<br><br>ยืนยันจบงานโดยไม่เปลี่ยนเลขไมล์?`
+			: "ยืนยันจบงานนี้? (สถานะจะเป็นรอส่งมอบรถ)";
+		frappe.confirm(msg, proceed);
+	};
+
+	if (!frm.doc.vehicle) return ask(null);
+	frappe.db.get_value("Vehicle", frm.doc.vehicle, "current_mileage", (r) => ask(r && r.current_mileage));
+}
+
+// ชุดเดียวกับ WORK_TIME_EDITOR_ROLES ใน service_order.py — server ตรวจซ้ำใน validate_work_times เสมอ
+const WORK_TIME_EDITOR_ROLES = ["Technician Manager", "Service Manager", "System Manager"];
+
+function allow_work_time_editing(frm) {
+	// ช่องเวลาตั้งเป็น read-only ใน doctype (ช่างได้เวลาจากปุ่มในพอร์ทัล) ปลดให้เฉพาะ role ที่แก้ได้
+	const can_edit = WORK_TIME_EDITOR_ROLES.some((role) => frappe.user.has_role(role));
+	const grid = frm.fields_dict.service_types && frm.fields_dict.service_types.grid;
+	if (!grid) return;
+
+	["start_time", "end_time"].forEach(function (fieldname) {
+		grid.update_docfield_property(fieldname, "read_only", can_edit ? 0 : 1);
+	});
+}
+
+function can_edit_work_time() {
+	return WORK_TIME_EDITOR_ROLES.some((role) => frappe.user.has_role(role));
+}
+
+function add_work_time_button(frm) {
+	if (frm.doc.docstatus !== 0 || frm.is_new() || !can_edit_work_time()) return;
+	if (!(frm.doc.service_types || []).length) return;
+
+	frm.add_custom_button("คีย์เวลาทำงาน", () => open_work_time_dialog(frm));
+}
+
+function parse_time_input(text) {
+	// รับได้ทั้ง 2030 / 20:30 / 20.30 / 830 / 8 → "20:30" ฯลฯ; ว่างคืน "" ; ผิดรูปคืน null
+	const raw = (text || "").trim();
+	if (!raw) return "";
+
+	let hours, minutes;
+	const parts = raw.split(/[:.\s]/).filter(Boolean);
+	if (parts.length === 2) {
+		[hours, minutes] = parts;
+	} else if (/^\d{1,4}$/.test(raw)) {
+		hours = raw.length <= 2 ? raw : raw.slice(0, -2);
+		minutes = raw.length <= 2 ? "0" : raw.slice(-2);
+	} else {
+		return null;
+	}
+
+	if (!/^\d{1,2}$/.test(hours) || !/^\d{1,2}$/.test(minutes)) return null;
+	const h = cint(hours);
+	const m = cint(minutes);
+	if (h > 23 || m > 59) return null;
+	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// ค่าในฐานข้อมูลเป็นเวลาตาม time zone ของระบบ แต่ช่อง Datetime ของ Frappe แสดงตาม time zone ของผู้ใช้
+// หน้าต่างคีย์เวลาจึงทำงานเป็นเวลาของผู้ใช้ แล้วแปลงกลับเป็นของระบบตอนบันทึก (แบบเดียวกับ control Datetime)
+function work_time_user_moment(text) {
+	const tz = frappe.boot.time_zone && frappe.boot.time_zone.user;
+	return tz ? moment.tz(text, "YYYY-MM-DD HH:mm", tz) : moment(text, "YYYY-MM-DD HH:mm");
+}
+
+function work_time_to_system(m) {
+	const tz = frappe.boot.time_zone && frappe.boot.time_zone.system;
+	return (tz ? m.clone().tz(tz) : m).format("YYYY-MM-DD HH:mm:ss");
+}
+
+function open_work_time_dialog(frm) {
+	// แทนการเลื่อน slider ชั่วโมง/นาทีของ datepicker — วันที่ใช้ input date ของเบราว์เซอร์ เวลาพิมพ์ตัวเลข
+	// ค่าที่ได้ลงแถวงานแล้ว save ปกติ server ตรวจซ้ำ + ประทับร่องรอยใน validate_work_times
+	const rows = frm.doc.service_types || [];
+	const split = (value) => {
+		if (!value) return { date: "", time: "" };
+		const m = frappe.datetime.convert_to_user_tz(value, false);
+		return { date: m.format("YYYY-MM-DD"), time: m.format("HH:mm") };
+	};
+
+	const body = rows
+		.map((row) => {
+			const start = split(row.start_time);
+			const end = split(row.end_time);
+			return `
+			<tr data-row="${row.name}">
+				<td class="tsc-wt-label">${row.idx}. ${frappe.utils.escape_html(row.service_type || "-")}</td>
+				<td><input type="date" class="form-control input-xs" data-f="start_date" value="${start.date}"></td>
+				<td><input type="text" class="form-control input-xs tsc-wt-time" data-f="start_time"
+					inputmode="numeric" placeholder="20:30" value="${start.time}"></td>
+				<td><input type="date" class="form-control input-xs" data-f="end_date" value="${end.date}"></td>
+				<td><input type="text" class="form-control input-xs tsc-wt-time" data-f="end_time"
+					inputmode="numeric" placeholder="22:00" value="${end.time}"></td>
+				<td class="tsc-wt-hours text-right"></td>
+			</tr>`;
+		})
+		.join("");
+
+	const dialog = new frappe.ui.Dialog({
+		title: "คีย์เวลาทำงาน",
+		size: "extra-large",
+		fields: [{ fieldtype: "HTML", fieldname: "table" }],
+		primary_action_label: "บันทึก",
+		primary_action: () => save_work_time_dialog(frm, dialog),
+	});
+
+	dialog.fields_dict.table.$wrapper.html(`
+		<style>
+			.tsc-wt-table td { vertical-align: middle; }
+			.tsc-wt-table .tsc-wt-time { width: 80px; }
+			.tsc-wt-table .is-invalid { border-color: var(--red-500); }
+			.tsc-wt-label { max-width: 240px; }
+		</style>
+		<p class="text-muted small">
+			พิมพ์เวลาเป็นตัวเลขได้เลย เช่น 2030, 20:30 หรือ 830 · วันจบเว้นว่างได้ (ใช้วันเดียวกับวันเริ่ม
+			และถ้าเวลาจบน้อยกว่าเวลาเริ่มจะถือเป็นวันถัดไป) · ล้างทั้งแถว = ล้างเวลาของงานนั้น
+		</p>
+		<div style="overflow-x:auto">
+			<table class="table table-bordered tsc-wt-table">
+				<thead><tr>
+					<th>งาน</th><th>วันเริ่ม</th><th>เวลาเริ่ม</th><th>วันจบ</th><th>เวลาจบ</th>
+					<th class="text-right">ชม.</th>
+				</tr></thead>
+				<tbody>${body}</tbody>
+			</table>
+		</div>
+		<div class="text-right"><b>เวลาจริงรวม: <span class="tsc-wt-total">-</span> ชม.</b></div>
+	`);
+
+	const $table = dialog.fields_dict.table.$wrapper;
+	$table.on("input change", "input", () => read_work_time_dialog($table));
+	$table.on("blur", ".tsc-wt-time", function () {
+		// จัดรูปให้เห็นว่าระบบเข้าใจว่าเวลาอะไร (2030 → 20:30)
+		const parsed = parse_time_input(this.value);
+		if (parsed) this.value = parsed;
+		read_work_time_dialog($table);
+	});
+
+	read_work_time_dialog($table);
+	dialog.show();
+}
+
+function read_work_time_dialog($table) {
+	// อ่านทุกแถว → { name, start, end, error } พร้อมอัปเดตชั่วโมงรายแถวและรวมบนหน้าจอ
+	const results = [];
+	$table.find("tbody tr").each(function () {
+		const $tr = $(this);
+		const val = (f) => $tr.find(`[data-f="${f}"]`);
+		const start_time = parse_time_input(val("start_time").val());
+		const end_time = parse_time_input(val("end_time").val());
+		const start_date = val("start_date").val();
+		let end_date = val("end_date").val();
+
+		val("start_time").toggleClass("is-invalid", start_time === null);
+		val("end_time").toggleClass("is-invalid", end_time === null);
+
+		const result = { name: $tr.data("row"), start: null, end: null, error: null };
+		if (start_time === null || end_time === null) {
+			result.error = "รูปแบบเวลาไม่ถูกต้อง";
+		} else if (!start_date && !start_time && !end_date && !end_time) {
+			// ทั้งแถวว่าง = ล้างเวลา
+		} else if (!start_date || !start_time) {
+			result.error = "ต้องระบุวันและเวลาเริ่ม";
+		} else {
+			result.start = work_time_user_moment(`${start_date} ${start_time}`);
+			if (end_time) {
+				if (!end_date) {
+					end_date = start_date;
+					if (end_time < start_time) {
+						end_date = moment(start_date).add(1, "day").format("YYYY-MM-DD");
+					}
+				}
+				result.end = work_time_user_moment(`${end_date} ${end_time}`);
+			} else if (end_date) {
+				result.error = "ระบุวันจบแล้วต้องระบุเวลาจบด้วย";
+			}
+
+			if (result.end && result.end.isBefore(result.start)) result.error = "เวลาจบก่อนเวลาเริ่ม";
+			const now = moment();
+			if (result.start.isAfter(now) || (result.end && result.end.isAfter(now))) {
+				result.error = "เวลาเกินเวลาปัจจุบัน";
+			}
+		}
+
+		const hours = result.end && !result.error ? result.end.diff(result.start, "minutes") / 60 : null;
+		$tr.find(".tsc-wt-hours").html(
+			result.error
+				? `<span class="text-danger small">${result.error}</span>`
+				: hours !== null
+				? format_number(hours, null, 2)
+				: "-"
+		);
+		results.push(result);
+	});
+
+	// เวลาจริงรวม = เริ่มแรกสุด → จบท้ายสุด (เหมือน compute_actual_time)
+	const starts = results.filter((r) => r.start && !r.error).map((r) => r.start);
+	const ends = results.filter((r) => r.end && !r.error).map((r) => r.end);
+	$table
+		.find(".tsc-wt-total")
+		.text(
+			starts.length && ends.length
+				? format_number(moment.max(ends).diff(moment.min(starts), "minutes") / 60, null, 2)
+				: "-"
+		);
+
+	return results;
+}
+
+function save_work_time_dialog(frm, dialog) {
+	const results = read_work_time_dialog(dialog.fields_dict.table.$wrapper);
+	if (results.some((r) => r.error)) {
+		frappe.msgprint({ title: "ข้อมูลไม่ถูกต้อง", indicator: "red", message: "กรุณาแก้แถวที่มีข้อความสีแดงก่อนบันทึก" });
+		return;
+	}
+
+	// เทียบเป็นเวลาของระบบระดับนาที (ตัดวินาทีทิ้ง)
+	const fmt = (m) => (m ? work_time_to_system(m) : null);
+	const same = (a, b) => (a ? a.slice(0, 16) : null) === (b ? fmt(b).slice(0, 16) : null);
+
+	let changed = 0;
+	results.forEach((r) => {
+		const row = locals["Service Order Service Type"][r.name];
+		if (!row) return;
+		// เทียบระดับนาที — ไม่ทับค่าเดิมที่มีวินาทีจากปุ่มในพอร์ทัลถ้าผู้ใช้ไม่ได้แก้
+		if (!same(row.start_time, r.start)) {
+			row.start_time = fmt(r.start);
+			changed++;
+		}
+		if (!same(row.end_time, r.end)) {
+			row.end_time = fmt(r.end);
+			changed++;
+		}
+	});
+
+	if (!changed) {
+		dialog.hide();
+		return;
+	}
+
+	frm.dirty();
+	frm.save().then(() => dialog.hide());
+}
+
+function show_manual_work_time_notice(frm) {
+	// ร่องรอยให้คนตรวจใบงานเห็นทันทีว่าเวลาจริงมีส่วนที่ไม่ได้มาจากปุ่มในพอร์ทัล
+	const rows = (frm.doc.service_types || []).filter((r) => r.time_manually_entered);
+	if (!rows.length) return;
+
+	const lines = rows.map(
+		(r) =>
+			`${frappe.utils.escape_html(r.service_type || "-")} — ${frappe.utils.escape_html(
+				r.time_entered_by || "-"
+			)} (${frappe.datetime.str_to_user(frappe.datetime.convert_to_user_tz(r.time_entered_on))})`
+	);
+	frm.dashboard.add_comment(
+		`<b>เวลาทำงานถูกคีย์เองในฟอร์ม ${rows.length} รายการ:</b> ${lines.join(" · ")}`,
+		"orange",
+		true
+	);
+}
+
+function preview_actual_time(frm) {
+	// mirror ของ compute_actual_time ใน service_order.py (ต้องแก้คู่กัน) — ให้เห็นผลก่อน save
+	// เริ่มแรกสุด → จบท้ายสุด; ยังไม่มีเวลาเริ่มหรือเวลาจบเลยให้คงค่าเดิมไว้
+	const rows = frm.doc.service_types || [];
+	const starts = rows.filter((r) => r.start_time).map((r) => moment(r.start_time));
+	const ends = rows.filter((r) => r.end_time).map((r) => moment(r.end_time));
+	if (!starts.length || !ends.length) return;
+
+	const hours = moment.max(ends).diff(moment.min(starts), "seconds") / 3600;
+	frm.set_value("actual_time", flt(hours, 2));
+}
+
 function lock_rows_with_submitted_material_issue(frm) {
 	if (!frm.doc.service_items) return;
 	if (!frm.fields_dict.service_items || !frm.fields_dict.service_items.grid) return;

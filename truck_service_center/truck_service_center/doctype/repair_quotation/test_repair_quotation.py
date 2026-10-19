@@ -62,3 +62,12 @@ class UnitTestRepairQuotation(UnitTestCase):
 		self.assertEqual(rq.labor_charges, 1500)
 		self.assertEqual(rq.total_parts_amount, 1800)
 		self.assertEqual(rq.total_amount, 3300)
+
+	def test_line_discount_in_baht_has_no_satang(self):
+		"""ค่าแรง/อะไหล่ 300 คีย์ลด 100 บาท (ฟอร์มตั้ง % = 33.33 ให้) → ลด 100 พอดี"""
+		rq = make_quotation(
+			labor_rows=[{"labor_charges": 300, "discount_percentage": 33.33, "discount_amount": 100}],
+			item_rows=[{"qty": 1, "rate": 300, "discount_percentage": 33.33, "discount_amount": 100}],
+		)
+		self.assertEqual(rq.service_types[0].amount, 200)
+		self.assertEqual(rq.service_items[0].amount, 200)

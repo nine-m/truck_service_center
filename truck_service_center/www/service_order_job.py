@@ -222,6 +222,8 @@ def _build_service_rows(doc, is_manager):
 				state_label=SERVICE_STATE_LABELS[state],
 				start_label=format_datetime(row.start_time, "dd/MM HH:mm") if row.start_time else "",
 				end_label=format_datetime(row.end_time, "dd/MM HH:mm") if row.end_time else "",
+				# เวลาที่หัวหน้าช่างคีย์เองใน desk — โชว์ให้รู้ว่าไม่ได้มาจากปุ่ม
+				manual_time=bool(row.time_manually_entered),
 				# ปุ่มเริ่มโผล่เฉพาะตอนรับรถแล้ว — สถานะใบงานไม่ได้ถูก drive จากปุ่มรายงาน
 				can_start=allowed and state == "pending" and doc.status == "In Progress",
 				can_finish=allowed and state == "running",

@@ -628,6 +628,265 @@ class UnitTestServiceOrder(UnitTestCase):
 
 		self.assertEqual(so.actual_time, 1.5)
 
+	# ── ส่วนลดรายบรรทัด: บาทเป็นตัวหลัก ───────────────────────────────────────────
+
+	def test_labor_discount_in_baht_has_no_satang(self):
+		"""ค่าแรง 300 คีย์ลด 100 บาท (ฟอร์มตั้ง % = 33.33 ให้) → ยอด 200.00 ไม่ใช่ 200.01"""
+		so = make_order(
+			labor_rows=[{"labor_charges": 300, "discount_percentage": 33.33, "discount_amount": 100}]
+		)
+		row = so.service_types[0]
+		self.assertEqual(row.discount_amount, 100)
+		self.assertEqual(row.amount, 200)
+		self.assertEqual(so.labor_charges, 200)
+
+	def test_part_discount_in_baht_has_no_satang(self):
+		so = make_order(
+			item_rows=[
+				{
+					"item_code": "X",
+					"qty": 2,
+					"rate": 300,
+					"discount_percentage": 33.33,
+					"discount_amount": 100,
+				}
+			]
+		)
+		self.assertEqual(so.service_items[0].amount, 400)
+
+	def test_labor_discount_in_percent_still_works(self):
+		so = make_order(labor_rows=[{"labor_charges": 300, "discount_percentage": 10}])
+		self.assertEqual(so.service_types[0].discount_amount, 30)
+		self.assertEqual(so.service_types[0].amount, 270)
+
+	# ── เตือนช่องจอดเฉพาะตอนที่การจัดช่องจอดเปลี่ยน ─────────────────────────────
+
+	def bay_changed(self, before, after):
+		"""before/after = (ช่องจอดหลัก, [แถว]) — before None = ใบใหม่"""
+		so = make_order(service_bay=after[0], labor_rows=after[1])
+		old = make_order(service_bay=before[0], labor_rows=before[1]) if before else None
+		with patch.object(so, "get_doc_before_save", return_value=old):
+			return so.bay_assignment_changed()
+
+	def test_bay_warning_skipped_when_bays_unchanged(self):
+		"""แก้เรื่องอื่นในใบงาน → ไม่เตือนช่องจอดซ้ำ"""
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01", "remark": "เดิม"}]
+		changed = [{**rows[0], "remark": "แก้หมายเหตุ"}]
+		self.assertFalse(self.bay_changed(("BAY-01", rows), ("BAY-01", changed)))
+
+	def test_bay_warning_when_row_bay_or_service_type_changes(self):
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01"}]
+		self.assertTrue(
+			self.bay_changed(("BAY-01", rows), ("BAY-01", [{**rows[0], "service_bay": "BAY-02"}]))
+		)
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-01", [{**rows[0], "service_type": "ST-B"}])))
+
+	def test_bay_warning_when_main_bay_changes_or_row_added(self):
+		rows = [{"name": "r1", "service_type": "ST-A", "service_bay": "BAY-01"}]
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-02", rows)))
+		self.assertTrue(self.bay_changed(("BAY-01", rows), ("BAY-01", [*rows, {"service_type": "ST-B"}])))
+		self.assertTrue(self.bay_changed(None, ("BAY-01", rows)))
+
+	# ── สถานะเปลี่ยนได้ผ่านปุ่มเท่านั้น ─────────────────────────────────────────────
+
+	def run_status_check(self, old_status, new_status, allowed=False, **fields):
+		"""เรียก validate_status_change โดยจำลองสถานะก่อน save (old_status None = ใบใหม่)"""
+		so = make_order(status=new_status, **fields)
+		so.flags.allow_status_change = allowed
+		before = make_order(status=old_status) if old_status else None
+
+		with (
+			patch.object(so, "is_new", return_value=old_status is None),
+			patch.object(so, "get_doc_before_save", return_value=before),
+		):
+			so.validate_status_change()
+
+	def test_user_cannot_pick_status(self):
+		with self.assertRaises(frappe.PermissionError):
+			self.run_status_check("In Progress", "Ready for Delivery")
+
+	def test_status_button_path_allowed(self):
+		"""ปุ่มจบงาน/พักงาน (set_status) และรับรถตั้ง flag ไว้ → เปลี่ยนได้"""
+		self.run_status_check("In Progress", "Ready for Delivery", allowed=True)
+		self.run_status_check("In Progress", "On Hold", allowed=True)
+
+	def test_unchanged_status_saves_freely(self):
+		self.run_status_check("In Progress", "In Progress")
+
+	def test_new_order_must_start_as_draft(self):
+		self.run_status_check(None, "Draft")
+		with self.assertRaises(frappe.PermissionError):
+			self.run_status_check(None, "In Progress")
+
+	def test_amendment_keeps_copied_status(self):
+		"""ใบ amend ได้สถานะติดมาจากใบที่ยกเลิก — ไม่ถือว่าผู้ใช้เลือกเอง"""
+		self.run_status_check(None, "Completed", amended_from="SO-OLD")
+
+	def test_button_path_still_cannot_reach_completed(self):
+		"""แม้มี flag ก็ยังเลือก Completed ระหว่าง draft ไม่ได้ (เกิดจาก submit เท่านั้น)"""
+		with self.assertRaises(frappe.ValidationError):
+			self.run_status_check("Ready for Delivery", "Completed", allowed=True)
+
+	# ── คีย์เวลาเริ่ม-จบเองในฟอร์ม (หัวหน้าช่าง/ผู้ดูแลระบบ) ──────────────────────
+
+	def run_work_time_check(self, before_rows, after_rows, roles=("Technician",), portal=False, **fields):
+		"""เรียก validate_work_times โดยจำลองแถวก่อน save และ role ของผู้ใช้"""
+		so = make_order(labor_rows=after_rows, **fields)
+		before = make_order(labor_rows=before_rows) if before_rows is not None else None
+		so.flags.allow_work_time_stamp = portal
+
+		with (
+			patch.object(so, "get_doc_before_save", return_value=before),
+			patch("frappe.get_roles", return_value=list(roles)),
+		):
+			so.validate_work_times()
+
+		return so
+
+	def test_technician_cannot_edit_work_time_in_form(self):
+		"""ช่างทั่วไปแก้เวลาในฟอร์มไม่ได้ ต้องกดเริ่ม/จบในพอร์ทัล"""
+		with self.assertRaises(frappe.PermissionError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2026-09-01 20:00:00"}],
+			)
+
+	def test_technician_manager_can_backdate_work_time(self):
+		"""หัวหน้าช่างคีย์ย้อนหลังนอกเวลาทำการได้"""
+		self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 20:00:00", "end_time": "2026-09-01 23:30:00"}],
+			roles=("Technician Manager",),
+		)
+
+	def test_portal_stamp_allowed_for_technician(self):
+		"""ปุ่มเริ่ม/จบในพอร์ทัลตั้ง flag ไว้ ช่างจึง stamp เวลาได้"""
+		self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00"}],
+			portal=True,
+		)
+
+	def test_unchanged_work_time_does_not_need_role(self):
+		"""แก้เรื่องอื่นในใบงาน เวลาเดิมไม่เปลี่ยน → ช่างทั่วไป save ได้ (เศษ microsecond ไม่นับ)"""
+		self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00.123456"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "remark": "แก้หมายเหตุ"}],
+		)
+
+	def test_work_time_end_before_start_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2026-09-01 10:00:00", "end_time": "2026-09-01 09:00:00"}],
+				roles=("Technician Manager",),
+			)
+
+	def test_work_time_end_without_start_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "end_time": "2026-09-01 09:00:00"}],
+				roles=("System Manager",),
+			)
+
+	def test_work_time_in_future_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.run_work_time_check(
+				[{"name": "r1"}],
+				[{"name": "r1", "start_time": "2999-01-01 08:00:00"}],
+				roles=("Service Manager",),
+			)
+
+	def test_new_order_with_work_time_needs_role(self):
+		"""ใบใหม่ (ไม่มี doc ก่อน save) ที่มีเวลามาด้วย ถือว่าแก้เวลา"""
+		with self.assertRaises(frappe.PermissionError):
+			self.run_work_time_check(None, [{"start_time": "2026-09-01 08:00:00"}], roles=("Service User",))
+
+	# ── ร่องรอยการคีย์เวลาเอง ────────────────────────────────────────────────────
+
+	def test_manual_entry_stamps_trace(self):
+		"""คีย์เวลาในฟอร์ม → แถวถูกติ๊กว่าคีย์เอง พร้อมผู้คีย์/เวลาที่คีย์ และใบงานถูกติ๊กด้วย"""
+		so = self.run_work_time_check(
+			[{"name": "r1"}, {"name": "r2"}],
+			[{"name": "r1", "start_time": "2026-09-01 20:00:00"}, {"name": "r2"}],
+			roles=("Technician Manager",),
+		)
+
+		row, untouched = so.service_types
+		self.assertEqual(row.time_manually_entered, 1)
+		self.assertEqual(row.time_entered_by, frappe.session.user)
+		self.assertTrue(row.time_entered_on)
+		self.assertFalse(untouched.time_manually_entered)
+		self.assertEqual(so.has_manual_work_time, 1)
+
+	def test_portal_stamp_leaves_no_trace(self):
+		so = self.run_work_time_check(
+			[{"name": "r1"}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00"}],
+			portal=True,
+		)
+
+		self.assertFalse(so.service_types[0].time_manually_entered)
+		self.assertEqual(so.has_manual_work_time, 0)
+
+	def test_portal_finish_keeps_manual_trace(self):
+		"""คีย์เวลาเริ่มเองแล้วช่างกดจบในพอร์ทัล — ยังนับเป็นแถวที่คีย์เอง"""
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "end_time": "2026-09-01 10:00:00", **trace}],
+			portal=True,
+		)
+
+		self.assertEqual(so.service_types[0].time_manually_entered, 1)
+		self.assertEqual(so.service_types[0].time_entered_by, "boss@x")
+
+	def test_reset_clears_manual_trace(self):
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", **trace}],
+			roles=("Technician Manager",),
+		)
+
+		self.assertFalse(so.service_types[0].time_manually_entered)
+		self.assertIsNone(so.service_types[0].time_entered_by)
+		self.assertEqual(so.has_manual_work_time, 0)
+
+	def test_client_cannot_clear_manual_trace(self):
+		"""ส่งธงเป็น 0 มาโดยไม่แตะเวลา → server คืนร่องรอยจากรอบก่อน"""
+		trace = {"time_manually_entered": 1, "time_entered_by": "boss@x", "time_entered_on": "2026-09-02"}
+		so = self.run_work_time_check(
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", **trace}],
+			[{"name": "r1", "start_time": "2026-09-01 08:00:00", "time_manually_entered": 0}],
+		)
+
+		self.assertEqual(so.service_types[0].time_manually_entered, 1)
+		self.assertEqual(so.service_types[0].time_entered_by, "boss@x")
+		self.assertEqual(so.has_manual_work_time, 1)
+
+	def test_amendment_keeps_original_trace(self):
+		"""ใบ amend ได้เวลาติดมาจากใบเดิม — ไม่ถูกประทับใหม่เป็นชื่อคนที่ amend"""
+		so = self.run_work_time_check(
+			None,
+			[
+				{"start_time": "2026-09-01 08:00:00"},
+				{
+					"start_time": "2026-09-01 09:00:00",
+					"time_manually_entered": 1,
+					"time_entered_by": "boss@x",
+				},
+			],
+			roles=("Service Manager",),
+			amended_from="SO-OLD",
+		)
+
+		plain, manual = so.service_types
+		self.assertFalse(plain.time_manually_entered)
+		self.assertEqual(manual.time_entered_by, "boss@x")
+		self.assertEqual(so.has_manual_work_time, 1)
+
 	# ── ช่างจากแถวงาน sync ขึ้นระดับใบงาน ──────────────────────────────────────
 
 	def test_row_technicians_fill_first_free_parent_slots(self):

@@ -21,6 +21,10 @@
   "time_section",
   "start_time",
   "end_time",
+  "column_break_time",
+  "time_manually_entered",
+  "time_entered_by",
+  "time_entered_on",
   "technician_row_section",
   "technician_1",
   "technician_2",
@@ -134,17 +138,49 @@
    "label": "เวลาทำงาน"
   },
   {
-   "description": "บันทึกอัตโนมัติเมื่อช่างกดเริ่มงานในพอร์ทัล",
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดเริ่มงานในพอร์ทัล — หัวหน้าช่าง/ผู้ดูแลระบบคีย์เองได้ (เช่นงานนอกเวลาทำการ)",
    "fieldname": "start_time",
    "fieldtype": "Datetime",
    "label": "เวลาเริ่ม",
+   "no_copy": 1,
    "read_only": 1
   },
   {
-   "description": "บันทึกอัตโนมัติเมื่อช่างกดจบงานในพอร์ทัล",
+   "description": "บันทึกอัตโนมัติเมื่อช่างกดจบงานในพอร์ทัล — หัวหน้าช่าง/ผู้ดูแลระบบคีย์เองได้ (เช่นงานนอกเวลาทำการ)",
    "fieldname": "end_time",
    "fieldtype": "Datetime",
    "label": "เวลาจบ",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_time",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "ระบบติ๊กให้เองเมื่อเวลาเริ่ม-จบถูกคีย์ในฟอร์มแทนการกดในพอร์ทัล",
+   "fieldname": "time_manually_entered",
+   "fieldtype": "Check",
+   "label": "คีย์เวลาเอง",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "time_manually_entered",
+   "fieldname": "time_entered_by",
+   "fieldtype": "Link",
+   "label": "ผู้คีย์เวลา",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "time_manually_entered",
+   "fieldname": "time_entered_on",
+   "fieldtype": "Datetime",
+   "label": "คีย์เวลาเมื่อ",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -220,7 +256,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-03 09:10:00.000000",
+ "modified": "2026-10-07 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Service Type",

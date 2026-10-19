@@ -4,8 +4,9 @@
 import frappe
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import cint, flt, now_datetime, time_diff_in_hours
+from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
 
+from truck_service_center.discounts import distribute_package_discount, percent_of, resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
 
 # ฟิลด์ของแถวอะไหล่ที่ห้ามแก้หลังใบเบิกถูก submit — ชุดเดียวกับที่ฝั่ง client ล็อกไว้
@@ -28,6 +29,17 @@ ROW_TECHNICIAN_FIELDS = tuple(f"technician_{i}" for i in range(1, 11))
 
 # ช่องช่างระดับใบงาน — ช่องแรกชื่อ technician เฉย ๆ ที่เหลือมีเลขต่อท้าย
 PARENT_TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
+
+# เวลาเริ่ม-จบของแถวงาน ปกติได้จากปุ่มเริ่ม/จบในพอร์ทัลช่าง แต่ role เหล่านี้คีย์/แก้เองในฟอร์มได้
+# (เช่นคีย์ย้อนหลังงานที่ทำนอกเวลาทำการ) — ฝั่ง client ปลดล็อกช่องให้ด้วยชุดเดียวกัน
+# (WORK_TIME_EDITOR_ROLES ใน service_order.js)
+WORK_TIME_EDITOR_ROLES = {"Technician Manager", "Service Manager", "System Manager"}
+WORK_TIME_FIELDS = ("start_time", "end_time")
+
+STATUS_LOCKED_MESSAGE = (
+	"สถานะใบสั่งงานเปลี่ยนเองไม่ได้ — ใช้ปุ่ม รับรถ / พักงาน / ทำงานต่อ / จบงาน (ในฟอร์มหรือพอร์ทัลช่าง) "
+	"ส่วน Completed เกิดจากการ submit"
+)
 
 # สถานะที่ถือว่าใบงานยัง "เปิด" อยู่ — ใช้หาว่าช่องจอดถูกใบอื่นใช้ค้างไว้หรือเปล่า
 # ประกาศที่นี่ ไม่ import EDITABLE_STATUSES จาก technician_portal เพราะฝั่งนั้น
@@ -66,6 +78,24 @@ def get_default_selling_rate(item_code, price_list=None):
 	return flt(item.standard_rate) or flt(item.valuation_rate)
 
 
+def _to_second(value):
+	"""datetime ตัดเศษวินาทีทิ้ง — ค่าว่างคืน None (get_datetime(None) จะคืนเวลาปัจจุบัน)
+
+	ค่าจาก DB มี microsecond แต่ค่าที่ฟอร์มส่งกลับมาอาจถูกตัดไปแล้ว ถ้าเทียบตรง ๆ
+	การ save เรื่องอื่นของผู้ใช้ที่ไม่มีสิทธิ์จะถูกมองว่าแก้เวลา
+	"""
+	if not value:
+		return None
+	return get_datetime(value).replace(microsecond=0)
+
+
+def _copy_work_time_audit(row, source):
+	"""คัดร่องรอยการคีย์เวลาจากแถว source (None = ล้างทิ้ง)"""
+	row.time_manually_entered = cint(source.time_manually_entered) if source else 0
+	row.time_entered_by = source.time_entered_by if source else None
+	row.time_entered_on = source.time_entered_on if source else None
+
+
 class ServiceOrder(Document):
 	def validate(self):
 		self.validate_status_change()
@@ -79,6 +109,7 @@ class ServiceOrder(Document):
 		self.calculate_totals()
 		self.apply_default_bay()
 		self.sync_row_technicians_to_parent()
+		self.validate_work_times()
 		self.compute_actual_time()
 		self.warn_bay_issues()
 		self.calculate_wht()
@@ -86,9 +117,20 @@ class ServiceOrder(Document):
 		self.update_material_issue_status()
 
 	def validate_status_change(self):
-		"""ป้องกันการย้อนสถานะจาก In Progress กลับเป็น Draft"""
+		"""สถานะเปลี่ยนได้ผ่านปุ่มเท่านั้น ผู้ใช้เลือกเองในฟอร์ม/API ไม่ได้
+
+		ทางที่ตั้ง flags.allow_status_change: receive_vehicle (รับรถ) และ set_status ของพอร์ทัล
+		(พักงาน / ทำงานต่อ / จบงาน — ปุ่มในฟอร์มก็เรียกตัวเดียวกัน) ส่วน Completed มาจาก
+		before_submit ซึ่งรันหลัง validate จึงไม่ผ่านด่านนี้
+		"""
 		if self.is_new():
+			# ใบ amend ได้สถานะติดมาจากใบที่ยกเลิก (amend คัด no_copy ด้วย) — ปล่อยไว้ตามเดิม
+			if self.status != "Draft" and not self.amended_from and not self.flags.allow_status_change:
+				frappe.throw(STATUS_LOCKED_MESSAGE, frappe.PermissionError, title="ไม่สามารถเปลี่ยนสถานะได้")
 			return
+
+		if self.has_value_changed("status") and not self.flags.allow_status_change:
+			frappe.throw(STATUS_LOCKED_MESSAGE, frappe.PermissionError, title="ไม่สามารถเปลี่ยนสถานะได้")
 
 		old_status = self.get_doc_before_save()
 		if old_status and old_status.status == "In Progress" and self.status == "Draft":
@@ -110,8 +152,8 @@ class ServiceOrder(Document):
 	def stamp_receive_on_progress(self):
 		"""ถือว่าการเปลี่ยนสถานะเป็น In Progress คือการรับรถ และบันทึกเวลานั้นไว้
 
-		ปุ่ม "รับรถ" (receive_vehicle) ยังเป็นทางหลักที่ผ่านการตรวจน้ำมันรับเข้า
-		แต่ status เป็น Select ที่แก้ด้วยมือในฟอร์มได้ ถ้าแก้ตรง ๆ ก็ให้ stamp ให้ด้วย
+		ปุ่ม "รับรถ" (receive_vehicle) เป็นทางหลักที่ผ่านการตรวจน้ำมันรับเข้า ตัวนี้เป็นตาข่ายรอง
+		ให้ทางอื่นที่ได้สิทธิ์เปลี่ยนสถานะ (validate_status_change) ยัง stamp ครบ
 		เพื่อให้ received_date สะท้อนเวลาที่เริ่มงานจริงเสมอ
 
 		ไม่เขียนทับค่าเดิม — receive_vehicle stamp มาก่อนเรียก save() อยู่แล้ว
@@ -249,10 +291,11 @@ class ServiceOrder(Document):
 			if not package.is_active:
 				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
 
-			discount_pct = flt(package.discount_percent)
+			# ส่วนลดแพ็คเกจแจกเป็นบาทต่อแถว ให้รวมแล้วตรงราคาแพ็คเกจ (ไม่ใส่ % ตรง ๆ ซึ่งเหลือเศษ)
+			labor_discounts, part_discounts = distribute_package_discount(package)
 
 			# เพิ่ม service types จาก package
-			for st in package.package_service_types:
+			for st, discount in zip(package.package_service_types, labor_discounts, strict=True):
 				self.append(
 					"service_types",
 					{
@@ -261,14 +304,15 @@ class ServiceOrder(Document):
 						"maintenance_type": st.maintenance_type,
 						"estimated_time": st.estimated_time,
 						"labor_charges": st.labor_rate,
-						"discount_percentage": discount_pct,
+						"discount_amount": discount,
+						"discount_percentage": percent_of(discount, st.labor_rate),
 						"service_package": pkg_name,
 					},
 				)
 
 			# เพิ่ม parts จาก package
 			default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-			for part in package.package_parts:
+			for part, discount in zip(package.package_parts, part_discounts, strict=True):
 				self.append(
 					"service_items",
 					{
@@ -277,7 +321,8 @@ class ServiceOrder(Document):
 						"qty": part.qty,
 						"uom": part.uom,
 						"rate": part.rate,
-						"discount_percentage": discount_pct,
+						"discount_amount": discount,
+						"discount_percentage": percent_of(discount, part.rate),
 						"warehouse": default_warehouse,
 						"service_package": pkg_name,
 						"service_type": part.service_type,
@@ -420,46 +465,29 @@ class ServiceOrder(Document):
 		self.outstanding_amount = flt(self.total_amount) - flt(self.paid_amount)
 
 	def _calculate_line_discount(self, item):
-		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item
-
-		Logic (inspired by ERPNext Sales Order):
-		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก rate
-		- ถ้ากรอก discount_amount (โดยไม่มี discount_percentage) → คำนวณ discount_percentage จาก rate
-		- amount = (rate - discount_per_unit) * qty
-		"""
+		"""ส่วนลดระดับบรรทัดของ Service Order Item (ต่อหน่วย) — บาทเป็นตัวหลัก ดู resolve_line_discount"""
 		rate = flt(item.rate)
 		qty = flt(item.qty)
 
-		if flt(item.discount_percentage) > 0:
-			# คำนวณ discount_amount จาก percentage
-			item.discount_amount = flt(rate * flt(item.discount_percentage) / 100, 2)
+		item.discount_percentage, item.discount_amount = resolve_line_discount(
+			rate, item.discount_percentage, item.discount_amount
+		)
 
-		if flt(item.discount_amount) > 0 and rate > 0 and not flt(item.discount_percentage):
-			# คำนวณ discount_percentage จาก amount (ถ้ายังไม่มี percentage)
-			item.discount_percentage = flt(flt(item.discount_amount) / rate * 100, 2)
-
-		# คำนวณ amount หลังส่วนลด
-		discount_per_unit = flt(item.discount_amount)
-		net_rate = flt(rate - discount_per_unit, 2)
+		net_rate = flt(rate - flt(item.discount_amount), 2)
 		if net_rate < 0:
 			net_rate = 0
 		item.amount = flt(net_rate * qty, 2)
 
 	def _calculate_service_type_discount(self, service_type):
-		"""คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Service Type
+		"""ส่วนลดระดับบรรทัดของ Service Order Service Type — บาทเป็นตัวหลัก ดู resolve_line_discount
 
-		Logic:
-		- ถ้ากรอก discount_percentage → คำนวณ discount_amount จาก labor_charges
-		- ถ้ากรอก discount_amount → คำนวณ discount_percentage จาก labor_charges
-		- amount = labor_charges - discount_amount
+		amount = labor_charges - discount_amount
 		"""
 		labor = flt(service_type.labor_charges)
 
-		if flt(service_type.discount_percentage) > 0:
-			service_type.discount_amount = flt(labor * flt(service_type.discount_percentage) / 100, 2)
-
-		if flt(service_type.discount_amount) > 0 and labor > 0 and not flt(service_type.discount_percentage):
-			service_type.discount_percentage = flt(flt(service_type.discount_amount) / labor * 100, 2)
+		service_type.discount_percentage, service_type.discount_amount = resolve_line_discount(
+			labor, service_type.discount_percentage, service_type.discount_amount
+		)
 
 		discount = flt(service_type.discount_amount)
 		net_labor = flt(labor - discount, 2)
@@ -539,6 +567,23 @@ class ServiceOrder(Document):
 			if not row.service_bay:
 				row.service_bay = self.service_bay
 
+	def bay_assignment_changed(self):
+		"""ใบใหม่ / ช่องจอดหลักเปลี่ยน / มีแถวงานใหม่หรือแถวที่ประเภทบริการ-ช่องจอดเปลี่ยน
+
+		เรียกหลัง apply_default_bay จึงเทียบช่องจอดที่มีผลจริงของแถว (ใบเดิมก็ถูกเติมไว้แบบเดียวกัน)
+		"""
+		before = self.get_doc_before_save()
+		if not before:
+			return True
+
+		if before.service_bay != self.service_bay:
+			return True
+
+		old_pairs = {row.name: (row.service_type, row.service_bay) for row in before.service_types}
+		return any(
+			old_pairs.get(row.name) != (row.service_type, row.service_bay) for row in self.service_types
+		)
+
 	def sync_row_technicians_to_parent(self):
 		"""รวมช่างจากทุกแถวงานขึ้นมาไว้ที่ระดับใบงาน
 
@@ -594,8 +639,80 @@ class ServiceOrder(Document):
 
 		self.actual_time = flt(time_diff_in_hours(max(ends), min(starts)), 2)
 
+	def validate_work_times(self):
+		"""ตรวจเวลาเริ่ม-จบที่ถูกแก้ในรอบนี้ — ใครแก้ได้ และค่าที่แก้สมเหตุสมผลไหม
+
+		ตรวจเฉพาะแถวที่ค่าเปลี่ยน ข้อมูลเก่าที่ไม่ได้แตะจึงไม่ทำให้ save ไม่ผ่าน
+		พอร์ทัลช่างตั้ง flags.allow_work_time_stamp ตอน stamp เวลาจากปุ่มเริ่ม/จบ
+		แถวที่ถูกคีย์เวลาเองจะถูกประทับร่องรอยไว้ (stamp_manual_work_time)
+		"""
+		before = self.get_doc_before_save()
+		old_rows = {row.name: row for row in before.service_types} if before else {}
+		# ใบ amend ได้เวลาและร่องรอยติดมาจากใบที่ยกเลิก — คงของเดิมไว้ ไม่นับเป็นการคีย์ใหม่
+		is_amendment = self.is_new() and self.amended_from
+
+		changed_rows = []
+		for row in self.service_types:
+			old = old_rows.get(row.name)
+			if any(
+				_to_second(row.get(f)) != _to_second(old.get(f) if old else None) for f in WORK_TIME_FIELDS
+			):
+				changed_rows.append(row)
+			elif not is_amendment:
+				# ร่องรอยเป็นของ server — คืนค่าจากรอบก่อนเสมอ กันการล้างธงผ่าน API
+				_copy_work_time_audit(row, old)
+
+		if changed_rows:
+			self.check_changed_work_times(changed_rows)
+			if not is_amendment:
+				self.stamp_manual_work_time(changed_rows)
+
+		self.has_manual_work_time = int(any(row.time_manually_entered for row in self.service_types))
+
+	def check_changed_work_times(self, changed_rows):
+		"""role ของผู้แก้ + ความสมเหตุสมผลของเวลา เฉพาะแถวที่เวลาเปลี่ยน"""
+		if not self.flags.allow_work_time_stamp and not (WORK_TIME_EDITOR_ROLES & set(frappe.get_roles())):
+			frappe.throw(
+				"เฉพาะหัวหน้าช่างหรือผู้ดูแลระบบเท่านั้นที่แก้เวลาเริ่ม-จบของงานในฟอร์มได้ — ช่างให้กดเริ่ม/จบงานในพอร์ทัล",
+				frappe.PermissionError,
+				title="ไม่มีสิทธิ์แก้เวลาทำงาน",
+			)
+
+		now = now_datetime()
+		for row in changed_rows:
+			label = f"แถวที่ {row.idx} ({row.service_type or 'ไม่ระบุ'})"
+			start, end = _to_second(row.start_time), _to_second(row.end_time)
+
+			if end and not start:
+				frappe.throw(f"{label}: ต้องระบุเวลาเริ่มก่อนจึงจะระบุเวลาจบได้")
+			if start and end and end < start:
+				frappe.throw(f"{label}: เวลาจบต้องไม่ก่อนเวลาเริ่ม")
+			if (start and start > now) or (end and end > now):
+				frappe.throw(f"{label}: เวลาเริ่ม-จบต้องไม่เกินเวลาปัจจุบัน")
+
+	def stamp_manual_work_time(self, changed_rows):
+		"""ประทับว่าแถวนี้ถูกคีย์เวลาเองในฟอร์ม โดยใคร เมื่อไร
+
+		stamp จากปุ่มในพอร์ทัลไม่ประทับ แต่ก็ไม่ลบร่องรอยเดิม — แถวที่คีย์เวลาเริ่มเองแล้ว
+		ช่างกดจบในพอร์ทัลยังนับเป็นคีย์เอง ล้างเวลาทั้งคู่ (reset) แล้วร่องรอยหายไปด้วย
+		"""
+		for row in changed_rows:
+			if not row.start_time and not row.end_time:
+				_copy_work_time_audit(row, None)
+			elif not self.flags.allow_work_time_stamp:
+				row.time_manually_entered = 1
+				row.time_entered_by = frappe.session.user
+				row.time_entered_on = now_datetime()
+
 	def warn_bay_issues(self):
-		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)"""
+		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)
+
+		เตือนเฉพาะรอบที่การจัดช่องจอดเปลี่ยน — ถ้าเตือนทุกครั้งที่ save ใบที่ผู้ใช้รับทราบแล้ว
+		ว่าช่องจอดไม่ตรงประเภท (และตั้งใจใช้แบบนั้น) จะเด้งเตือนซ้ำทุกการแก้เรื่องอื่น
+		"""
+		if not self.bay_assignment_changed():
+			return
+
 		for warning in get_bay_warnings(self):
 			frappe.msgprint(warning, indicator="orange")
 
@@ -1623,9 +1740,33 @@ def receive_vehicle(service_order):
 	doc.received_by = frappe.session.user
 	doc.received_date = now_datetime()
 	doc.status = "In Progress"
+	doc.flags.allow_status_change = True
 	doc.save()
 
 	return {"status": "ok"}
+
+
+@frappe.whitelist()
+def reopen_job(service_order):
+	"""เปิดงานที่จบแล้ว (รอส่งมอบรถ) กลับเป็นกำลังซ่อม — หัวหน้าช่าง/ผู้จัดการเท่านั้น
+
+	สถานะเลือกเองไม่ได้ (validate_status_change) และพอร์ทัลไม่มีทางย้อนจาก Ready for Delivery
+	ตัวนี้จึงเป็นทางเดียวที่แก้การกดจบงานผิด
+	"""
+	doc = frappe.get_doc("Service Order", service_order)
+	doc.check_permission("write")
+
+	if not (WORK_TIME_EDITOR_ROLES & set(frappe.get_roles())):
+		frappe.throw("เฉพาะหัวหน้าช่างหรือผู้จัดการเท่านั้นที่เปิดงานอีกครั้งได้", frappe.PermissionError)
+
+	if doc.docstatus != 0 or doc.status != "Ready for Delivery":
+		frappe.throw("เปิดงานอีกครั้งได้เฉพาะใบที่ยังไม่ submit และอยู่ในสถานะรอส่งมอบรถ")
+
+	doc.status = "In Progress"
+	doc.flags.allow_status_change = True
+	doc.save()
+
+	return {"status": doc.status}
 
 
 @frappe.whitelist()

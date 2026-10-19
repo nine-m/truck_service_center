@@ -89,7 +89,7 @@
 						</span>
 						{% if line.start_label or line.end_label %}
 						<span class="tsc-line-sub">
-							เริ่ม {{ line.start_label or "-" }} &middot; จบ {{ line.end_label or "-" }}
+							เริ่ม {{ line.start_label or "-" }} &middot; จบ {{ line.end_label or "-" }}{% if line.manual_time %} &middot; คีย์เวลาเอง{% endif %}
 						</span>
 						{% endif %}
 						{% if line.remark %}<span class="tsc-line-note">{{ line.remark }}</span>{% endif %}
@@ -224,7 +224,7 @@
 				<h2 class="tsc-card-title">สถานะน้ำมันรับเข้า</h2>
 				<div class="tsc-choices" data-group="fuel-in">
 					{% for level in fuel_levels %}
-					<button type="button" class="tsc-choice {% if job.fuel_level_in == level %}is-active{% endif %}"
+					<button type="button" class="tsc-choice {% if loop.last %}tsc-choice-wide{% endif %} {% if job.fuel_level_in == level %}is-active{% endif %}"
 						data-action="fuel" data-which="in" data-value="{{ level }}"
 						{% if not editable %}disabled{% endif %}>{{ level }}</button>
 					{% endfor %}
@@ -235,7 +235,7 @@
 				<h2 class="tsc-card-title">สถานะน้ำมันนำส่ง</h2>
 				<div class="tsc-choices" data-group="fuel-out">
 					{% for level in fuel_levels %}
-					<button type="button" class="tsc-choice {% if job.fuel_level_out == level %}is-active{% endif %}"
+					<button type="button" class="tsc-choice {% if loop.last %}tsc-choice-wide{% endif %} {% if job.fuel_level_out == level %}is-active{% endif %}"
 						data-action="fuel" data-which="out" data-value="{{ level }}"
 						{% if not editable %}disabled{% endif %}>{{ level }}</button>
 					{% endfor %}
@@ -565,6 +565,8 @@
 
 	/* ปุ่มเลือกระดับน้ำมัน — เต็มความกว้าง แตะง่าย */
 	.tsc-choices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.375rem; }
+	/* NOT CHECK ไม่ใช่ระดับน้ำมัน — แยกเป็นแถวเต็มความกว้างใต้ 5 ระดับ */
+	.tsc-choice-wide { grid-column: 1 / -1; }
 	.tsc-choice {
 		min-height: 52px; padding: 0.5rem 0.25rem;
 		font-size: 0.9375rem; font-weight: 500;
