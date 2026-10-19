@@ -12,6 +12,7 @@ from truck_service_center.truck_service_center.doctype.service_order.service_ord
 	get_bay_warnings,
 	get_user_display_name,
 	material_issue_status_label,
+	plan_bay_assignment,
 	select_group_requisition_rows,
 	select_requisition_rows,
 	select_unclaimed_requisition_rows,
@@ -1249,3 +1250,88 @@ class UnitTestRequisitionApproval(UnitTestCase):
 		# MAT-STE-0001 ยังผูกกับแถว OIL-OLD อยู่ ส่วนใบที่ไม่อนุมัติต่อท้ายตามกลุ่มของใบ
 		self.assertEqual([issue.name for issue in groups["ENG"].issues], ["MAT-STE-0001", "MAT-STE-0002"])
 		self.assertEqual(groups["EL"].issues, [])
+
+
+def _bay(name, bay_type, free, is_closed=False):
+	return {"bay": name, "bay_type": bay_type, "free": free, "is_closed": is_closed}
+
+
+def _row(name, service_type, start_time=None, service_bay=None):
+	return frappe._dict(name=name, service_type=service_type, start_time=start_time, service_bay=service_bay)
+
+
+class UnitTestPlanBayAssignment(UnitTestCase):
+	"""plan_bay_assignment — ตรรกะปุ่ม "จัด Bay อัตโนมัติ" ของใบสั่งงาน (pure ไม่แตะ DB)"""
+
+	TYPES = {"ST-PIT": "PIT", "ST-GEN": None}
+
+	def plan(self, rows, hours, bays, busy=()):
+		return plan_bay_assignment(rows, hours, bays, busy, self.TYPES, "GENERAL")
+
+	def test_each_row_gets_a_bay_of_its_type_and_main_bay_is_the_longest_job(self):
+		plan = self.plan(
+			[_row("r1", "ST-PIT"), _row("r2", "ST-GEN")],
+			{"PIT": 2, "GENERAL": 5},
+			[_bay("PIT-01", "PIT", 8), _bay("BAY-01", "GENERAL", 8)],
+		)
+		self.assertEqual(plan["service_bay"], "BAY-01")
+		self.assertEqual(plan["row_bays"], {"r1": "PIT-01", "r2": "BAY-01"})
+
+	def test_prefers_a_bay_no_other_open_order_is_holding(self):
+		plan = self.plan(
+			[_row("r1", "ST-GEN")],
+			{"GENERAL": 2},
+			[_bay("BAY-01", "GENERAL", 8), _bay("BAY-02", "GENERAL", 3)],
+			busy={"BAY-01"},
+		)
+		self.assertEqual(plan["service_bay"], "BAY-02")
+
+	def test_among_free_bays_picks_the_one_with_room_then_the_emptiest(self):
+		bays = [_bay("BAY-01", "GENERAL", 3), _bay("BAY-02", "GENERAL", 6), _bay("BAY-03", "GENERAL", 1, True)]
+		plan = self.plan([_row("r1", "ST-GEN")], {"GENERAL": 4}, bays)
+		self.assertEqual(plan["service_bay"], "BAY-02")
+
+	def test_falls_back_to_a_busy_bay_rather_than_another_type(self):
+		plan = self.plan(
+			[_row("r1", "ST-PIT")],
+			{"PIT": 2},
+			[_bay("PIT-01", "PIT", 8), _bay("BAY-01", "GENERAL", 8)],
+			busy={"PIT-01"},
+		)
+		self.assertEqual(plan["row_bays"], {"r1": "PIT-01"})
+
+	def test_type_without_any_bay_uses_the_main_bay_and_is_reported(self):
+		plan = self.plan(
+			[_row("r1", "ST-PIT"), _row("r2", "ST-GEN")],
+			{"PIT": 1, "GENERAL": 3},
+			[_bay("BAY-01", "GENERAL", 8)],
+		)
+		self.assertEqual(plan["unallocatable"], ["PIT"])
+		self.assertEqual(plan["row_bays"], {"r1": "BAY-01", "r2": "BAY-01"})
+
+	def test_started_rows_are_not_moved(self):
+		plan = self.plan(
+			[_row("r1", "ST-GEN", start_time="2026-10-19 08:00:00"), _row("r2", "ST-GEN")],
+			{"GENERAL": 2},
+			[_bay("BAY-01", "GENERAL", 8)],
+		)
+		self.assertEqual(plan["row_bays"], {"r2": "BAY-01"})
+
+	def test_started_row_keeps_main_bay_on_its_bay(self):
+		plan = self.plan(
+			[_row("r1", "ST-GEN", start_time="2026-10-19 08:00:00", service_bay="BAY-02"), _row("r2", "ST-PIT")],
+			{"GENERAL": 5, "PIT": 1},
+			[_bay("BAY-01", "GENERAL", 8), _bay("BAY-02", "GENERAL", 0), _bay("PIT-01", "PIT", 8)],
+		)
+		self.assertEqual(plan["service_bay"], "BAY-02")
+		self.assertEqual(plan["row_bays"], {"r2": "PIT-01"})
+
+	def test_rows_without_hours_still_get_a_bay(self):
+		plan = self.plan([_row("r1", "ST-GEN")], {}, [_bay("BAY-01", "GENERAL", 8)])
+		self.assertEqual(plan["service_bay"], "BAY-01")
+		self.assertEqual(plan["row_bays"], {"r1": "BAY-01"})
+
+	def test_no_active_bay_at_all_returns_nothing(self):
+		plan = self.plan([_row("r1", "ST-GEN")], {"GENERAL": 2}, [])
+		self.assertIsNone(plan["service_bay"])
+		self.assertEqual(plan["row_bays"], {"r1": None})
