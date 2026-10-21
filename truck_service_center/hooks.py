@@ -10,16 +10,24 @@ app_license = "mit"
 
 required_apps = ["erpnext"]
 
-# Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "truck_service_center",
-# 		"logo": "/assets/truck_service_center/logo.png",
-# 		"title": "Truck Service Center",
-# 		"route": "/truck_service_center",
-# 		"has_permission": "truck_service_center.api.permission.has_app_permission"
-# 	}
-# ]
+app_logo_url = "/assets/truck_service_center/images/truck-service-center-logo.svg"
+# ใช้ /app/... ไม่ใช่ /desk/... — Frappe รุ่นใหม่ redirect /app → /desk ให้เอง ส่วนรุ่นเก่ารู้จักแค่ /app
+app_home = "/app/truck-service-center"
+
+# Frappe v16 รุ่นใหม่ (16.5x) ตั้งหน้า desk เริ่มต้นเป็น "Apps" ซึ่งแสดงเฉพาะแอปที่ประกาศ hook นี้
+# (frappe.apps.get_apps / frappe.boot.get_app_data) — ไม่มี hook นี้แอปจะไม่ขึ้นทั้งหน้า Apps
+# และเมนูสลับแอปที่หัว sidebar เหลือแต่ ERPNext; รุ่นเก่าที่ใช้หน้า Desktop Icons ก็สร้างไอคอนแอปจาก hook นี้เช่นกัน
+add_to_apps_screen = [
+	{
+		"name": app_name,
+		"logo": app_logo_url,
+		"title": app_title,
+		"route": app_home,
+		"has_permission": "truck_service_center.api.permission.has_app_permission",
+		# ลำดับในหน้า Apps — ERPNext = 1, Framework = 1000
+		"sequence_id": 2,
+	}
+]
 
 # Includes in <head>
 # ------------------
