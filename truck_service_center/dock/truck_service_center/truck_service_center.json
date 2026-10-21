@@ -1,0 +1,23 @@
+{
+ "app": "truck_service_center",
+ "creation": "2026-10-21 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Dock",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "truck",
+   "link_to": "Truck Service Center",
+   "link_type": "Sidebar",
+   "title": "Truck Service Center"
+  }
+ ],
+ "modified": "2026-10-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "truck_service_center",
+ "owner": "Administrator",
+ "standard": 1,
+ "user": ""
+}
