@@ -10,6 +10,7 @@ from truck_service_center.api.technician_portal import _can_manage_row, _validat
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	can_approve_requisition,
 	get_bay_warnings,
+	get_default_parts_warehouse,
 	get_user_display_name,
 	material_issue_status_label,
 	plan_bay_assignment,
@@ -1385,3 +1386,37 @@ class UnitTestPlanBayAssignment(UnitTestCase):
 		plan = self.plan([_row("r1", "ST-GEN")], {"GENERAL": 2}, [])
 		self.assertIsNone(plan["service_bay"])
 		self.assertEqual(plan["row_bays"], {"r1": None})
+
+class UnitTestDefaultPartsWarehouse(UnitTestCase):
+	"""คลังตั้งต้นของแถวอะไหล่ต้องไม่พังบน ERPNext ที่ตัด Stock Settings.default_warehouse ออก"""
+
+	MODULE = "truck_service_center.truck_service_center.doctype.service_order.service_order"
+
+	def run_with(self, settings, stock_has_field, stock_value=None):
+		meta = frappe._dict(has_field=lambda fieldname: stock_has_field)
+		with (
+			patch(f"{self.MODULE}.frappe.get_cached_doc", return_value=frappe._dict(settings)),
+			patch(f"{self.MODULE}.frappe.get_meta", return_value=meta),
+			patch(f"{self.MODULE}.frappe.db.get_single_value", return_value=stock_value) as stock,
+		):
+			return get_default_parts_warehouse(), stock
+
+	def test_source_warehouse_from_settings_wins(self):
+		warehouse, stock = self.run_with(
+			{"default_source_warehouse": "WH-SRC", "default_warehouse": "WH-DEF"}, True, "WH-STOCK"
+		)
+		self.assertEqual(warehouse, "WH-SRC")
+		stock.assert_not_called()
+
+	def test_settings_default_warehouse_is_next(self):
+		warehouse, _ = self.run_with({"default_source_warehouse": None, "default_warehouse": "WH-DEF"}, True)
+		self.assertEqual(warehouse, "WH-DEF")
+
+	def test_falls_back_to_stock_settings_when_field_exists(self):
+		warehouse, _ = self.run_with({}, True, "WH-STOCK")
+		self.assertEqual(warehouse, "WH-STOCK")
+
+	def test_missing_stock_settings_field_does_not_throw(self):
+		warehouse, stock = self.run_with({}, False)
+		self.assertIsNone(warehouse)
+		stock.assert_not_called()

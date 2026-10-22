@@ -291,7 +291,11 @@ def create_service_order_from_quotation(repair_quotation):
 		)
 
 	# รายการอะไหล่
-	default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+	from truck_service_center.truck_service_center.doctype.service_order.service_order import (
+		get_default_parts_warehouse,
+	)
+
+	default_warehouse = get_default_parts_warehouse()
 	for item in rq.service_items:
 		so.append(
 			"service_items",

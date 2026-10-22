@@ -62,6 +62,23 @@ APPROVAL_APPROVED = "Approved"
 APPROVAL_REJECTED = "Rejected"
 
 
+def get_default_parts_warehouse():
+	"""คลังตั้งต้นของแถวอะไหล่ — คลังเบิกของ Truck Service Center Settings ก่อน แล้วค่อยถอยไป Stock Settings
+
+	ERPNext รุ่นใหม่ตัดฟิลด์ Stock Settings.default_warehouse ออกแล้ว get_single_value จะ throw
+	ถ้าอ่านฟิลด์ที่ไม่มีใน meta จึงต้องเช็ค has_field ก่อน ลำดับคลังตรงกับ build_material_issue_line
+	"""
+	settings = frappe.get_cached_doc("Truck Service Center Settings")
+	warehouse = settings.default_source_warehouse or settings.default_warehouse
+	if warehouse:
+		return warehouse
+
+	if frappe.get_meta("Stock Settings").has_field("default_warehouse"):
+		return frappe.db.get_single_value("Stock Settings", "default_warehouse")
+
+	return None
+
+
 def get_default_selling_rate(item_code, price_list=None):
 	"""ราคาขายเริ่มต้นของสินค้า: Item Price (selling) → standard_rate → valuation_rate
 
@@ -325,7 +342,7 @@ class ServiceOrder(Document):
 				)
 
 			# เพิ่ม parts จาก package
-			default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+			default_warehouse = get_default_parts_warehouse()
 			for part, discount in zip(package.package_parts, part_discounts, strict=True):
 				self.append(
 					"service_items",
