@@ -47,6 +47,7 @@
   "total_labor_charges",
   "total_parts_amount",
   "column_break_pricing",
+  "discount_amount",
   "total_amount",
   "repair_details_section",
   "repair_cause",
@@ -315,6 +316,12 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "ส่วนลด",
+   "precision": "2"
+  },
+  {
    "bold": 1,
    "fieldname": "total_amount",
    "fieldtype": "Currency",
@@ -371,7 +378,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-10 12:00:00.000000",
+ "modified": "2026-10-22 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment",

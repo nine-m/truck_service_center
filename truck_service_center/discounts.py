@@ -6,7 +6,8 @@
 % ถูกเก็บแบบปัด 2 ตำแหน่ง ถ้าคิดบาทกลับจาก % ทุกครั้งจะได้เศษ
 (ค่าแรง 300 ลด 100 บาท → 33.33% → 300 x 33.33% = 99.99 → ยอด 200.01)
 
-ฝั่ง client มี mirror ของ resolve_line_discount อยู่ใน service_order.js และ repair_quotation.js
+ฝั่ง client มี mirror ของ resolve_line_discount อยู่ใน service_order.js, repair_quotation.js
+และ service_appointment.js
 (ต้องแก้คู่กัน) ส่วน Service Package ใช้กติกาเดียวกันกับคู่ package_rate / discount_percent
 """
 

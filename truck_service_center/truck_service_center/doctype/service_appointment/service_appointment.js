@@ -195,6 +195,10 @@ frappe.ui.form.on('Service Appointment', {
 		load_capacity_meter(frm);
 	},
 	
+	discount_amount: function(frm) {
+		calculate_totals(frm);
+	},
+
 	assigned_technician: function(frm) {
 		// ไม่ต้องทำอะไร - ระบบใหม้ไม่ check ช่างอีกต่อไป
 	}
@@ -605,7 +609,7 @@ frappe.ui.form.on('Service Appointment Package', {
 				if (!r.message) return;
 				let pkg = r.message;
 				let pkg_name = row.service_package;
-				let discount_pct = flt(pkg.discount_percent);
+				// ส่วนลดต่อบรรทัดเป็นบาทจาก server — รวมแล้วตรงราคาแพ็คเกจพอดี (เหมือนใบสั่งงาน)
 
 				// เวลาซ่อมจริงของแพ็คเกจ — ใช้คำนวณระยะเวลานัดหมายด้านล่าง
 				row.repair_time_hours = flt(pkg.repair_time_hours);
@@ -618,6 +622,9 @@ frappe.ui.form.on('Service Appointment Package', {
 					st_row.maintenance_type = st.maintenance_type;
 					st_row.estimated_time = st.estimated_time;
 					st_row.labor_charges = st.labor_rate;
+					st_row.discount_amount = flt(st.discount_amount);
+					st_row.discount_percentage = flt(st.discount_percentage);
+					st_row.amount = get_service_type_amounts(st_row).amount;
 					st_row.service_package = pkg_name;
 				});
 				
@@ -629,7 +636,9 @@ frappe.ui.form.on('Service Appointment Package', {
 					item_row.qty = part.qty;
 					item_row.uom = part.uom;
 					item_row.rate = part.rate;
-					item_row.amount = flt(flt(part.qty) * flt(part.rate), 2);
+					item_row.discount_amount = flt(part.discount_amount);
+					item_row.discount_percentage = flt(part.discount_percentage);
+					item_row.amount = get_item_amounts(item_row).amount;
 					item_row.service_package = pkg_name;
 					item_row.service_type = part.service_type;
 				});
@@ -711,7 +720,33 @@ frappe.ui.form.on('Service Appointment Service Type', {
 	estimated_time: function(frm) {
 		calculate_estimated_duration(frm);
 	},
-	labor_charges: function(frm) {
+	labor_charges: function(frm, cdt, cdn) {
+		// เมื่อเปลี่ยน labor_charges → คำนวณส่วนลดใหม่
+		calculate_service_type_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	discount_percentage: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// คิดบาทใหม่เฉพาะเมื่อ % ไม่ตรงกับบาทเดิม — ถ้าตรงอยู่แล้วแปลว่า % ถูกตั้งจากช่องบาท ห้ามคิดกลับ
+		if (!flt(row.discount_percentage)) {
+			if (flt(row.labor_charges) > 0) frappe.model.set_value(cdt, cdn, 'discount_amount', 0);
+		} else {
+			let values = resolve_line_discount(row.labor_charges, row.discount_percentage, row.discount_amount);
+			if (values.discount_amount !== flt(row.discount_amount)) {
+				frappe.model.set_value(cdt, cdn, 'discount_amount', values.discount_amount);
+			}
+		}
+		calculate_service_type_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	discount_amount: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// บาทคือค่าที่ผู้ใช้คีย์ — % แค่ตามให้ตรง
+		let pct = discount_percent_of(row.discount_amount, row.labor_charges);
+		if (pct !== flt(row.discount_percentage, 2)) {
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', pct);
+		}
+		calculate_service_type_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
 	service_types_add: function(frm) {
@@ -765,6 +800,30 @@ frappe.ui.form.on('Service Appointment Item', {
 		calculate_item_amount(frm, cdt, cdn);
 		calculate_totals(frm);
 	},
+	discount_percentage: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// คิดบาทใหม่เฉพาะเมื่อ % ไม่ตรงกับบาทเดิม — ถ้าตรงอยู่แล้วแปลว่า % ถูกตั้งจากช่องบาท ห้ามคิดกลับ
+		if (!flt(row.discount_percentage)) {
+			if (flt(row.rate) > 0) frappe.model.set_value(cdt, cdn, 'discount_amount', 0);
+		} else {
+			let values = resolve_line_discount(row.rate, row.discount_percentage, row.discount_amount);
+			if (values.discount_amount !== flt(row.discount_amount)) {
+				frappe.model.set_value(cdt, cdn, 'discount_amount', values.discount_amount);
+			}
+		}
+		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
+	discount_amount: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		// บาทคือค่าที่ผู้ใช้คีย์ — % แค่ตามให้ตรง
+		let pct = discount_percent_of(row.discount_amount, row.rate);
+		if (pct !== flt(row.discount_percentage, 2)) {
+			frappe.model.set_value(cdt, cdn, 'discount_percentage', pct);
+		}
+		calculate_item_amount(frm, cdt, cdn);
+		calculate_totals(frm);
+	},
 	service_items_add: function(frm) {
 		calculate_totals(frm);
 	},
@@ -783,7 +842,7 @@ function add_service_type_items(frm, items, service_type) {
 		new_row.qty = item.qty;
 		new_row.uom = item.uom;
 		new_row.rate = item.rate;
-		new_row.amount = flt(flt(item.amount) || flt(item.qty) * flt(item.rate), 2);
+		new_row.amount = get_item_amounts(new_row).amount;
 		new_row.service_type = service_type;
 	});
 
@@ -815,14 +874,69 @@ function calculate_item_amount(frm, cdt, cdn) {
 	// เขียนผ่าน model เพื่อให้ช่อง "ยอดรวม" ในตารางอัปเดตตามทันที
 	// (ห้ามแก้ row.amount เองก่อน ไม่งั้น set_value จะเห็นว่าค่าไม่เปลี่ยนแล้วไม่วาดช่องใหม่)
 	let row = locals[cdt][cdn];
-	frappe.model.set_value(cdt, cdn, 'amount', flt(flt(row.qty) * flt(row.rate), 2));
+	let values = get_item_amounts(row);
+	if (values.discount_amount !== flt(row.discount_amount)) {
+		frappe.model.set_value(cdt, cdn, 'discount_amount', values.discount_amount);
+	}
+	frappe.model.set_value(cdt, cdn, 'amount', values.amount);
+}
+
+function calculate_service_type_amount(frm, cdt, cdn) {
+	let row = locals[cdt][cdn];
+	let values = get_service_type_amounts(row);
+	if (values.discount_amount !== flt(row.discount_amount)) {
+		frappe.model.set_value(cdt, cdn, 'discount_amount', values.discount_amount);
+	}
+	frappe.model.set_value(cdt, cdn, 'amount', values.amount);
+}
+
+// mirror ของ truck_service_center/discounts.py (ต้องแก้คู่กัน) — ส่วนลดบาทเป็นตัวหลัก % เป็นค่าที่คำนวณไว้แสดง
+// % ปัด 2 ตำแหน่ง ถ้าคิดบาทกลับจาก % ทุกครั้งจะได้เศษ (300 ลด 100 → 33.33% → 99.99 → ยอด 200.01)
+function discount_percent_of(amount, base) {
+	return flt(base) > 0 ? flt((flt(amount) / flt(base)) * 100, 2) : 0;
+}
+
+// คิดบาทจาก % เฉพาะเมื่อ % ไม่ตรงกับบาทที่มีอยู่ (ผู้ใช้เพิ่งแก้ % หรือราคาฐานเปลี่ยน ซึ่งคง % ไว้)
+function resolve_line_discount(base, discount_percentage, discount_amount) {
+	base = flt(base);
+	let pct = flt(discount_percentage);
+	let amount = flt(discount_amount, 2);
+	if (base <= 0) return { discount_percentage: pct, discount_amount: amount };
+
+	if (pct && discount_percent_of(amount, base) !== flt(pct, 2)) {
+		amount = flt((base * pct) / 100, 2);
+	}
+	return { discount_percentage: discount_percent_of(amount, base), discount_amount: amount };
+}
+
+// ส่วนลดอะไหล่เป็นต่อหน่วย — คืนค่าใหม่โดยไม่แก้ค่าใน item (สูตรเดียวกับ service_order.js)
+function get_item_amounts(item) {
+	let rate = flt(item.rate);
+	let values = resolve_line_discount(rate, item.discount_percentage, item.discount_amount);
+	let net_rate = Math.max(flt(rate - values.discount_amount, 2), 0);
+	return {
+		discount_percentage: values.discount_percentage,
+		discount_amount: values.discount_amount,
+		amount: flt(net_rate * flt(item.qty), 2)
+	};
+}
+
+// amount = labor_charges หลังส่วนลด — คืนค่าใหม่โดยไม่แก้ค่าใน row
+function get_service_type_amounts(row) {
+	let labor = flt(row.labor_charges);
+	let values = resolve_line_discount(labor, row.discount_percentage, row.discount_amount);
+	return {
+		discount_percentage: values.discount_percentage,
+		discount_amount: values.discount_amount,
+		amount: flt(Math.max(flt(labor - values.discount_amount, 2), 0), 2)
+	};
 }
 
 // ปกติ Frappe จะคำนวณให้ตอน "ออกจากช่อง" (event change) เท่านั้น
 // สองฟังก์ชันนี้ทำให้ยอดในแถวและยอดรวมท้ายเอกสารขยับตั้งแต่ตอนพิมพ์
 function setup_live_row_calc(frm) {
 	bind_live_row_calc(frm, 'service_items', ['qty', 'rate'], calculate_item_amount);
-	bind_live_row_calc(frm, 'service_types', ['labor_charges', 'estimated_time'], null);
+	bind_live_row_calc(frm, 'service_types', ['labor_charges', 'estimated_time'], calculate_service_type_amount);
 }
 
 function bind_live_row_calc(frm, gridfield, fieldnames, recalc_row) {
@@ -884,15 +998,16 @@ function calculate_estimated_duration(frm) {
 function calculate_totals(frm) {
 	let total_labor = 0;
 	let total_parts = 0;
+	// ใช้ยอดหลังส่วนลดรายบรรทัด แล้วหักส่วนลดท้ายบิล (สูตรเดียวกับ calculate_totals ฝั่ง python)
 	(frm.doc.service_types || []).forEach(function(row) {
-		total_labor += flt(row.labor_charges);
+		total_labor += get_service_type_amounts(row).amount;
 	});
 	(frm.doc.service_items || []).forEach(function(row) {
-		total_parts += flt(row.amount);
+		total_parts += get_item_amounts(row).amount;
 	});
 	frm.set_value('total_labor_charges', flt(total_labor, 2));
 	frm.set_value('total_parts_amount', flt(total_parts, 2));
-	frm.set_value('total_amount', flt(total_labor + total_parts, 2));
+	frm.set_value('total_amount', flt(total_labor + total_parts - flt(frm.doc.discount_amount), 2));
 }
 
 function setup_service_package_filter(frm) {
