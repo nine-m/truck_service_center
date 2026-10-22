@@ -4,7 +4,12 @@
 import frappe
 from frappe.tests import UnitTestCase
 
-from truck_service_center.discounts import distribute_package_discount, resolve_line_discount
+from truck_service_center.discounts import (
+	distribute_discount,
+	distribute_package_discount,
+	package_discount_total,
+	resolve_line_discount,
+)
 
 
 def make_package(labor_rates=(), parts=(), package_rate=0):
@@ -80,3 +85,29 @@ class UnitTestDistributePackageDiscount(UnitTestCase):
 	def test_no_discount(self):
 		pkg = make_package(labor_rates=(500,), parts=((100, 2),), package_rate=700)
 		self.assertEqual(distribute_package_discount(pkg), ([0], [0]))
+
+
+class UnitTestPackageDiscountPercent(UnitTestCase):
+	"""แก้ % บนแถวแพ็คเกจในเอกสาร → ส่วนลดรวมเป็นบาท แล้วแจกลงแถวของแพ็คเกจ"""
+
+	def test_typed_percent(self):
+		self.assertEqual(package_discount_total(7250, 5000, 20), 1450)
+
+	def test_package_percent_gives_package_rate(self):
+		"""คีย์ % ของแพ็คเกจกลับมา (31.03%) → ลด 2,250 พอดี ไม่ใช่ 2,249.68"""
+		self.assertEqual(package_discount_total(7250, 5000, 31.03), 2250)
+
+	def test_zero_and_over_hundred(self):
+		self.assertEqual(package_discount_total(7250, 5000, 0), 0)
+		self.assertEqual(package_discount_total(7250, 5000, 150), 7250)
+
+	def test_distribute_typed_percent_sums_exactly(self):
+		labor_rates, parts = [1000, 750], [(1500, 2), (833.33, 3)]
+		standard = 1000 + 750 + 1500 * 2 + 833.33 * 3
+		total = package_discount_total(standard, 5000, 15)
+		labor, unit = distribute_discount(labor_rates, parts, total)
+		given = sum(labor) + sum(u * qty for u, (_, qty) in zip(unit, parts, strict=True))
+		self.assertEqual(round(given, 2), total)
+
+	def test_distribute_zero(self):
+		self.assertEqual(distribute_discount([500], [(100, 2)], 0), ([0], [0]))
