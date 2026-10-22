@@ -711,6 +711,9 @@ frappe.ui.form.on("Service Order Package", {
 				let pkg = r.message;
 				let pkg_name = row.service_package;
 				// ส่วนลดต่อบรรทัดเป็นบาทจาก server — รวมแล้วตรงราคาแพ็คเกจพอดี
+				// % บนแถวไม่ fetch จาก Service Package แล้ว (แก้ได้ในเอกสาร) จึงตั้งที่นี่
+				row.discount_percent = flt(pkg.discount_percent);
+				frm.refresh_field("service_packages");
 
 				// เพิ่ม service types จาก package
 				(pkg.service_types || []).forEach(function (st) {
@@ -751,6 +754,10 @@ frappe.ui.form.on("Service Order Package", {
 				});
 			},
 		});
+	},
+
+	discount_percent: function (frm, cdt, cdn) {
+		apply_package_discount_percent(frm, locals[cdt][cdn]);
 	},
 
 	service_packages_remove: function (frm, cdt, cdn) {
@@ -1265,6 +1272,126 @@ function resolve_line_discount(base, discount_percentage, discount_amount) {
 		amount = flt((base * pct) / 100, 2);
 	}
 	return { discount_percentage: discount_percent_of(amount, base), discount_amount: amount };
+}
+
+// mirror ของ package_discount_total ใน discounts.py (ต้องแก้คู่กัน) — ส่วนลดรวม (บาท) ตาม % บนแถวแพ็คเกจ
+// % ที่ตรงกับราคาแพ็คเกจใช้ส่วนต่างจากราคาแพ็คเกจตรง ๆ คีย์ % เดิมกลับมาจึงได้ราคาแพ็คเกจพอดี
+function package_discount_total(standard, package_rate, discount_percent) {
+	standard = flt(standard);
+	let pct = flt(discount_percent);
+	if (standard <= 0 || pct <= 0) return 0;
+
+	let by_rate = flt(package_rate) ? flt(standard - flt(package_rate), 2) : 0;
+	if (by_rate > 0 && discount_percent_of(by_rate, standard) === flt(pct, 2)) return by_rate;
+	return flt((standard * Math.min(pct, 100)) / 100, 2);
+}
+
+// mirror ของ distribute_discount ใน discounts.py (ต้องแก้คู่กัน) — แจกส่วนลดรวมตามสัดส่วนราคา
+// เศษลงแถวค่าแรงที่ใหญ่ที่สุด ถ้าไม่มีค่าแรงลงแถวอะไหล่จำนวน 1 ที่ราคาสูงสุด (ส่วนลดอะไหล่เป็นต่อหน่วย)
+// parts = [[ราคาต่อหน่วย, จำนวน], ...]
+function distribute_discount(labor_rates, parts, total_discount) {
+	let standard = 0;
+	labor_rates.forEach(function (rate) {
+		standard += rate;
+	});
+	parts.forEach(function (part) {
+		standard += part[0] * part[1];
+	});
+
+	total_discount = flt(total_discount, 2);
+	if (standard <= 0 || total_discount <= 0) {
+		return {
+			labor: labor_rates.map(function () {
+				return 0;
+			}),
+			unit: parts.map(function () {
+				return 0;
+			}),
+		};
+	}
+
+	let ratio = total_discount / standard;
+	let labor = labor_rates.map(function (rate) {
+		return flt(rate * ratio, 2);
+	});
+	let unit = parts.map(function (part) {
+		return flt(part[0] * ratio, 2);
+	});
+
+	let distributed = 0;
+	labor.forEach(function (d) {
+		distributed += d;
+	});
+	unit.forEach(function (u, k) {
+		distributed += u * parts[k][1];
+	});
+	let remainder = flt(total_discount - distributed, 2);
+
+	if (remainder) {
+		let target = -1;
+		if (labor.length) {
+			labor_rates.forEach(function (rate, k) {
+				if (target === -1 || rate > labor_rates[target]) target = k;
+			});
+			labor[target] = flt(labor[target] + remainder, 2);
+		} else {
+			parts.forEach(function (part, k) {
+				if (part[1] === 1 && (target === -1 || part[0] > parts[target][0])) target = k;
+			});
+			if (target !== -1) unit[target] = flt(unit[target] + remainder, 2);
+		}
+	}
+
+	return { labor: labor, unit: unit };
+}
+
+// แก้ % บนแถวแพ็คเกจ → แจกส่วนลดใหม่เป็นบาทลงทุกแถวของแพ็คเกจนั้นที่ยังอยู่ในเอกสาร
+// ฐานคือราคาของแถวที่อยู่ในเอกสารตอนนี้ (ลบ/แก้ราคาแถวไปแล้วก็คิดจากที่เหลือ)
+// ส่วนลดที่คีย์เองรายแถวของแพ็คเกจนี้จะถูกแทนที่ เพราะ % ของแพ็คเกจคือส่วนลดของทั้งแพ็คเกจ
+function apply_package_discount_percent(frm, pkg_row) {
+	let pkg_name = pkg_row.service_package;
+	if (!pkg_name) return;
+
+	let labor_rows = (frm.doc.service_types || []).filter(function (row) {
+		return row.service_package === pkg_name;
+	});
+	let part_rows = (frm.doc.service_items || []).filter(function (row) {
+		return row.service_package === pkg_name;
+	});
+	let labor_rates = labor_rows.map(function (row) {
+		return flt(row.labor_charges);
+	});
+	let parts = part_rows.map(function (row) {
+		return [flt(row.rate), flt(row.qty)];
+	});
+
+	let standard = 0;
+	labor_rates.forEach(function (rate) {
+		standard += rate;
+	});
+	parts.forEach(function (part) {
+		standard += part[0] * part[1];
+	});
+
+	let discounts = distribute_discount(
+		labor_rates,
+		parts,
+		package_discount_total(standard, pkg_row.package_rate, pkg_row.discount_percent)
+	);
+
+	labor_rows.forEach(function (row, k) {
+		row.discount_amount = discounts.labor[k];
+		row.discount_percentage = discount_percent_of(discounts.labor[k], row.labor_charges);
+	});
+	part_rows.forEach(function (row, k) {
+		row.discount_amount = discounts.unit[k];
+		row.discount_percentage = discount_percent_of(discounts.unit[k], row.rate);
+	});
+
+	frm.refresh_field("service_types");
+	frm.refresh_field("service_items");
+	frm.dirty();
+	calculate_totals(frm);
 }
 
 // คำนวณส่วนลดระดับบรรทัดสำหรับ Service Order Item — คืนค่าใหม่โดยไม่แก้ค่าใน item

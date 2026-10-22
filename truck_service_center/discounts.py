@@ -9,6 +9,9 @@
 ฝั่ง client มี mirror ของ resolve_line_discount อยู่ใน service_order.js, repair_quotation.js
 และ service_appointment.js
 (ต้องแก้คู่กัน) ส่วน Service Package ใช้กติกาเดียวกันกับคู่ package_rate / discount_percent
+
+% บนแถวแพ็คเกจของเอกสาร (ใบเสนอราคา/ใบสั่งงาน/นัดหมาย) แก้ได้ — ฟอร์มแจกส่วนลดใหม่ลงทุกแถว
+ของแพ็คเกจนั้นผ่าน package_discount_total + distribute_discount (mirror ใน js ทั้งสามฟอร์ม)
 """
 
 from frappe.utils import flt
@@ -47,8 +50,6 @@ def distribute_package_discount(package):
 
 	เดิมใส่ % ของแพ็คเกจลงทุกแถว แต่ละแถวปัดเศษแยกกัน ผลรวมจึงคลาดได้
 	(แพ็คเกจ 7,250 ขาย 5,000 → 31.03% → แถวรวมกันได้ 4,999.99)
-	เศษจากการปัดไปลงที่แถวค่าแรงที่ใหญ่ที่สุด (จำนวน 1 เสมอ) ถ้าไม่มีค่าแรงจะลงแถวอะไหล่
-	จำนวน 1 ที่ราคาสูงสุด — ส่วนลดอะไหล่เป็นต่อหน่วย แถวที่จำนวนมากกว่า 1 จึงรับเศษไม่ได้
 
 	คืน (ส่วนลดต่อแถวค่าแรง, ส่วนลดต่อหน่วยของแถวอะไหล่) เรียงตาม package_service_types / package_parts
 	"""
@@ -57,6 +58,38 @@ def distribute_package_discount(package):
 
 	standard = sum(labor_rates) + sum(rate * qty for rate, qty in parts)
 	total_discount = flt(standard - flt(package.package_rate), 2) if flt(package.package_rate) else 0
+	return distribute_discount(labor_rates, parts, total_discount)
+
+
+def package_discount_total(standard, package_rate, discount_percent):
+	"""ส่วนลดรวม (บาท) ตาม % ที่คีย์บนแถวแพ็คเกจของเอกสาร
+
+	% ที่ตรงกับราคาแพ็คเกจใช้ส่วนต่างจากราคาแพ็คเกจตรง ๆ — คีย์ % เดิมกลับมาจึงได้ราคาแพ็คเกจพอดี
+	ไม่ใช่ 31.03% ของ 7,250 = 2,249.68 ที่คลาดจาก 2,250 ไปเศษสตางค์
+	"""
+	standard = flt(standard)
+	pct = flt(discount_percent)
+	if standard <= 0 or pct <= 0:
+		return 0
+
+	by_rate = flt(standard - flt(package_rate), 2) if flt(package_rate) else 0
+	if by_rate > 0 and percent_of(by_rate, standard) == flt(pct, 2):
+		return by_rate
+	return flt(standard * min(pct, 100) / 100, 2)
+
+
+def distribute_discount(labor_rates, parts, total_discount):
+	"""แจกส่วนลดรวม (บาท) ตามสัดส่วนราคาลงแต่ละบรรทัด ให้รวมแล้วเท่าส่วนลดรวมพอดี
+
+	เศษจากการปัดไปลงที่แถวค่าแรงที่ใหญ่ที่สุด (จำนวน 1 เสมอ) ถ้าไม่มีค่าแรงจะลงแถวอะไหล่
+	จำนวน 1 ที่ราคาสูงสุด — ส่วนลดอะไหล่เป็นต่อหน่วย แถวที่จำนวนมากกว่า 1 จึงรับเศษไม่ได้
+	ฝั่ง client มี mirror อยู่ใน distribute_discount ของ js ทั้งสามฟอร์ม (ต้องแก้คู่กัน)
+
+	labor_rates = ราคาค่าแรงต่อแถว, parts = (ราคาต่อหน่วย, จำนวน) ต่อแถว
+	คืน (ส่วนลดต่อแถวค่าแรง, ส่วนลดต่อหน่วยของแถวอะไหล่)
+	"""
+	standard = sum(labor_rates) + sum(rate * qty for rate, qty in parts)
+	total_discount = flt(total_discount, 2)
 	if standard <= 0 or total_discount <= 0:
 		return [0] * len(labor_rates), [0] * len(parts)
 

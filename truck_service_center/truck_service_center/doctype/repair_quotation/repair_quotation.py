@@ -86,6 +86,8 @@ class RepairQuotation(Document):
 
 			# ส่วนลดแพ็คเกจแจกเป็นบาทต่อแถว ให้รวมแล้วตรงราคาแพ็คเกจ (ไม่ใส่ % ตรง ๆ ซึ่งเหลือเศษ)
 			labor_discounts, part_discounts = distribute_package_discount(package)
+			# % บนแถวแพ็คเกจไม่ fetch จาก Service Package แล้ว (แก้ได้ในเอกสาร) จึงตั้งตอนดึงรายการ
+			pkg_row.discount_percent = package.discount_percent
 
 			# เพิ่ม service types จาก package
 			for st, discount in zip(package.package_service_types, labor_discounts, strict=True):
