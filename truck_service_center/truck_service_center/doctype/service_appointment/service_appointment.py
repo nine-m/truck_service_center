@@ -8,6 +8,7 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import add_days, add_to_date, date_diff, flt, get_datetime, get_time, getdate
 
+from truck_service_center.discounts import resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
 
 # นัดหมายที่ไม่กินความจุของช่องจอด (ตรงกับตัวกรองเดิมของ check_slot_availability)
@@ -704,20 +705,37 @@ class ServiceAppointment(Document):
 		self.estimated_duration = flt(total, 2)
 
 	def calculate_totals(self):
-		"""คำนวณยอดรวมราคาจาก service_types และ service_items"""
+		"""คำนวณยอดรวมราคาจาก service_types และ service_items
+
+		ส่วนลดใช้กติกาเดียวกับ Service Order — ส่วนลดรายบรรทัด (บาทเป็นตัวหลัก ดู resolve_line_discount)
+		ของค่าแรงและอะไหล่ (ต่อหน่วย) แล้วหักส่วนลดท้ายบิล discount_amount ออกจากยอดรวม
+		"""
 		# ปัดเศษทุกค่าเป็นทศนิยม 2 ตำแหน่ง มิฉะนั้นค่าที่คำนวณใหม่ (เช่น 999.8299999999999)
 		# จะไม่ตรงกับค่าที่ฐานข้อมูลปัดเก็บไว้ (999.83) และทำให้ submit ไม่ผ่าน
 		# ด้วย error "Cannot Update After Submit"
-		# รวมค่าแรง
-		self.total_labor_charges = flt(sum(flt(row.labor_charges) for row in (self.service_types or [])), 2)
+		# รวมค่าแรง (หลังส่วนลดรายบรรทัด)
+		for row in self.service_types or []:
+			labor = flt(row.labor_charges)
+			row.discount_percentage, row.discount_amount = resolve_line_discount(
+				labor, row.discount_percentage, row.discount_amount
+			)
+			row.amount = flt(max(flt(labor - flt(row.discount_amount), 2), 0), 2)
+		self.total_labor_charges = flt(sum(flt(row.amount) for row in (self.service_types or [])), 2)
 
-		# รวมค่าอะไหล่ (คำนวณ amount ของแต่ละรายการด้วย)
+		# รวมค่าอะไหล่ (คำนวณ amount ของแต่ละรายการด้วย — ส่วนลดเป็นต่อหน่วย)
 		for item in self.service_items or []:
-			item.amount = flt(flt(item.qty) * flt(item.rate), 2)
+			rate = flt(item.rate)
+			item.discount_percentage, item.discount_amount = resolve_line_discount(
+				rate, item.discount_percentage, item.discount_amount
+			)
+			net_rate = max(flt(rate - flt(item.discount_amount), 2), 0)
+			item.amount = flt(net_rate * flt(item.qty), 2)
 		self.total_parts_amount = flt(sum(flt(row.amount) for row in (self.service_items or [])), 2)
 
-		# ยอดรวมทั้งหมด
-		self.total_amount = flt(flt(self.total_labor_charges) + flt(self.total_parts_amount), 2)
+		# ยอดรวมทั้งหมด (หลังส่วนลดท้ายบิล)
+		self.total_amount = flt(
+			flt(self.total_labor_charges) + flt(self.total_parts_amount) - flt(self.discount_amount), 2
+		)
 
 	def set_address_display(self):
 		"""ตั้งค่าการแสดงผลที่อยู่สำหรับ billing และ shipping address"""
@@ -898,6 +916,8 @@ class ServiceAppointment(Document):
 						"maintenance_type": st_row.maintenance_type,
 						"estimated_time": st_row.estimated_time,
 						"labor_charges": st_row.labor_charges,
+						"discount_percentage": st_row.discount_percentage,
+						"discount_amount": st_row.discount_amount,
 						"service_package": st_row.service_package,
 						"remark": st_row.remark,
 						"service_bay": bay_by_bay_type.get(required_type) or main_bay,
@@ -913,10 +933,15 @@ class ServiceAppointment(Document):
 					"qty": item_row.qty,
 					"uom": item_row.uom,
 					"rate": item_row.rate,
+					"discount_percentage": item_row.discount_percentage,
+					"discount_amount": item_row.discount_amount,
 					"service_package": item_row.service_package,
 					"service_type": item_row.service_type,
 				},
 			)
+
+		# ส่วนลดท้ายบิล
+		service_order.discount_amount = self.discount_amount
 
 		service_order.insert()
 

@@ -956,3 +956,74 @@ class UnitTestFoldBookedHours(UnitTestCase):
 
 	def test_empty_input(self):
 		self.assertEqual(fold_booked_hours([], []), {})
+
+
+class UnitTestAppointmentTotals(UnitTestCase):
+	"""ส่วนลดของนัดหมายใช้กติกาเดียวกับ Service Order — บาทเป็นตัวหลัก, % คำนวณตาม"""
+
+	def make(self, service_rows=None, item_rows=None, discount_amount=0):
+		appointment = make_appointment(service_rows=service_rows)
+		for row in item_rows or []:
+			appointment.append("service_items", row)
+		appointment.discount_amount = discount_amount
+		appointment.calculate_totals()
+		return appointment
+
+	def test_no_discount_keeps_old_totals(self):
+		appointment = self.make(
+			service_rows=[{"service_type": "ST-1", "labor_charges": 500}],
+			item_rows=[{"item_code": "P-1", "qty": 2, "rate": 150}],
+		)
+
+		self.assertEqual(appointment.service_types[0].amount, 500)
+		self.assertEqual(appointment.total_labor_charges, 500)
+		self.assertEqual(appointment.total_parts_amount, 300)
+		self.assertEqual(appointment.total_amount, 800)
+
+	def test_labor_discount_in_baht_is_kept_exact(self):
+		"""ค่าแรง 300 ลด 100 บาท ต้องได้ 200 พอดี ไม่ใช่ 200.01 จากการคิดกลับผ่าน 33.33%"""
+		appointment = self.make(
+			service_rows=[{"service_type": "ST-1", "labor_charges": 300, "discount_amount": 100}]
+		)
+
+		row = appointment.service_types[0]
+		self.assertEqual(row.discount_percentage, 33.33)
+		self.assertEqual(row.amount, 200)
+		self.assertEqual(appointment.total_labor_charges, 200)
+
+	def test_labor_discount_from_percent(self):
+		appointment = self.make(
+			service_rows=[{"service_type": "ST-1", "labor_charges": 1000, "discount_percentage": 10}]
+		)
+
+		row = appointment.service_types[0]
+		self.assertEqual(row.discount_amount, 100)
+		self.assertEqual(row.amount, 900)
+
+	def test_part_discount_is_per_unit(self):
+		appointment = self.make(
+			item_rows=[{"item_code": "P-1", "qty": 3, "rate": 200, "discount_amount": 50}]
+		)
+
+		item = appointment.service_items[0]
+		self.assertEqual(item.discount_percentage, 25)
+		self.assertEqual(item.amount, 450)
+		self.assertEqual(appointment.total_parts_amount, 450)
+
+	def test_discount_larger_than_price_floors_at_zero(self):
+		appointment = self.make(
+			service_rows=[{"service_type": "ST-1", "labor_charges": 100, "discount_amount": 150}]
+		)
+
+		self.assertEqual(appointment.service_types[0].amount, 0)
+
+	def test_document_discount_is_taken_off_total(self):
+		appointment = self.make(
+			service_rows=[{"service_type": "ST-1", "labor_charges": 1000, "discount_percentage": 10}],
+			item_rows=[{"item_code": "P-1", "qty": 1, "rate": 500}],
+			discount_amount=200,
+		)
+
+		self.assertEqual(appointment.total_labor_charges, 900)
+		self.assertEqual(appointment.total_parts_amount, 500)
+		self.assertEqual(appointment.total_amount, 1200)
