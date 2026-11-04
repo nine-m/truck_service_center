@@ -93,6 +93,10 @@ def get_context(context):
 	context.pending_requisitions = get_pending_requisitions(
 		is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups
 	)
+	# ใบคืนอะไหล่ที่รอผู้ใช้คนนี้อนุมัติ — ขอบเขตเดียวกับใบเบิก (กลุ่มของใบคืน = กลุ่มของใบเบิกต้นทาง)
+	context.pending_returns = get_pending_returns(
+		is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups
+	)
 
 	return context
 
@@ -172,6 +176,45 @@ def get_pending_requisitions(is_fallback=False, groups=(), limit=PAGE_LIMIT):
 		row.requested_at = format_datetime(row.creation, "dd/MM HH:mm")
 		row.lines = lines_by_entry.get(row.name, [])
 
+	return rows
+
+
+def get_pending_returns(is_fallback=False, groups=(), limit=PAGE_LIMIT):
+	"""ใบคืนอะไหล่ที่รออนุมัติ — 2 query (ใบคืน + ป้ายรถของใบสั่งงาน)
+
+	frappe.get_all โดยเจตนาเหมือน get_pending_requisitions: ขอบเขตคือ filter กลุ่มของ session user
+	ด่านอนุมัติจริงอยู่ที่ approve_parts_return
+	"""
+	if not is_fallback and not groups:
+		return []
+
+	filters = {"approval_status": "Pending"}
+	if not is_fallback:
+		filters["service_type_group"] = ["in", list(groups)]
+
+	rows = frappe.get_all(
+		"Parts Return",
+		filters=filters,
+		fields=["name", "service_order", "stock_entry", "total_amount", "requested_by_name", "creation"],
+		order_by="creation asc",
+		limit_page_length=limit,
+	)
+	if not rows:
+		return []
+
+	orders = {
+		order.name: order
+		for order in frappe.get_all(
+			"Service Order",
+			filters={"name": ["in", list({row.service_order for row in rows})]},
+			fields=["name", "truck_number", "vehicle"],
+		)
+	}
+	for row in rows:
+		order = orders.get(row.service_order) or frappe._dict()
+		row.truck_label = order.truck_number or order.vehicle or "-"
+		row.total_label = f"{float(row.total_amount or 0):,.2f}"
+		row.requested_at = format_datetime(row.creation, "dd/MM HH:mm")
 	return rows
 
 

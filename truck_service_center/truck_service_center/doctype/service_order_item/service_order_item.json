@@ -11,6 +11,7 @@
   "column_break_1",
   "qty",
   "uom",
+  "returned_qty",
   "rate",
   "discount_percentage",
   "discount_amount",
@@ -23,7 +24,8 @@
   "expense_account",
   "cost_center",
   "service_package",
-  "service_type"
+  "service_type",
+  "requested_by"
  ],
  "fields": [
   {
@@ -58,8 +60,8 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "จำนวน",
-   "reqd": 1,
-   "precision": 2
+   "precision": 2,
+   "reqd": 1
   },
   {
    "fetch_from": "item_code.stock_uom",
@@ -67,6 +69,15 @@
    "fieldtype": "Link",
    "label": "หน่วย",
    "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "description": "จำนวนที่คืนผ่านใบคืนอะไหล่ที่อนุมัติแล้ว — จำนวน (qty) ที่เห็นคือหลังหักคืนแล้ว",
+   "fieldname": "returned_qty",
+   "fieldtype": "Float",
+   "label": "คืนแล้ว",
+   "no_copy": 1,
+   "precision": "2",
    "read_only": 1
   },
   {
@@ -92,8 +103,8 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "ยอดรวม",
-   "read_only": 1,
-   "precision": 2
+   "precision": 2,
+   "read_only": 1
   },
   {
    "fieldname": "section_break_1",
@@ -147,12 +158,21 @@
    "label": "จากประเภทบริการ",
    "options": "Service Type",
    "read_only": 1
+  },
+  {
+   "description": "ช่างที่คีย์ขอเบิกอะไหล่แถวนี้เพิ่มจากพอร์ทัล — ว่าง = เพิ่มจาก desk / แพ็คเกจ / ประเภทบริการ",
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "label": "ช่างที่ขอเพิ่ม",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-02 11:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order Item",

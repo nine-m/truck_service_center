@@ -66,6 +66,7 @@
   "service_bay",
   "pricing_section",
   "total_parts_amount",
+  "returned_parts_amount",
   "labor_charges",
   "column_break_4",
   "tax_type",
@@ -119,16 +120,16 @@
   },
   {
    "default": "Draft",
+   "description": "เปลี่ยนด้วยปุ่ม รับรถ / พักงาน / ทำงานต่อ / จบงาน — Completed เกิดจากการ submit",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "สถานะ",
-   "options": "Draft\nIn Progress\nReady for Delivery\nCompleted\nCancelled\nOn Hold",
-   "reqd": 1,
-   "read_only": 1,
    "no_copy": 1,
-   "description": "เปลี่ยนด้วยปุ่ม รับรถ / พักงาน / ทำงานต่อ / จบงาน — Completed เกิดจากการ submit"
+   "options": "Draft\nIn Progress\nReady for Delivery\nCompleted\nCancelled\nOn Hold",
+   "read_only": 1,
+   "reqd": 1
   },
   {
    "fieldname": "column_break_1",
@@ -410,12 +411,12 @@
    "read_only": 1
   },
   {
+   "description": "คำนวณอัตโนมัติจากเวลาเริ่ม-จบของงานแต่ละรายการ (เวลาเริ่มแรกสุด ถึงเวลาจบท้ายสุด)",
    "fieldname": "actual_time",
    "fieldtype": "Float",
    "label": "เวลาจริง (ชม.)",
    "precision": "2",
-   "read_only": 1,
-   "description": "คำนวณอัตโนมัติจากเวลาเริ่ม-จบของงานแต่ละรายการ (เวลาเริ่มแรกสุด ถึงเวลาจบท้ายสุด)"
+   "read_only": 1
   },
   {
    "default": "0",
@@ -435,11 +436,11 @@
    "options": "Low\nMedium\nHigh\nUrgent"
   },
   {
+   "description": "ช่องจอดตั้งต้นของใบงาน — งานแต่ละรายการที่ไม่ได้ระบุช่องจอดเองจะใช้ค่านี้",
    "fieldname": "service_bay",
    "fieldtype": "Link",
    "label": "ช่องจอดหลัก",
-   "options": "Service Bay",
-   "description": "ช่องจอดตั้งต้นของใบงาน — งานแต่ละรายการที่ไม่ได้ระบุช่องจอดเองจะใช้ค่านี้"
+   "options": "Service Bay"
   },
   {
    "fieldname": "service_items_section",
@@ -474,6 +475,15 @@
    "fieldtype": "Currency",
    "label": "รวมค่าอะไหล่",
    "precision": "2",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.returned_parts_amount",
+   "description": "รวมยอดเงินจากใบคืนอะไหล่ที่อนุมัติแล้ว — หักออกจากรวมค่าอะไหล่แล้ว (แสดงเพื่อตรวจสอบ)",
+   "fieldname": "returned_parts_amount",
+   "fieldtype": "Currency",
+   "label": "ยอดอะไหล่ที่คืน",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -694,7 +704,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-09 10:00:00.000000",
+ "modified": "2026-10-28 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Order",

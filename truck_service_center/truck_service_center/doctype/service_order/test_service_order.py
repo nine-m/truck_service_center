@@ -27,6 +27,8 @@ from truck_service_center.www.service_order_job import (
 	_group_parts,
 )
 
+SERVICE_ORDER_MODULE = "truck_service_center.truck_service_center.doctype.service_order.service_order"
+
 
 def stub_db_get_value(stock_items=(), submitted_issues=()):
 	"""แทน frappe.db.get_value เฉพาะการค้นที่ collect_material_issue_problems เรียก
@@ -1180,12 +1182,30 @@ class UnitTestRequisitionApproval(UnitTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			validate_requisition_approved(self.make_stock_entry("Rejected"))
 
+	def submit_check(self, entry, order_status="Ready for Delivery", pending_return=False):
+		with (
+			patch(f"{SERVICE_ORDER_MODULE}._get_service_order_status", return_value=order_status),
+			patch(f"{SERVICE_ORDER_MODULE}._has_pending_return", return_value=pending_return),
+		):
+			validate_requisition_approved(entry)
+
 	def test_approved_requisition_can_be_submitted(self):
-		validate_requisition_approved(self.make_stock_entry("Approved"))
+		self.submit_check(self.make_stock_entry("Approved"))
 
 	def test_legacy_requisition_without_status_passes(self):
 		"""ใบเก่าก่อนมีขั้นอนุมัติ (สถานะว่าง) ต้องไม่ติดค้าง"""
-		validate_requisition_approved(self.make_stock_entry(None))
+		self.submit_check(self.make_stock_entry(None))
+
+	def test_requisition_waits_for_ready_for_delivery(self):
+		"""ระหว่างซ่อมช่างยังคืนอะไหล่ได้ — สต๊อก submit ได้ตอนใบงานรอส่งมอบรถแล้วเท่านั้น"""
+		for status in ("Draft", "In Progress", "On Hold"):
+			with self.assertRaises(frappe.ValidationError, msg=status):
+				self.submit_check(self.make_stock_entry("Approved"), order_status=status)
+		self.submit_check(self.make_stock_entry("Approved"), order_status="Completed")
+
+	def test_pending_return_blocks_submit(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.submit_check(self.make_stock_entry("Approved"), pending_return=True)
 
 	def test_stock_entry_without_service_order_is_untouched(self):
 		"""Stock Entry ทั่วไปของสต๊อกที่ไม่ได้มาจากใบสั่งงาน ไม่เกี่ยวกับขั้นอนุมัตินี้"""
@@ -1204,7 +1224,13 @@ class UnitTestRequisitionApproval(UnitTestCase):
 	# ── พอร์ทัล: อะไหล่จัดกลุ่มตามกลุ่มบริการ ─────────────────────────────────
 
 	def build_portal_groups(
-		self, so, issues=None, is_manager=False, user="tech@example.com", supervised_groups=frozenset(), job_access=True
+		self,
+		so,
+		issues=None,
+		is_manager=False,
+		user="tech@example.com",
+		supervised_groups=frozenset(),
+		job_access=True,
 	):
 		with patch("frappe.get_all", return_value=[row.item_code for row in so.service_items]):
 			parts = _build_parts(so)
@@ -1338,7 +1364,11 @@ class UnitTestPlanBayAssignment(UnitTestCase):
 		self.assertEqual(plan["service_bay"], "BAY-02")
 
 	def test_among_free_bays_picks_the_one_with_room_then_the_emptiest(self):
-		bays = [_bay("BAY-01", "GENERAL", 3), _bay("BAY-02", "GENERAL", 6), _bay("BAY-03", "GENERAL", 1, True)]
+		bays = [
+			_bay("BAY-01", "GENERAL", 3),
+			_bay("BAY-02", "GENERAL", 6),
+			_bay("BAY-03", "GENERAL", 1, True),
+		]
 		plan = self.plan([_row("r1", "ST-GEN")], {"GENERAL": 4}, bays)
 		self.assertEqual(plan["service_bay"], "BAY-02")
 
@@ -1370,7 +1400,10 @@ class UnitTestPlanBayAssignment(UnitTestCase):
 
 	def test_started_row_keeps_main_bay_on_its_bay(self):
 		plan = self.plan(
-			[_row("r1", "ST-GEN", start_time="2026-10-19 08:00:00", service_bay="BAY-02"), _row("r2", "ST-PIT")],
+			[
+				_row("r1", "ST-GEN", start_time="2026-10-19 08:00:00", service_bay="BAY-02"),
+				_row("r2", "ST-PIT"),
+			],
 			{"GENERAL": 5, "PIT": 1},
 			[_bay("BAY-01", "GENERAL", 8), _bay("BAY-02", "GENERAL", 0), _bay("PIT-01", "PIT", 8)],
 		)
@@ -1386,6 +1419,7 @@ class UnitTestPlanBayAssignment(UnitTestCase):
 		plan = self.plan([_row("r1", "ST-GEN")], {"GENERAL": 2}, [])
 		self.assertIsNone(plan["service_bay"])
 		self.assertEqual(plan["row_bays"], {"r1": None})
+
 
 class UnitTestDefaultPartsWarehouse(UnitTestCase):
 	"""คลังตั้งต้นของแถวอะไหล่ต้องไม่พังบน ERPNext ที่ตัด Stock Settings.default_warehouse ออก"""

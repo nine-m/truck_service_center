@@ -1,0 +1,238 @@
+{
+ "actions": [],
+ "autoname": "format:RET-{YYYY}-{#####}",
+ "creation": "2026-10-28 12:00:00.000000",
+ "description": "ใบคืนอะไหล่ที่เบิกแล้วไม่ได้ใช้ — ช่างสร้างจากพอร์ทัล หัวหน้างานกลุ่มของใบเบิกต้นทางเป็นผู้อนุมัติ อนุมัติแล้วจำนวนในใบเบิก (Draft) และในใบสั่งงานถูกลดลงพร้อมกัน",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "service_order",
+  "stock_entry",
+  "service_type_group",
+  "approval_status",
+  "column_break_1",
+  "requested_by",
+  "requested_by_name",
+  "approved_by",
+  "approved_by_name",
+  "approved_on",
+  "section_break_1",
+  "items",
+  "total_amount",
+  "section_break_2",
+  "reason",
+  "column_break_2",
+  "rejection_reason",
+  "source_issue_removed"
+ ],
+ "fields": [
+  {
+   "fieldname": "service_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ใบสั่งงาน",
+   "options": "Service Order",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "ใบเบิกต้นทาง",
+   "options": "Stock Entry",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "service_type_group",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "กลุ่มบริการ",
+   "options": "Service Type Group",
+   "read_only": 1
+  },
+  {
+   "default": "Pending",
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "สถานะอนุมัติ",
+   "options": "Pending\nApproved\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requested_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "ผู้ขอคืน (user)",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requested_by_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ผู้ขอคืน",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "ผู้พิจารณา (user)",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_by_name",
+   "fieldtype": "Data",
+   "label": "ผู้พิจารณา",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "พิจารณาเมื่อ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break",
+   "label": "รายการคืน"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "รายการคืน",
+   "options": "Parts Return Item",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "ราคาขายสุทธิหลังส่วนลดต่อหน่วยของใบสั่งงาน × จำนวนที่คืน — คิดใหม่อีกครั้งตอนอนุมัติ",
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "ยอดเงินค่าอะไหล่ที่คืน",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "เหตุผลที่คืน",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "เหตุผลที่ไม่อนุมัติ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_issue_removed",
+   "fieldtype": "Check",
+   "label": "ใบเบิกต้นทางถูกลบ (คืนครบทุกรายการ)",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Parts Return",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Manager"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Supervisor"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "service_order",
+ "track_changes": 1
+}

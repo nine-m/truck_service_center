@@ -22,6 +22,11 @@ from truck_service_center.api.technician_portal import (
 	TECHNICIAN_FIELDS,
 )
 from truck_service_center.queries import get_technician_users
+from truck_service_center.truck_service_center.doctype.parts_return.parts_return import (
+	RETURN_APPROVED,
+	RETURN_PENDING,
+	RETURN_REJECTED,
+)
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	APPROVAL_APPROVED,
 	APPROVAL_PENDING,
@@ -68,6 +73,13 @@ REQUISITION_STATES = {
 	"submitted": ("เบิกแล้ว", "done"),
 }
 
+# สถานะใบคืนอะไหล่ → (ข้อความ, สีป้าย data-state) — ชุดสีเดียวกับใบเบิก
+RETURN_STATES = {
+	RETURN_PENDING: ("รออนุมัติคืน", "running"),
+	RETURN_APPROVED: ("คืนแล้ว", "done"),
+	RETURN_REJECTED: ("ไม่อนุมัติคืน", "rejected"),
+}
+
 # เหตุผลไม่อนุมัติสำเร็จรูป — หัวหน้างานแตะแล้วแก้ต่อได้
 REJECT_PRESETS = (
 	"จำนวนเกินที่ใช้จริง",
@@ -88,34 +100,13 @@ REMARK_PRESETS = (
 
 
 def get_context(context):
-	if frappe.session.user == "Guest":
-		frappe.throw(_("You need to be logged in to access this page"), frappe.PermissionError)
-
-	name = frappe.form_dict.get("name")
-	if not name or not frappe.db.exists("Service Order", name):
-		raise frappe.DoesNotExistError
-
-	doc = frappe.get_doc("Service Order", name)
-	doc.check_permission("read")
-
-	roles = set(frappe.get_roles())
-	is_manager = bool(MANAGER_ROLES & roles)
-	is_assigned = any(doc.get(fieldname) == frappe.session.user for fieldname in TECHNICIAN_FIELDS)
-	supervised_groups = get_supervised_groups()
-
-	# หัวหน้างานกลุ่มที่ไม่ได้ถูก assign เปิดได้เมื่อใบนี้มีงานในกลุ่มที่ตัวเองดูแล (จัดการได้เฉพาะแถว
-	# ในกลุ่ม + ปุ่มอนุมัติ ข้อมูลระดับใบดูได้อย่างเดียว) หรือมีใบเบิกในกลุ่มนั้น — นับใบเบิกที่ตัดสิน
-	# ไปแล้วด้วย ไม่งั้นแถวงานถูกลบหลังอนุมัติแล้ว reload จะเจอหน้า Not Permitted
-	supervisor_view = False
-	if not is_assigned and not is_manager:
-		in_scope = any(row.service_type_group in supervised_groups for row in doc.service_types)
-		if not in_scope and not _has_requisition_in_groups(doc.name, supervised_groups):
-			frappe.throw(_("คุณไม่ได้เป็นช่างผู้รับผิดชอบใบสั่งงานนี้"), frappe.PermissionError)
-		supervisor_view = True
-
-	# doc_open = เอกสารยังแก้ได้ (ตรงกับ _ensure_open ของ api) ส่วน editable = แก้ข้อมูลระดับใบได้
-	# หัวหน้างานกลุ่มที่ไม่ได้อยู่ในใบ แก้ได้เฉพาะแถวงานในกลุ่มของตน (line.can_manage)
-	doc_open = doc.docstatus == 0 and doc.status in EDITABLE_STATUSES
+	portal = load_portal_job(frappe.form_dict.get("name"))
+	doc, is_manager, supervisor_view, doc_open = (
+		portal.doc,
+		portal.is_manager,
+		portal.supervisor_view,
+		portal.doc_open,
+	)
 
 	# บังคับให้มี csrf token ในหน้า เพื่อให้ frappe.call ยิง POST ได้
 	frappe.sessions.get_csrf_token()
@@ -130,13 +121,12 @@ def get_context(context):
 	context.job = _build_job_view(
 		doc,
 		is_manager,
-		approver=frappe._dict(is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups),
+		approver=portal.approver,
 		doc_open=doc_open,
 		job_access=not supervisor_view,
 	)
 	context.fuel_levels = FUEL_LEVELS
 	context.remark_presets = REMARK_PRESETS
-	context.reject_presets = REJECT_PRESETS
 
 	# แก้ไขได้ก็ต่อเมื่อยังไม่ submit และงานยังไม่ปิด — ตรงกับที่ api บังคับไว้
 	# หัวหน้างานกลุ่มที่ไม่ได้อยู่ในใบ แก้ข้อมูลระดับใบไม่ได้ (api ก็ไม่ให้อยู่แล้ว)
@@ -167,6 +157,46 @@ def get_context(context):
 	context.technician_options = _get_technician_options() if can_assign else []
 
 	return context
+
+
+def load_portal_job(name):
+	"""ด่านเข้าหน้าใบงานของพอร์ทัล — ใช้ร่วมกันทั้งหน้ารายละเอียดงานและหน้าใบเบิกอะไหล่
+
+	ช่างในใบ / หัวหน้าช่างเปิดได้ หัวหน้างานกลุ่มที่ไม่ได้ถูก assign เปิดได้เมื่อใบนี้มีงานในกลุ่มที่ตัวเองดูแล
+	(จัดการได้เฉพาะแถวในกลุ่ม + ปุ่มอนุมัติ ข้อมูลระดับใบดูได้อย่างเดียว) หรือมีใบเบิกในกลุ่มนั้น
+	— นับใบเบิกที่ตัดสินไปแล้วด้วย ไม่งั้นแถวงานถูกลบหลังอนุมัติแล้ว reload จะเจอหน้า Not Permitted
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("You need to be logged in to access this page"), frappe.PermissionError)
+
+	if not name or not frappe.db.exists("Service Order", name):
+		raise frappe.DoesNotExistError
+
+	doc = frappe.get_doc("Service Order", name)
+	doc.check_permission("read")
+
+	roles = set(frappe.get_roles())
+	is_manager = bool(MANAGER_ROLES & roles)
+	is_assigned = any(doc.get(fieldname) == frappe.session.user for fieldname in TECHNICIAN_FIELDS)
+	supervised_groups = get_supervised_groups()
+
+	supervisor_view = False
+	if not is_assigned and not is_manager:
+		in_scope = any(row.service_type_group in supervised_groups for row in doc.service_types)
+		if not in_scope and not _has_requisition_in_groups(doc.name, supervised_groups):
+			frappe.throw(_("คุณไม่ได้เป็นช่างผู้รับผิดชอบใบสั่งงานนี้"), frappe.PermissionError)
+		supervisor_view = True
+
+	return frappe._dict(
+		doc=doc,
+		is_manager=is_manager,
+		supervisor_view=supervisor_view,
+		# doc_open = เอกสารยังแก้ได้ (ตรงกับ _ensure_open ของ api) ส่วนสิทธิ์แก้ระดับใบ
+		# ผู้เรียกคิดเองจาก supervisor_view
+		doc_open=doc.docstatus == 0 and doc.status in EDITABLE_STATUSES,
+		# ใช้ตัดสินปุ่มอนุมัติรายใบเบิก และ groups ชุดเดียวกันคือขอบเขตที่หัวหน้างานกลุ่มจัดการแถวงานได้
+		approver=frappe._dict(is_fallback=bool(APPROVER_FALLBACK_ROLES & roles), groups=supervised_groups),
+	)
 
 
 def _has_requisition_in_groups(service_order, groups):
@@ -215,6 +245,16 @@ def _build_job_view(doc, is_manager=False, approver=None, doc_open=True, job_acc
 
 	service_types = _build_service_rows(doc, is_manager, approver.groups, doc_open)
 	parts = _build_parts(doc)
+	part_groups = _group_parts(
+		service_types,
+		parts,
+		group_names=_get_group_names({row.group for row in service_types} | {p.group for p in parts}),
+		issues=_get_requisitions(doc, approver),
+		is_manager=is_manager,
+		supervised_groups=approver.groups,
+		job_access=job_access,
+	)
+	parts_returns = _get_parts_returns(doc, approver)
 
 	return frappe._dict(
 		name=doc.name,
@@ -250,18 +290,28 @@ def _build_job_view(doc, is_manager=False, approver=None, doc_open=True, job_acc
 		service_types=service_types,
 		# ห้ามตั้งชื่อ key ว่า items — frappe._dict เป็น dict ทำให้ job.items ไปเจอเมธอด dict.items
 		parts=parts,
-		part_groups=_group_parts(
-			service_types,
-			parts,
-			group_names=_get_group_names({row.group for row in service_types} | {p.group for p in parts}),
-			issues=_get_requisitions(doc, approver),
-			is_manager=is_manager,
-			supervised_groups=approver.groups,
-			job_access=job_access,
-		),
+		part_groups=part_groups,
+		parts_returns=parts_returns,
+		returned_amount=flt(doc.get("returned_parts_amount")),
+		parts_summary=summarize_parts(parts, part_groups, parts_returns),
 		# ชื่ออะไหล่ที่ยังไม่มีใบเบิก — หน้าเว็บใช้เตือนก่อนกดปิดงาน ด่านจริงคือ
 		# _validate_completion ฝั่ง server
 		unissued_parts=[part.label for part in parts if part.needs_issue],
+	)
+
+
+def summarize_parts(parts, part_groups, parts_returns=()):
+	"""ตัวเลขสรุปบนการ์ดลิงก์ไปหน้าใบเบิกอะไหล่ — หน้ารายละเอียดงานไม่แสดงรายการเต็มแล้ว"""
+	issues = {issue.name: issue for group in part_groups for issue in group.issues}.values()
+	return frappe._dict(
+		returns_pending=sum(1 for ret in parts_returns if ret.status == RETURN_PENDING),
+		returns_to_approve=sum(1 for ret in parts_returns if ret.can_approve),
+		count=len(parts),
+		unissued=sum(1 for part in parts if part.needs_issue),
+		pending=sum(1 for issue in issues if issue.status == APPROVAL_PENDING and issue.theme == "running"),
+		rejected=sum(1 for issue in issues if issue.status == APPROVAL_REJECTED),
+		to_approve=sum(1 for issue in issues if issue.can_approve),
+		can_request=any(group.can_request for group in part_groups),
 	)
 
 
@@ -341,7 +391,9 @@ def _build_parts(doc):
 
 	return [
 		frappe._dict(
+			row_name=row.name,
 			label=row.item_name or row.item_code,
+			item_code=row.item_code,
 			package=row.service_package or "",
 			service_type=row.service_type or "",
 			# กลุ่มบริการของแถวอะไหล่ — เกณฑ์เดียวกับที่ create_group_requisition ใช้เลือกแถว
@@ -356,6 +408,10 @@ def _build_parts(doc):
 			# เฉพาะสินค้าคงคลังที่ต้องมีใบเบิก — ชุดเดียวกับที่ collect_material_issue_problems
 			# กันไว้ตอน submit ค่าบริการ/อะไหล่นอกสต็อกไม่ต้องเบิกและเบิกไม่ได้ด้วย
 			needs_issue=row.item_code in stock_items and not row.material_issue,
+			# ช่างคีย์ขอเพิ่มเองจากพอร์ทัล — คนขอ (หรือหัวหน้าช่าง) ลบได้ตอนยังไม่มีใบเบิก
+			requested_by=row.get("requested_by") or "",
+			# คืนผ่านใบคืนอะไหล่ที่อนุมัติแล้ว — qty ที่เห็นคือหลังหักคืนแล้ว
+			returned_qty=_num(row.get("returned_qty")),
 		)
 		for row in doc.service_items
 	]
@@ -449,6 +505,7 @@ def _get_requisitions(doc, approver):
 			"custom_created_by_name",
 			"custom_approved_by_name",
 			"custom_rejection_reason",
+			"remarks",
 		],
 		order_by="creation asc",
 	)
@@ -464,11 +521,84 @@ def _get_requisitions(doc, approver):
 			requested_by_name=row.custom_created_by_name or "",
 			approved_by_name=row.custom_approved_by_name or "",
 			reason=row.custom_rejection_reason or "",
+			# เหตุผลที่ช่างใส่ตอนกดขออนุมัติเบิก (create_group_requisition) — ให้ผู้อนุมัติเห็นก่อนตัดสิน
+			note=_plain_text(row.remarks),
 			can_approve=pending and (approver.is_fallback or (bool(group) and group in approver.groups)),
 			**_issue_state(status, row.docstatus),
 		)
 
 	return issues
+
+
+def _get_parts_returns(doc, approver):
+	"""ใบคืนอะไหล่ทุกใบของใบสั่งงาน พร้อมรายการ — 2 query
+
+	can_approve คิดแบบ batch ตามกลุ่มของใบคืน (= กลุ่มของใบเบิกต้นทาง) ตรงกับ _get_pending_return
+	"""
+	rows = frappe.get_all(
+		"Parts Return",
+		filters={"service_order": doc.name},
+		fields=[
+			"name",
+			"stock_entry",
+			"service_type_group",
+			"approval_status",
+			"requested_by_name",
+			"approved_by_name",
+			"reason",
+			"rejection_reason",
+			"total_amount",
+			"source_issue_removed",
+		],
+		order_by="creation desc",
+	)
+	if not rows:
+		return []
+
+	lines = {}
+	for line in frappe.get_all(
+		"Parts Return Item",
+		filters={"parent": ["in", [row.name for row in rows]], "parenttype": "Parts Return"},
+		fields=["parent", "item_name", "item_code", "uom", "return_qty", "amount"],
+		order_by="idx asc",
+	):
+		lines.setdefault(line.parent, []).append(
+			frappe._dict(
+				label=line.item_name or line.item_code,
+				qty=_num(line.return_qty),
+				uom=line.uom or "",
+				amount=_money(line.amount),
+			)
+		)
+
+	returns = []
+	for row in rows:
+		label, theme = RETURN_STATES.get(row.approval_status, (row.approval_status, ""))
+		group = row.service_type_group or ""
+		pending = row.approval_status == RETURN_PENDING
+		returns.append(
+			frappe._dict(
+				name=row.name,
+				stock_entry=row.stock_entry,
+				status=row.approval_status,
+				status_label=label,
+				theme=theme,
+				requested_by_name=row.requested_by_name or "",
+				approved_by_name=row.approved_by_name or "",
+				reason=_plain_text(row.reason),
+				rejection_reason=row.rejection_reason or "",
+				total=_money(row.total_amount),
+				source_removed=bool(row.source_issue_removed),
+				lines=lines.get(row.name, []),
+				can_approve=pending and (approver.is_fallback or (bool(group) and group in approver.groups)),
+			)
+		)
+	return returns
+
+
+def _money(value):
+	"""ยอดเงินแบบมีคอมมา 2 ตำแหน่ง — หน้าพอร์ทัลไม่ได้โหลด format ของ desk"""
+	return f"{flt(value, 2):,.2f}"
 
 
 def _get_group_names(groups):

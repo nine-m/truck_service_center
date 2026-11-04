@@ -1,0 +1,344 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Bay Monitor{% endblock %}
+
+{% macro meter(percent, theme, over=False) -%}
+<div class="tsc-meter" role="presentation">
+	<div class="tsc-meter-fill" data-theme="{{ 'red' if over else theme }}" style="width: {{ percent }}%"></div>
+</div>
+{%- endmacro %}
+
+{% block page_content %}
+<div class="tsc-bay">
+
+	<header class="tsc-bay-header">
+		<div>
+			<h1 class="tsc-bay-title">Bay Monitor</h1>
+			<p class="tsc-bay-subtitle">
+				{{ date_label }}{% if is_today %} (วันนี้){% endif %}
+				&middot; ข้อมูล ณ {{ fetched_at }}
+				{% if is_today %}&middot; รีเฟรชอัตโนมัติใน <span data-countdown>{{ refresh_seconds }}</span> วินาที{% endif %}
+			</p>
+		</div>
+		<form class="tsc-bay-nav" method="get" action="/bay-monitor">
+			<a class="tsc-btn" href="/bay-monitor?date={{ prev_date }}" aria-label="วันก่อนหน้า">&lsaquo;</a>
+			<input class="tsc-date" type="date" name="date" value="{{ selected_date }}" data-action="pick-date">
+			<a class="tsc-btn" href="/bay-monitor?date={{ next_date }}" aria-label="วันถัดไป">&rsaquo;</a>
+			{% if not is_today %}<a class="tsc-btn" href="/bay-monitor">วันนี้</a>{% endif %}
+			<button type="button" class="tsc-btn" data-action="refresh">&#8635; รีเฟรช</button>
+		</form>
+	</header>
+
+	{% set s = board.summary %}
+	<section class="tsc-kpis">
+		{% if is_today %}
+		<div class="tsc-kpi">
+			<div class="tsc-kpi-label">ช่องที่มีรถอยู่ตอนนี้</div>
+			<div class="tsc-kpi-value">{{ s.in_use }}<span class="tsc-kpi-unit"> / {{ s.bay_count }} ช่อง</span></div>
+			<div class="tsc-kpi-hint">ว่าง {{ s.free_now }}{% if s.closed %} &middot; ปิด {{ s.closed }}{% endif %}</div>
+		</div>
+		<div class="tsc-kpi">
+			<div class="tsc-kpi-label">รถในศูนย์</div>
+			<div class="tsc-kpi-value">{{ s.vehicles_in_shop }}<span class="tsc-kpi-unit"> คัน</span></div>
+			<div class="tsc-kpi-hint">
+				{% if s.waiting_receive %}ใบงานรอรับรถอีก {{ s.waiting_receive }} ใบ{% else %}ไม่มีใบงานรอรับรถ{% endif %}
+				{% if board.unassigned %} &middot; <b>ยังไม่จัดช่อง {{ board.unassigned | length }}</b>{% endif %}
+			</div>
+		</div>
+		{% endif %}
+		<div class="tsc-kpi">
+			<div class="tsc-kpi-label">ชั่วโมงที่จอง{% if is_today %}วันนี้{% endif %}</div>
+			<div class="tsc-kpi-value">{{ s.booked }}<span class="tsc-kpi-unit"> / {{ s.cap }} ชม.</span></div>
+			{{ meter(s.capacity_percent, s.capacity_theme) }}
+			<div class="tsc-kpi-hint">
+				<span class="es-badge" data-theme="{{ s.capacity_theme }}">{{ s.capacity_status }}</span>
+				ยังรับได้ {{ s.free }} ชม.{% if s.over %} &middot; OT {{ s.over }} ชม.{% endif %}
+			</div>
+		</div>
+		<div class="tsc-kpi">
+			<div class="tsc-kpi-label">นัดหมาย</div>
+			<div class="tsc-kpi-value">{{ s.appointment_count }}<span class="tsc-kpi-unit"> นัด</span></div>
+			<div class="tsc-kpi-hint">
+				มาถึงแล้ว {{ s.arrived }}
+				{% if s.late %} &middot; <span class="tsc-text-danger">เลยเวลา {{ s.late }}</span>{% endif %}
+				&middot; ยังไม่มา {{ s.pending }}
+			</div>
+		</div>
+	</section>
+
+	{% if s.by_type | length > 1 %}
+	<section class="tsc-types">
+		{% for t in s.by_type %}
+		<div class="tsc-type-chip">
+			<span>{{ t.label }}</span>
+			<b>{{ t.booked }}/{{ t.cap }} ชม.</b>
+			<span class="es-badge" data-theme="{{ t.theme }}">{{ t.status }}</span>
+		</div>
+		{% endfor %}
+	</section>
+	{% endif %}
+
+	{% if s.day_note %}<p class="tsc-day-note">{{ s.day_note }}</p>{% endif %}
+
+	{% if not is_today %}
+	<p class="tsc-day-note">ดูวันอื่นแสดงเฉพาะการจอง — สถานะรถที่ใช้งานจริงในช่องจอดดูได้เฉพาะวันนี้</p>
+	{% endif %}
+
+	<section class="tsc-legend" aria-label="คำอธิบายสถานะ">
+		<span><i class="tsc-dot" data-state="in_use"></i>ใช้งานอยู่</span>
+		<span><i class="tsc-dot" data-state="waiting"></i>รอรถเข้า (มีใบงาน ยังไม่รับรถ)</span>
+		<span><i class="tsc-dot" data-state="booked"></i>มีจอง (ยังไม่มีรถ)</span>
+		<span><i class="tsc-dot" data-state="free"></i>ว่าง</span>
+		<span><i class="tsc-dot" data-state="closed"></i>ปิดทำการ</span>
+	</section>
+
+	{% for group in board.groups %}
+	<section class="tsc-group">
+		<h2 class="tsc-group-title">{{ group.label }} <span class="tsc-muted">({{ group.bays | length }} ช่อง)</span></h2>
+		<div class="tsc-grid">
+			{% for bay in group.bays %}
+			<article class="tsc-card" data-state="{{ bay.state }}">
+				<div class="tsc-card-head">
+					<span class="tsc-card-name">{{ bay.bay_name }}</span>
+					<span class="es-badge" data-theme="{{ bay.state_theme }}">{{ bay.state_label }}</span>
+				</div>
+
+				<div class="tsc-cap">
+					<div class="tsc-cap-row">
+						<span class="tsc-muted">จอง</span>
+						<span>
+							<b>{{ bay.booked }}</b> / {{ bay.cap }} ชม.
+							{% if bay.is_over %}<span class="tsc-text-danger">(OT {{ bay.booked - bay.cap }})</span>{% endif %}
+						</span>
+					</div>
+					{{ meter(bay.capacity_percent, bay.capacity_theme, bay.is_over) }}
+					{% if bay.closed_reason %}<div class="tsc-muted tsc-small">ปิด: {{ bay.closed_reason }}</div>{% endif %}
+				</div>
+
+				{% if is_today %}
+				<div class="tsc-block">
+					<div class="tsc-block-title">ในช่องตอนนี้</div>
+					{% for o in bay.occupants %}
+					<div class="tsc-occ">
+						<div class="tsc-occ-top">
+							<span class="tsc-truck">{{ o.truck_label }}</span>
+							<span class="es-badge" data-theme="{{ o.status_theme }}">{{ o.status_label }}</span>
+						</div>
+						<div class="tsc-small tsc-muted">
+							{{ o.name }}{% if o.customer %} &middot; {{ o.customer }}{% endif %}
+							{% if o.since_label %} &middot; รับรถมา {{ o.since_label }}{% endif %}
+						</div>
+						{% if o.active_services %}
+						<div class="tsc-small">กำลังทำ: {{ o.active_services | join(", ") }}</div>
+						{% elif o.service_count %}
+						<div class="tsc-small tsc-muted">งานเสร็จ {{ o.done_count }}/{{ o.service_count }}</div>
+						{% endif %}
+						{% if o.technician_labels %}
+						<div class="tsc-small tsc-muted">ช่าง: {{ o.technician_labels | join(", ") }}</div>
+						{% endif %}
+						{% if o.is_walk_in %}<span class="tsc-tag">ไม่มีนัด (walk-in)</span>{% endif %}
+					</div>
+					{% else %}
+					<div class="tsc-small tsc-muted">ไม่มีรถ</div>
+					{% endfor %}
+				</div>
+				{% endif %}
+
+				<div class="tsc-block">
+					<div class="tsc-block-title">การจอง ({{ bay.bookings | length }})</div>
+					{% for b in bay.bookings %}
+					<div class="tsc-booking">
+						<span class="tsc-booking-time">{{ b.time_label }}</span>
+						<span class="tsc-booking-main">
+							<b>{{ b.truck_label }}</b> <span class="tsc-muted">&middot; {{ b.allocated_hours }} ชม.</span>
+							<span class="tsc-small tsc-muted tsc-block-line">{{ b.name }}{% if b.customer %} &middot; {{ b.customer }}{% endif %}</span>
+						</span>
+						{% if b.in_this_bay %}
+						<span class="es-badge" data-theme="green">อยู่ในช่องนี้</span>
+						{% else %}
+						<span class="es-badge" data-theme="{{ b.arrival_theme }}">{{ b.arrival_label }}</span>
+						{% endif %}
+					</div>
+					{% else %}
+					<div class="tsc-small tsc-muted">ไม่มีการจอง</div>
+					{% endfor %}
+				</div>
+			</article>
+			{% endfor %}
+		</div>
+	</section>
+	{% else %}
+	<div class="tsc-empty">ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน</div>
+	{% endfor %}
+
+	{% if board.unassigned %}
+	<section class="tsc-group">
+		<h2 class="tsc-group-title">รถในศูนย์ที่ยังไม่ได้จัดช่องจอด <span class="tsc-muted">({{ board.unassigned | length }})</span></h2>
+		<div class="tsc-list">
+			{% for o in board.unassigned %}
+			<div class="tsc-list-row">
+				<span class="tsc-truck">{{ o.truck_label }}</span>
+				<span class="tsc-muted tsc-small">{{ o.name }}{% if o.customer %} &middot; {{ o.customer }}{% endif %}{% if o.since_label %} &middot; รับรถมา {{ o.since_label }}{% endif %}</span>
+				<span class="es-badge" data-theme="{{ o.status_theme }}">{{ o.status_label }}</span>
+			</div>
+			{% endfor %}
+		</div>
+	</section>
+	{% endif %}
+
+	{% if board.unallocated %}
+	<section class="tsc-group">
+		<h2 class="tsc-group-title">นัดหมายที่ยังไม่ได้จัดช่องจอด <span class="tsc-muted">({{ board.unallocated | length }})</span></h2>
+		<div class="tsc-list">
+			{% for b in board.unallocated %}
+			<div class="tsc-list-row">
+				<span class="tsc-booking-time">{{ b.time_label }}</span>
+				<span class="tsc-truck">{{ b.truck_label }}</span>
+				<span class="tsc-muted tsc-small">{{ b.name }}{% if b.customer %} &middot; {{ b.customer }}{% endif %} &middot; {{ b.hours_label }} ชม.</span>
+				<span class="es-badge" data-theme="{{ b.arrival_theme }}">{{ b.arrival_label }}</span>
+			</div>
+			{% endfor %}
+		</div>
+	</section>
+	{% endif %}
+
+</div>
+
+<script>
+(function () {
+	// เลือกวันจาก date picker แล้วไปเลย ไม่ต้องกดปุ่ม
+	var picker = document.querySelector('[data-action="pick-date"]');
+	if (picker) {
+		picker.addEventListener("change", function () {
+			if (picker.value) { picker.form.submit(); }
+		});
+	}
+
+	document.addEventListener("click", function (event) {
+		var btn = event.target.closest('[data-action="refresh"]');
+		if (!btn) { return; }
+		btn.disabled = true;
+		window.location.reload();
+	});
+
+	// รีเฟรชอัตโนมัติเฉพาะตอนดูวันนี้ — หน้าตั้ง no_cache ไว้ reload จึงได้ข้อมูลใหม่เสมอ
+	// แท็บที่ซ่อนอยู่ไม่นับถอยหลัง กลับมาดูเมื่อไรค่อยนับต่อ
+	var counter = document.querySelector("[data-countdown]");
+	if (!counter) { return; }
+	var left = {{ refresh_seconds }};
+	setInterval(function () {
+		if (document.hidden) { return; }
+		left -= 1;
+		counter.textContent = Math.max(left, 0);
+		if (left <= 0) { window.location.reload(); }
+	}, 1000);
+})();
+</script>
+
+<style>
+	/* CSS อยู่ในไฟล์นี้เลยเหมือนพอร์ทัลช่าง — ไม่ต้องรัน bench build */
+	.tsc-bay { max-width: 1600px; margin: 0 auto; padding: 0 1rem 3rem; }
+
+	.tsc-bay-header {
+		display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+		gap: 1rem; padding: 0.75rem 0 1.25rem;
+	}
+	.tsc-bay-title { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; }
+	.tsc-bay-subtitle { margin: 0; font-size: 0.875rem; color: var(--text-muted); }
+	.tsc-bay-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+	.tsc-btn, .tsc-date {
+		display: inline-flex; align-items: center; justify-content: center;
+		min-height: 40px; padding: 0.4rem 0.8rem; font-size: 0.9375rem; color: inherit;
+		border: 1px solid var(--border-color); border-radius: 8px;
+		background: var(--card-bg, #fff); text-decoration: none; cursor: pointer;
+	}
+	.tsc-btn:hover { text-decoration: none; color: inherit; border-color: var(--text-muted); }
+	.tsc-btn:disabled { opacity: 0.6; cursor: wait; }
+
+	.tsc-muted { color: var(--text-muted); }
+	.tsc-small { font-size: 0.8125rem; }
+	.tsc-text-danger { color: var(--red-600, #c53030); }
+	.tsc-block-line { display: block; }
+
+	.tsc-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+	.tsc-kpi {
+		border: 1px solid var(--border-color); border-radius: 10px; padding: 0.9rem 1rem;
+		background: var(--card-bg, #fff);
+	}
+	.tsc-kpi-label { font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+	.tsc-kpi-value { font-size: 1.75rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+	.tsc-kpi-unit { font-size: 0.9375rem; font-weight: 400; color: var(--text-muted); }
+	.tsc-kpi-hint { font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.35rem; }
+
+	.tsc-meter { height: 6px; border-radius: 999px; background: var(--subtle-fg, #eef0f2); overflow: hidden; margin-top: 0.35rem; }
+	.tsc-meter-fill { height: 100%; border-radius: 999px; background: #8d99a6; }
+	.tsc-meter-fill[data-theme="green"] { background: #30a66d; }
+	.tsc-meter-fill[data-theme="orange"] { background: #e8833a; }
+	.tsc-meter-fill[data-theme="red"] { background: #e03636; }
+
+	.tsc-types { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+	.tsc-type-chip {
+		display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;
+		padding: 0.3rem 0.4rem 0.3rem 0.75rem; border: 1px solid var(--border-color); border-radius: 999px;
+	}
+	.tsc-day-note { font-size: 0.875rem; color: var(--text-muted); margin: 0 0 0.75rem; }
+
+	.tsc-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.8125rem; color: var(--text-muted); margin: 0.25rem 0 1rem; }
+	.tsc-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+	.tsc-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+	/* สีสถานะช่องจอด — ใช้ทั้งจุดใน legend และแถบซ้ายของการ์ด */
+	[data-state="in_use"] { --tsc-state: #e8833a; }
+	[data-state="waiting"] { --tsc-state: #e0b400; }
+	[data-state="booked"] { --tsc-state: #2490ef; }
+	[data-state="free"] { --tsc-state: #30a66d; }
+	[data-state="closed"] { --tsc-state: #8d99a6; }
+	.tsc-dot { background: var(--tsc-state); }
+
+	.tsc-group { margin-bottom: 1.5rem; }
+	.tsc-group-title { font-size: 1.0625rem; font-weight: 600; margin: 0 0 0.75rem; }
+	.tsc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 0.75rem; }
+
+	.tsc-card {
+		border: 1px solid var(--border-color); border-left: 5px solid var(--tsc-state);
+		border-radius: 10px; padding: 0.85rem 1rem; background: var(--card-bg, #fff);
+		display: flex; flex-direction: column; gap: 0.75rem;
+	}
+	.tsc-card[data-state="closed"] { opacity: 0.75; }
+	.tsc-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.tsc-card-name { font-size: 1.125rem; font-weight: 600; }
+	.tsc-cap-row { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; }
+
+	.tsc-block { border-top: 1px dashed var(--border-color); padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+	.tsc-block-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); }
+
+	.tsc-occ { display: flex; flex-direction: column; gap: 0.15rem; }
+	.tsc-occ + .tsc-occ { border-top: 1px solid var(--border-color); padding-top: 0.5rem; }
+	.tsc-occ-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.tsc-truck { font-weight: 600; word-break: break-word; }
+	.tsc-tag {
+		align-self: flex-start; font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px;
+		border: 1px solid var(--border-color); color: var(--text-muted); margin-top: 0.15rem;
+	}
+
+	.tsc-booking { display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: start; font-size: 0.875rem; }
+	.tsc-booking-time { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3rem; }
+	.tsc-booking-main { min-width: 0; word-break: break-word; }
+
+	.tsc-list { display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; }
+	.tsc-list-row {
+		display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem;
+		padding: 0.6rem 1rem; font-size: 0.875rem; background: var(--card-bg, #fff);
+	}
+	.tsc-list-row + .tsc-list-row { border-top: 1px solid var(--border-color); }
+	.tsc-list-row .es-badge { margin-left: auto; }
+
+	.tsc-empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+
+	@media (max-width: 575px) {
+		.tsc-bay { padding: 0 0 2rem; }
+		.tsc-kpi-value { font-size: 1.4rem; }
+		.tsc-grid { grid-template-columns: 1fr; }
+	}
+</style>
+{% endblock %}

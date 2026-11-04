@@ -14,6 +14,14 @@ from frappe import _
 from frappe.utils import escape_html, flt, now_datetime
 
 from truck_service_center.queries import get_technician_users
+from truck_service_center.truck_service_center.doctype.parts_return.parts_return import (
+	RETURN_APPROVED,
+	RETURN_PENDING,
+	RETURN_REJECTED,
+	apply_parts_return,
+	create_parts_return,
+	stamp_return_decision,
+)
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	APPROVAL_APPROVED,
 	APPROVAL_PENDING,
@@ -23,11 +31,15 @@ from truck_service_center.truck_service_center.doctype.service_order.service_ord
 	collect_material_issue_problems,
 	create_material_issue_for_rows,
 	get_bay_warnings,
+	get_default_parts_warehouse,
 	get_supervised_groups,
 	receive_vehicle,
 	select_group_requisition_rows,
 	stamp_requisition_decision,
 	sync_material_issue_status,
+)
+from truck_service_center.truck_service_center.doctype.service_type_group.service_type_group import (
+	APPROVER_FALLBACK_ROLES,
 )
 
 # ช่องช่างผู้รับผิดชอบทั้ง 10 ช่องของ Service Order (แบน ไม่ใช่ child table)
@@ -56,6 +68,14 @@ ALLOWED_TRANSITIONS = {
 
 # เพดานกันค่าพิมพ์ผิด
 MAX_MILEAGE = 9999999.0
+
+# ฟอร์มขอเบิกอะไหล่เพิ่ม — ค้นเมื่อพิมพ์อย่างน้อย 2 ตัว คืนไม่เกิน 20 รายการ
+SEARCH_MIN_CHARS = 2
+SEARCH_LIMIT = 20
+# เพดานกันพิมพ์ผิด/ยิงผิด: จำนวนต่อรายการ, จำนวนรายการต่อครั้ง, ความยาวเหตุผลที่ขอเบิก
+MAX_PART_QTY = 999.0
+MAX_REQUEST_LINES = 30
+MAX_REQUEST_NOTE = 500
 
 
 def _is_assigned(doc, user):
@@ -391,7 +411,7 @@ def _get_group_job(service_order, service_type_group):
 
 
 @frappe.whitelist()
-def create_group_requisition(service_order, service_type_group=None):
+def create_group_requisition(service_order, service_type_group=None, note=None):
 	"""ขออนุมัติเบิกอะไหล่จากพอร์ทัล — หนึ่งใบต่อกลุ่มบริการ
 
 	งานหลายรายการที่อยู่กลุ่มเดียวกันรวมเป็นใบเดียว เพราะผู้อนุมัติผูกกับกลุ่ม
@@ -400,6 +420,8 @@ def create_group_requisition(service_order, service_type_group=None):
 
 	role Technician ไม่มีสิทธิ์สร้าง Stock Entry จึงต้องส่ง ignore_permissions ลงไป
 	ด่านจริงคือ _get_group_job ส่วนกฎ "ต้องรับรถก่อน" ยังถูกบังคับใน create_material_issue_for_rows
+
+	note = เหตุผลที่ขอ (ไม่บังคับ) เก็บลง Stock Entry.remarks ให้ผู้อนุมัติเห็นบนการ์ดใบเบิก
 	"""
 	service_type_group = service_type_group or None
 	doc = _get_group_job(service_order, service_type_group)
@@ -412,10 +434,190 @@ def create_group_requisition(service_order, service_type_group=None):
 		doc, rows, ignore_permissions=True, service_type_group=service_type_group
 	)
 
+	note = (note or "").strip()[:MAX_REQUEST_NOTE]
+	if note:
+		# ใบเบิกถูกสร้างด้วย ignore_permissions — ช่างไม่มีสิทธิ์ Stock Entry จึงเขียนตรง
+		frappe.db.set_value("Stock Entry", material_issue, "remarks", note)
+
 	return {
 		"value": material_issue,
 		"approval_status": frappe.db.get_value("Stock Entry", material_issue, "custom_approval_status"),
 	}
+
+
+@frappe.whitelist()
+def search_parts(service_order, txt=None):
+	"""ค้นอะไหล่สำหรับฟอร์มขอเบิกเพิ่ม — รหัส / ชื่อ / บาร์โค้ด (ตรงตัว) พร้อมยอดคงเหลือในคลังเบิก
+
+	role Technician ไม่มีสิทธิ์อ่าน Item จึงใช้ frappe.get_all โดยเจตนา ขอบเขตคือ
+	ต้องเปิดใบสั่งงานนั้นได้ และคืนเฉพาะสินค้าคงคลังที่ยังใช้งาน (ของที่เบิกได้จริงเท่านั้น)
+	ไม่คืนราคา — ราคาเป็นเรื่องของ desk (calculate_totals เติม rate ให้ตอนบันทึก)
+	"""
+	frappe.has_permission("Service Order", "read", service_order, throw=True)
+
+	txt = (txt or "").strip()
+	if len(txt) < SEARCH_MIN_CHARS:
+		return []
+
+	filters = {"disabled": 0, "is_stock_item": 1, "has_variants": 0}
+	fields = ["name", "item_name", "stock_uom"]
+
+	# สแกนบาร์โค้ดเข้ามา (เครื่องสแกนพิมพ์ตัวเลขแล้วกด Enter) — ตรงตัวขึ้นก่อนเสมอ
+	barcode_items = frappe.get_all("Item Barcode", filters={"barcode": txt}, pluck="parent", limit=5)
+	exact = frappe.get_all(
+		"Item", filters={**filters, "name": ["in", [txt, *barcode_items]]}, fields=fields, limit=5
+	)
+	like = f"%{txt}%"
+	rows = exact + [
+		row
+		for row in frappe.get_all(
+			"Item",
+			filters=filters,
+			or_filters={"name": ["like", like], "item_name": ["like", like]},
+			fields=fields,
+			order_by="item_name asc",
+			limit=SEARCH_LIMIT,
+		)
+		if row.name not in {item.name for item in exact}
+	]
+	rows = rows[:SEARCH_LIMIT]
+
+	warehouse = get_default_parts_warehouse()
+	stock = {}
+	if warehouse and rows:
+		stock = dict(
+			frappe.get_all(
+				"Bin",
+				filters={"warehouse": warehouse, "item_code": ["in", [row.name for row in rows]]},
+				fields=["item_code", "actual_qty"],
+				as_list=True,
+			)
+		)
+
+	return [
+		{
+			"item_code": row.name,
+			"item_name": row.item_name or row.name,
+			"uom": row.stock_uom or "",
+			"actual_qty": flt(stock.get(row.name)) if warehouse else None,
+			"exact": index < len(exact),
+		}
+		for index, row in enumerate(rows)
+	]
+
+
+def _parse_requested_parts(parts):
+	"""[{item_code, qty}] จาก client → รายการที่ตรวจแล้ว รวมรหัสซ้ำเป็นแถวเดียว
+
+	ด่านเดียวกับ search_parts: ต้องเป็นสินค้าคงคลังที่ยังใช้งาน — ของนอกสต๊อกเบิกไม่ได้อยู่แล้ว
+	(create_material_issue_for_rows จะข้ามแถวนั้น) ถ้าปล่อยเข้ามาจะกลายเป็นแถวที่ไม่มีวันมีใบเบิก
+	"""
+	parts = frappe.parse_json(parts) if isinstance(parts, str) else parts
+	if not isinstance(parts, list) or not parts:
+		frappe.throw(_("กรุณาเลือกอะไหล่อย่างน้อยหนึ่งรายการ"))
+	if len(parts) > MAX_REQUEST_LINES:
+		frappe.throw(_("ขอเบิกได้ครั้งละไม่เกิน {0} รายการ").format(MAX_REQUEST_LINES))
+
+	merged = {}
+	for part in parts:
+		code = (part or {}).get("item_code")
+		qty = flt((part or {}).get("qty"))
+		if not code:
+			continue
+		if qty <= 0 or qty > MAX_PART_QTY:
+			frappe.throw(_("จำนวนของ {0} ต้องมากกว่า 0 และไม่เกิน {1}").format(code, MAX_PART_QTY))
+		merged[code] = merged.get(code, 0) + qty
+
+	if not merged:
+		frappe.throw(_("กรุณาเลือกอะไหล่อย่างน้อยหนึ่งรายการ"))
+
+	valid = set(
+		frappe.get_all(
+			"Item",
+			filters={"name": ["in", list(merged)], "disabled": 0, "is_stock_item": 1, "has_variants": 0},
+			pluck="name",
+		)
+	)
+	invalid = [code for code in merged if code not in valid]
+	if invalid:
+		frappe.throw(_("อะไหล่ต่อไปนี้เบิกไม่ได้ (ไม่ใช่สินค้าคงคลัง หรือถูกปิดใช้งาน): {0}").format(", ".join(invalid)))
+
+	return merged
+
+
+@frappe.whitelist()
+def add_parts(service_order, parts, service_row=None):
+	"""ช่างคีย์อะไหล่ที่ต้องเบิกเพิ่มลงใบสั่งงาน — เพิ่มแถวอย่างเดียว ยังไม่สร้างใบเบิก
+
+	ใบเบิกเกิดตอนกด "ขออนุมัติเบิก" ของกลุ่ม (create_group_requisition) ซึ่งรวมอะไหล่ค้างเบิกทั้งกลุ่ม
+	เป็นใบเดียว — ถ้าสร้างใบตรงนี้เลย ของที่ค้างอยู่ก่อนในกลุ่มเดียวกันจะต้องแยกไปอีกใบ
+	(ผู้อนุมัติกดสองรอบ สต๊อก submit สองใบ ทั้งที่เป็นงานเดียวกัน)
+
+	แถวใหม่รับ provenance (service_type + service_package) จากงานที่เลือก
+	get_item_service_type_group จึงจัดเข้ากลุ่มของงานนั้น และ cascade ตามงานนั้นเหมือนอะไหล่ของงาน
+	ไม่เลือกงาน = กลุ่ม "อะไหล่อื่น ๆ / ไม่มีกลุ่ม" ซึ่งหัวหน้าช่าง/ผู้จัดการอนุมัติ
+
+	สิทธิ์: _get_group_job ตัวเดียวกับปุ่มขออนุมัติเบิกรายกลุ่ม — คนที่เพิ่มได้คือคนที่ขออนุมัติกลุ่มนั้นได้
+	"""
+	service_type_group = None
+	if service_row:
+		# อ่านกลุ่มก่อนโหลดใบ เพราะด่านสิทธิ์ (_get_group_job) ขึ้นกับกลุ่ม
+		service_type_group = frappe.db.get_value(
+			"Service Order Service Type",
+			{"parent": service_order, "parenttype": "Service Order", "name": service_row},
+			"service_type_group",
+		)
+	doc = _get_group_job(service_order, service_type_group or None)
+	row = _get_service_row(doc, service_row) if service_row else None
+
+	# อะไหล่ที่เพิ่มต้องเบิกต่อได้ทันที — กฎเดียวกับ create_material_issue_for_rows
+	if not doc.received_date and doc.status != "In Progress":
+		frappe.throw(_("ยังไม่ได้รับรถเข้าซ่อม กรุณารับรถก่อนเพิ่มอะไหล่"))
+
+	merged = _parse_requested_parts(parts)
+	warehouse = get_default_parts_warehouse()
+
+	for code, qty in merged.items():
+		doc.append(
+			"service_items",
+			{
+				"item_code": code,
+				"qty": qty,
+				"warehouse": warehouse,
+				"service_type": row.service_type if row else None,
+				"service_package": row.service_package if row else None,
+				"requested_by": frappe.session.user,
+			},
+		)
+	doc.save()
+
+	return {"added": len(merged)}
+
+
+@frappe.whitelist()
+def remove_requested_part(service_order, item_row):
+	"""ลบแถวอะไหล่ที่ช่างขอเพิ่มเองจากพอร์ทัล — คีย์ผิดก่อนขออนุมัติ หรือหลังใบเบิกถูกไม่อนุมัติ
+
+	ลบได้เฉพาะแถวที่มี requested_by และยังไม่มีใบเบิกผูกอยู่ โดยคนที่ขอเอง หรือหัวหน้าช่าง/ผู้จัดการ
+	แถวที่มาจาก desk / แพ็คเกจ / ประเภทบริการ ลบจากพอร์ทัลไม่ได้ ต้องแก้ใน desk
+	"""
+	doc = _load_job(service_order)
+	item = next((line for line in doc.service_items if line.name == item_row), None)
+	if not item:
+		frappe.throw(_("ไม่พบรายการอะไหล่ที่ระบุในใบสั่งงานนี้"))
+
+	if not item.get("requested_by"):
+		frappe.throw(_("ลบได้เฉพาะอะไหล่ที่ขอเพิ่มจากพอร์ทัลเท่านั้น"), frappe.PermissionError)
+	if item.requested_by != frappe.session.user and not _is_manager():
+		frappe.throw(_("ลบได้เฉพาะอะไหล่ที่คุณขอเพิ่มเอง"), frappe.PermissionError)
+	if item.material_issue:
+		frappe.throw(_("อะไหล่นี้มีใบเบิก {0} อยู่ ลบไม่ได้").format(item.material_issue))
+
+	_ensure_open(doc)
+
+	doc.remove(item)
+	doc.save()
+	return {"removed": item_row}
 
 
 def _get_pending_requisition(stock_entry):
@@ -511,6 +713,105 @@ def get_requisition_actions(stock_entry):
 	return {"can_approve": bool(pending) and can_approve_requisition(values)}
 
 
+@frappe.whitelist()
+def request_parts_return(service_order, stock_entry, lines, reason=None):
+	"""ช่างขอคืนอะไหล่ที่เบิกแล้วไม่ได้ใช้ — คืนบางส่วนได้ (lines = {ชื่อแถวอะไหล่: จำนวนคืน})
+
+	หนึ่งใบคืนต่อหนึ่งใบเบิก ผู้อนุมัติชุดเดียวกับใบเบิกนั้น ผู้ขอที่อนุมัติกลุ่มนั้นได้เอง
+	(หัวหน้าช่าง/ผู้จัดการ/หัวหน้างานของกลุ่ม) ถูกอนุมัติให้ทันที เหมือนตอนสร้างใบเบิก
+	สิทธิ์ขอ: _get_group_job ของกลุ่มใบเบิก — คนที่ขอเบิกกลุ่มนั้นได้ก็ขอคืนได้
+	"""
+	if not frappe.db.exists("Stock Entry", stock_entry):
+		frappe.throw(_("ไม่พบใบเบิก {0}").format(stock_entry))
+	entry = frappe.get_doc("Stock Entry", stock_entry)
+	if entry.get("custom_service_order") != service_order:
+		frappe.throw(_("{0} ไม่ใช่ใบเบิกของใบสั่งงานนี้").format(stock_entry))
+
+	doc = _get_group_job(service_order, entry.get("custom_service_type_group") or None)
+
+	requested = frappe.parse_json(lines) if isinstance(lines, str) else lines
+	if not isinstance(requested, dict):
+		frappe.throw(_("รูปแบบรายการคืนไม่ถูกต้อง"))
+	reason = (reason or "").strip()[:MAX_REQUEST_NOTE]
+
+	parts_return = create_parts_return(doc, entry, requested, reason=reason)
+	frappe.get_doc("Service Order", doc.name).add_comment(
+		"Info",
+		_("ขอคืนอะไหล่ {0} จากใบเบิก {1} ยอด {2} บาท").format(
+			parts_return.name, entry.name, parts_return.total_amount
+		),
+	)
+
+	if can_approve_requisition(entry):
+		stamp_return_decision(parts_return, RETURN_APPROVED)
+		apply_parts_return(parts_return)
+
+	return {"value": parts_return.name, "approval_status": parts_return.approval_status}
+
+
+def _get_pending_return(name):
+	"""ใบคืนที่ผู้ใช้ปัจจุบันพิจารณาได้ — รออนุมัติอยู่ และเป็นผู้อนุมัติของใบเบิกต้นทาง
+
+	ล็อกแถว (for_update) กันสองคนกดพร้อมกัน ใบเบิกต้นทางถูกลบไปแล้ว (มีคนลบมือบน desk)
+	ยังไม่อนุมัติได้ด้วย fallback roles จะได้ไม่มีใบค้างตลอดไป
+	"""
+	if not frappe.db.exists("Parts Return", name):
+		frappe.throw(_("ไม่พบใบคืนอะไหล่ {0}").format(name))
+
+	doc = frappe.get_doc("Parts Return", name, for_update=True)
+	if doc.approval_status != RETURN_PENDING:
+		frappe.throw(_("ใบคืน {0} ไม่ได้อยู่ในสถานะรออนุมัติแล้ว").format(doc.name))
+
+	if frappe.db.exists("Stock Entry", doc.stock_entry):
+		allowed = can_approve_requisition(frappe.get_doc("Stock Entry", doc.stock_entry))
+	else:
+		allowed = bool(APPROVER_FALLBACK_ROLES & set(frappe.get_roles()))
+	if not allowed:
+		frappe.throw(_("คุณไม่ใช่ผู้อนุมัติของกลุ่มบริการนี้"), frappe.PermissionError)
+
+	return doc
+
+
+@frappe.whitelist()
+def approve_parts_return(parts_return):
+	"""อนุมัติใบคืน → ลดจำนวนในใบเบิกและใบสั่งงาน + อัปเดตยอดอะไหล่ที่คืน"""
+	doc = _get_pending_return(parts_return)
+	stamp_return_decision(doc, RETURN_APPROVED)
+	apply_parts_return(doc)
+
+	text = _("อนุมัติใบคืนอะไหล่ {0} โดย {1} — ยอดคืน {2} บาท").format(
+		doc.name, doc.approved_by_name, doc.total_amount
+	)
+	frappe.get_doc("Service Order", doc.service_order).add_comment("Info", text)
+	return {"value": RETURN_APPROVED, "total_amount": doc.total_amount}
+
+
+@frappe.whitelist()
+def reject_parts_return(parts_return, reason=None):
+	"""ไม่อนุมัติใบคืน — ต้องมีเหตุผล จำนวนในใบเบิก/ใบสั่งงานไม่เปลี่ยน"""
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("กรุณาระบุเหตุผลที่ไม่อนุมัติ"))
+
+	doc = _get_pending_return(parts_return)
+	stamp_return_decision(doc, RETURN_REJECTED, reason=reason)
+	doc.save(ignore_permissions=True)
+
+	text = _("ไม่อนุมัติใบคืนอะไหล่ {0} โดย {1} — เหตุผล: {2}").format(
+		doc.name, doc.approved_by_name, escape_html(reason)
+	)
+	frappe.get_doc("Service Order", doc.service_order).add_comment("Info", text)
+	return {"value": RETURN_REJECTED}
+
+
+def _get_pending_return_names(service_order):
+	return frappe.get_all(
+		"Parts Return",
+		filters={"service_order": service_order, "approval_status": RETURN_PENDING},
+		pluck="name",
+	)
+
+
 def _validate_completion(doc):
 	"""ข้อมูลที่ช่างต้องบันทึกให้ครบก่อนปิดงาน — รวบฟ้องทีเดียวจะได้ไม่ต้องแก้หลายรอบ
 
@@ -544,6 +845,12 @@ def _validate_completion(doc):
 		missing.append(
 			_("สร้างใบเบิกอะไหล่ให้ครบ — ยังไม่ได้เบิก: {0}").format(", ".join(row["label"] for row in unissued))
 		)
+
+	# ปิดงานแล้วสต๊อก submit ใบเบิกได้ทันที — ใบคืนที่ค้างจะทำให้จำนวนที่ออกจากคลังผิด
+	# ใบที่ยังไม่บันทึกไม่มีใบคืนแน่นอน (และเทสต์ที่ stub frappe.db ก็ไม่ต้องแตะตารางนี้)
+	pending_returns = [] if doc.is_new() else _get_pending_return_names(doc.name)
+	if pending_returns:
+		missing.append(_("รอหัวหน้างานพิจารณาใบคืนอะไหล่ให้เสร็จก่อน: {0}").format(", ".join(pending_returns)))
 
 	if missing:
 		frappe.throw(
