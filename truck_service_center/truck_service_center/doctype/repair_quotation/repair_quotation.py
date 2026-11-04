@@ -7,6 +7,9 @@ from frappe.model.document import Document
 from frappe.utils import flt, getdate, nowdate
 
 from truck_service_center.discounts import distribute_package_discount, percent_of, resolve_line_discount
+from truck_service_center.truck_service_center.doctype.service_package.service_package import (
+	assert_package_usable,
+)
 
 
 class RepairQuotation(Document):
@@ -81,8 +84,7 @@ class RepairQuotation(Document):
 			# ดึงข้อมูลจาก package
 			package = frappe.get_doc("Service Package", pkg_name)
 
-			if not package.is_active:
-				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
+			assert_package_usable(package)
 
 			# ส่วนลดแพ็คเกจแจกเป็นบาทต่อแถว ให้รวมแล้วตรงราคาแพ็คเกจ (ไม่ใส่ % ตรง ๆ ซึ่งเหลือเศษ)
 			labor_discounts, part_discounts = distribute_package_discount(package)

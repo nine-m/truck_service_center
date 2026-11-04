@@ -14,6 +14,9 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 	get_bay_type_by_service_type,
 	split_hours_by_bay_type,
 )
+from truck_service_center.truck_service_center.doctype.service_package.service_package import (
+	assert_package_usable,
+)
 from truck_service_center.truck_service_center.doctype.service_type_group.service_type_group import (
 	APPROVER_FALLBACK_ROLES,
 )
@@ -322,8 +325,7 @@ class ServiceOrder(Document):
 			# ดึงข้อมูลจาก package
 			package = frappe.get_doc("Service Package", pkg_name)
 
-			if not package.is_active:
-				frappe.throw(f"แพ็คเกจ {pkg_name} ถูกปิดการใช้งานแล้ว")
+			assert_package_usable(package)
 
 			# ส่วนลดแพ็คเกจแจกเป็นบาทต่อแถว ให้รวมแล้วตรงราคาแพ็คเกจ (ไม่ใส่ % ตรง ๆ ซึ่งเหลือเศษ)
 			labor_discounts, part_discounts = distribute_package_discount(package)

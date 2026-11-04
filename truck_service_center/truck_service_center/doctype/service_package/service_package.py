@@ -14,6 +14,7 @@ from truck_service_center.discounts import distribute_package_discount, percent_
 class ServicePackage(Document):
 	def validate(self):
 		self.validate_package_service_types()
+		self.validate_service_types_active()
 		self.validate_pm_fields()
 		self.populate_parts_from_service_types()
 		self.calculate_totals()
@@ -23,6 +24,14 @@ class ServicePackage(Document):
 		"""ตรวจสอบว่ามีประเภทบริการในแพ็คเกจ"""
 		if not self.package_service_types:
 			frappe.throw("กรุณาเพิ่มประเภทบริการในแพ็คเกจอย่างน้อย 1 รายการ")
+
+	def validate_service_types_active(self):
+		"""แพ็คเกจที่เปิดใช้งานห้ามมีประเภทบริการที่ปิดใช้งาน — ปิดแพ็คเกจก่อนถึงจะบันทึกค้างไว้ได้"""
+		if not self.is_active:
+			return
+		inactive = get_inactive_service_types([self]).get(self.name)
+		if inactive:
+			frappe.throw(inactive_service_types_message(self.name, inactive))
 
 	def validate_pm_fields(self):
 		"""แพ็คเกจ PM ต้องมีทั้งรหัสประเภทรถและรอบอย่างน้อยหนึ่งค่า — ไม่ใส่อะไรเลย = แพ็คเกจทั่วไป
@@ -167,6 +176,68 @@ class ServicePackage(Document):
 		return flt(max(flt(self.total_standard_rate) - flt(self.package_rate), 0), 2)
 
 
+def get_inactive_service_types(packages):
+	"""{ชื่อแพ็คเกจ: [ประเภทบริการที่ปิดใช้งาน]} — packages เป็น doc หรือชื่อแพ็คเกจก็ได้
+
+	ประเภทบริการถูกปิดได้หลังสร้างแพ็คเกจแล้ว ตัวแพ็คเกจยังเปิดอยู่ แต่ใช้จริงไม่ได้
+	เพราะจะพาบริการที่เลิกให้แล้วเข้าเอกสาร และตัดออกก็ไม่ได้ (ราคาแพ็คเกจคิดรวมแถวนั้นไว้)
+	"""
+	rows_by_package = {}
+	for pkg in packages:
+		if isinstance(pkg, str):
+			continue
+		rows_by_package[pkg.name] = [row.service_type for row in pkg.package_service_types]
+
+	names = [pkg for pkg in packages if isinstance(pkg, str)]
+	if names:
+		for row in frappe.get_all(
+			"Service Package Service Type",
+			filters={"parent": ["in", names], "parenttype": "Service Package"},
+			fields=["parent", "service_type"],
+		):
+			rows_by_package.setdefault(row.parent, []).append(row.service_type)
+
+	service_types = {st for rows in rows_by_package.values() for st in rows if st}
+	if not service_types:
+		return {}
+
+	inactive_types = set(
+		frappe.get_all(
+			"Service Type",
+			filters={"name": ["in", list(service_types)], "is_active": 0},
+			pluck="name",
+		)
+	)
+	result = {}
+	for name, rows in rows_by_package.items():
+		inactive = [st for st in rows if st in inactive_types]
+		if inactive:
+			result[name] = inactive
+	return result
+
+
+def inactive_service_types_message(package_name, inactive):
+	return (
+		f"แพ็คเกจ {package_name} มีประเภทบริการที่ปิดใช้งานแล้ว: {', '.join(inactive)}"
+		" — เอาออกจากแพ็คเกจหรือปิดการใช้งานแพ็คเกจ"
+	)
+
+
+def assert_package_usable(package):
+	"""ด่านเดียวกันทุกทางที่ดึงแพ็คเกจเข้าเอกสาร: แพ็คเกจต้องเปิดอยู่ และประเภทบริการข้างในต้องเปิดอยู่ทั้งหมด"""
+	if not package.is_active:
+		frappe.throw(f"แพ็คเกจ {package.name} ถูกปิดการใช้งานแล้ว")
+	inactive = get_inactive_service_types([package]).get(package.name)
+	if inactive:
+		frappe.throw(inactive_service_types_message(package.name, inactive))
+
+
+def exclude_unusable_packages(packages):
+	"""ตัดแพ็คเกจที่มีประเภทบริการปิดใช้งานออกจากรายการ (แถวจาก frappe.get_all)"""
+	inactive = get_inactive_service_types([pkg.name for pkg in packages])
+	return [pkg for pkg in packages if pkg.name not in inactive]
+
+
 @frappe.whitelist()
 def get_package_details(package_name):
 	"""ดึงข้อมูลแพ็คเกจพร้อมรายการประเภทบริการและอะไหล่"""
@@ -174,9 +245,7 @@ def get_package_details(package_name):
 		return {}
 
 	package = frappe.get_doc("Service Package", package_name)
-
-	if not package.is_active:
-		frappe.throw(f"แพ็คเกจ {package_name} ถูกปิดการใช้งานแล้ว")
+	assert_package_usable(package)
 
 	# ส่วนลดต่อบรรทัดเป็นบาท ให้ฟอร์มที่ดึงแพ็คเกจใส่ค่าเดียวกับฝั่ง server (apply_service_packages)
 	labor_discounts, part_discounts = distribute_package_discount(package)
@@ -251,7 +320,7 @@ def get_active_packages():
 		],
 		order_by="package_type, package_rate",
 	)
-	return packages
+	return exclude_unusable_packages(packages)
 
 
 def match_pm_packages(packages, reading, interval_field):
@@ -296,4 +365,4 @@ def get_pm_packages(pm_truck_type, reading, unit="km"):
 			f"{interval_field} as pm_interval",
 		],
 	)
-	return match_pm_packages(packages, reading, "pm_interval")
+	return match_pm_packages(exclude_unusable_packages(packages), reading, "pm_interval")
