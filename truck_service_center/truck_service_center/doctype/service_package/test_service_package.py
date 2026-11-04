@@ -5,6 +5,9 @@ import frappe
 from frappe.tests import UnitTestCase
 
 from truck_service_center.truck_service_center.doctype.service_package.service_package import (
+	assert_package_usable,
+	get_active_packages,
+	get_pm_packages,
 	match_pm_packages,
 )
 
@@ -164,3 +167,56 @@ class UnitTestPMPackageFields(UnitTestCase):
 			self.make(
 				pm_truck_type="Hino500", service_interval_km=10000, pm_interval_hours=-1
 			).validate_pm_fields()
+
+
+class UnitTestInactiveServiceTypeInPackage(UnitTestCase):
+	"""แพ็คเกจที่มีประเภทบริการปิดใช้งานต้องไม่ถูกแนะนำ และดึงเข้าเอกสารไม่ได้
+
+	ใช้แพ็คเกจ PM จริงของไซต์ ปิดประเภทบริการตัวแรกด้วย db.set_value แล้ว rollback ใน tearDown
+	"""
+
+	def setUp(self):
+		self.package = frappe.db.get_value(
+			"Service Package",
+			{"is_active": 1, "pm_truck_type": ["is", "set"], "service_interval_km": [">", 0]},
+			["name", "pm_truck_type", "service_interval_km"],
+			as_dict=True,
+		)
+		if not self.package:
+			self.skipTest("ไม่มีแพ็คเกจ PM ที่เปิดใช้งานบนไซต์นี้")
+		self.service_type = (
+			frappe.get_doc("Service Package", self.package.name).package_service_types[0].service_type
+		)
+
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def deactivate_service_type(self):
+		frappe.db.set_value("Service Type", self.service_type, "is_active", 0)
+
+	def recommended(self):
+		return [
+			pkg.name for pkg in get_pm_packages(self.package.pm_truck_type, self.package.service_interval_km)
+		]
+
+	def test_pm_recommendation_skips_package_with_inactive_service_type(self):
+		self.assertIn(self.package.name, self.recommended())
+		self.deactivate_service_type()
+		self.assertNotIn(self.package.name, self.recommended())
+
+	def test_active_package_list_skips_package_with_inactive_service_type(self):
+		self.deactivate_service_type()
+		self.assertNotIn(self.package.name, [pkg.name for pkg in get_active_packages()])
+
+	def test_cannot_apply_package_with_inactive_service_type(self):
+		self.deactivate_service_type()
+		with self.assertRaises(frappe.ValidationError):
+			assert_package_usable(frappe.get_doc("Service Package", self.package.name))
+
+	def test_active_package_cannot_save_with_inactive_service_type(self):
+		self.deactivate_service_type()
+		pkg = frappe.get_doc("Service Package", self.package.name)
+		with self.assertRaises(frappe.ValidationError):
+			pkg.validate_service_types_active()
+		pkg.is_active = 0
+		pkg.validate_service_types_active()
