@@ -61,6 +61,9 @@ APPROVAL_PENDING = "Pending"
 APPROVAL_APPROVED = "Approved"
 APPROVAL_REJECTED = "Rejected"
 
+# สถานะใบสั่งงานที่สต๊อก submit ใบเบิกได้ — ก่อนหน้านี้ช่างยังคืนอะไหล่ได้ (validate_requisition_approved)
+ISSUE_SUBMIT_ORDER_STATUSES = ("Ready for Delivery", "Completed")
+
 
 def get_default_parts_warehouse():
 	"""คลังตั้งต้นของแถวอะไหล่ — คลังเบิกของ Truck Service Center Settings ก่อน แล้วค่อยถอยไป Stock Settings
@@ -1506,7 +1509,9 @@ def check_bay_conflicts(service_order, service_bay=None, row_bays=None):
 # ── จัดช่องจอดอัตโนมัติ (ปุ่ม "จัด Bay อัตโนมัติ" บนฟอร์ม) ─────────────────────
 
 
-def plan_bay_assignment(rows, hours_by_bay_type, availability, busy_bays, bay_type_by_service_type, default_bay_type=None):
+def plan_bay_assignment(
+	rows, hours_by_bay_type, availability, busy_bays, bay_type_by_service_type, default_bay_type=None
+):
 	"""เลือกช่องจอดหลัก + ช่องจอดรายแถวให้ใบสั่งงาน — pure ไม่แตะ DB
 
 	หลักเดียวกับ compute_allocation ของนัดหมาย: 1 ช่องต่อ 1 ประเภทช่องจอด ไม่ยุบงานไปช่อง
@@ -1623,9 +1628,13 @@ def suggest_bay_assignment(doc):
 
 	# ชั่วโมงที่นัดหมายต้นทางของใบนี้จองไว้ คือชั่วโมงของใบนี้เอง ไม่ใช่ของคนอื่น
 	own_appointment = (
-		frappe.db.get_value("Service Appointment", {"service_order": order_name}, "name") if order_name else None
+		frappe.db.get_value("Service Appointment", {"service_order": order_name}, "name")
+		if order_name
+		else None
 	)
-	availability = get_bay_availability(doc.service_date or frappe.utils.today(), exclude_appointment=own_appointment)
+	availability = get_bay_availability(
+		doc.service_date or frappe.utils.today(), exclude_appointment=own_appointment
+	)
 	default_bay_type = availability["default_bay_type"]
 	bay_type_by_service_type = get_bay_type_by_service_type(doc)
 	hours_by_bay_type = split_hours_by_bay_type(doc, bay_type_by_service_type, default_bay_type)
@@ -1651,12 +1660,20 @@ def suggest_bay_assignment(doc):
 		if pick.get("pinned"):
 			continue  # รถอยู่ช่องนั้นอยู่แล้ว ไม่ใช่สิ่งที่ปุ่มนี้เลือก
 		if bay in busy_bays:
-			warnings.append(f"ช่องจอด {bay} ({names.get(bay_type) or bay_type}) ถูกใบงานอื่นที่ยังไม่ปิดใช้อยู่ — ไม่มีช่องประเภทนี้ว่าง")
+			warnings.append(
+				f"ช่องจอด {bay} ({names.get(bay_type) or bay_type}) ถูกใบงานอื่นที่ยังไม่ปิดใช้อยู่ — ไม่มีช่องประเภทนี้ว่าง"
+			)
 		elif pick["hours"] > free.get(bay, 0):
-			warnings.append(f"ช่องจอด {bay} เหลือ {flt(free.get(bay), 2)} ชม. ในวันนั้น แต่งานต้องใช้ {flt(pick['hours'], 2)} ชม.")
+			warnings.append(
+				f"ช่องจอด {bay} เหลือ {flt(free.get(bay), 2)} ชม. ในวันนั้น แต่งานต้องใช้ {flt(pick['hours'], 2)} ชม."
+			)
 
 	summary = [
-		{"service_bay": pick["bay"], "bay_type": names.get(bay_type) or bay_type, "hours": flt(pick["hours"], 2)}
+		{
+			"service_bay": pick["bay"],
+			"bay_type": names.get(bay_type) or bay_type,
+			"hours": flt(pick["hours"], 2),
+		}
 		for bay_type, pick in plan["chosen"].items()
 	]
 
@@ -1823,10 +1840,14 @@ def stamp_requisition_decision(stock_entry, status, reason=None, user=None):
 
 
 def validate_requisition_approved(doc, method=None):
-	"""doc_events hook: Stock Entry before_submit — ใบเบิกของใบสั่งงานต้องอนุมัติแล้วจึง submit ได้
+	"""doc_events hook: Stock Entry before_submit — ด่าน submit ใบเบิกของใบสั่งงานฝั่งสต๊อก
 
-	ช่างส่งใบเบิกถึงสต๊อกเองไม่ได้ ต้องผ่านหัวหน้างานกลุ่มก่อน สถานะว่าง = ใบเก่าก่อนมีขั้นอนุมัติ
-	หรือ Stock Entry ทั่วไปที่ไม่ได้มาจากใบสั่งงาน → ปล่อยผ่าน
+	1. ต้องอนุมัติแล้ว — ช่างส่งใบเบิกถึงสต๊อกเองไม่ได้ ต้องผ่านหัวหน้างานกลุ่มก่อน
+	   สถานะว่าง = ใบเก่าก่อนมีขั้นอนุมัติ → ปล่อยผ่าน
+	2. ใบสั่งงานต้องถึง "รอส่งมอบรถ" แล้ว — ระหว่างซ่อมช่างยังคืนอะไหล่ที่ไม่ได้ใช้ได้ (ใบคืนอะไหล่
+	   ลดจำนวนในใบเบิก Draft ตรง ๆ) ถ้า submit ก่อน ของจะออกจากคลังไปแล้วคืนแบบนั้นไม่ได้
+	3. ต้องไม่มีใบคืนอะไหล่ของใบเบิกนี้ค้างรออนุมัติ — ไม่งั้นจำนวนที่ submit ยังไม่ใช่ตัวจริง
+	Stock Entry ทั่วไปที่ไม่ได้มาจากใบสั่งงาน → ปล่อยผ่านทุกข้อ
 
 	ไม่ได้ล็อกการแก้รายการหลังอนุมัติแล้ว (จงใจ) — สต๊อกยังต้องปรับจำนวนได้เมื่อของขาด
 	"""
@@ -1846,6 +1867,28 @@ def validate_requisition_approved(doc, method=None):
 			+ " — ให้ช่างขอเบิกใหม่จากพอร์ทัล",
 			title="ใบเบิกไม่ได้รับอนุมัติ",
 		)
+
+	order_status = _get_service_order_status(doc.custom_service_order)
+	if order_status not in ISSUE_SUBMIT_ORDER_STATUSES:
+		frappe.throw(
+			f"ใบเบิกอะไหล่ {doc.name} จะ Submit ได้เมื่อใบสั่งงาน {doc.custom_service_order} ปิดงานแล้ว"
+			f" (สถานะรอส่งมอบรถ) — ตอนนี้สถานะ {order_status or '-'} ช่างยังคืนอะไหล่ที่ไม่ได้ใช้ได้อยู่",
+			title="ยัง Submit ใบเบิกไม่ได้",
+		)
+
+	if _has_pending_return(doc.name):
+		frappe.throw(
+			f"ใบเบิกอะไหล่ {doc.name} มีใบคืนอะไหล่รออนุมัติอยู่ — ให้หัวหน้างานพิจารณาใบคืนก่อน",
+			title="ยัง Submit ใบเบิกไม่ได้",
+		)
+
+
+def _get_service_order_status(service_order):
+	return frappe.db.get_value("Service Order", service_order, "status")
+
+
+def _has_pending_return(stock_entry):
+	return bool(frappe.db.exists("Parts Return", {"stock_entry": stock_entry, "approval_status": "Pending"}))
 
 
 def get_user_display_name(user):

@@ -83,8 +83,9 @@ role_home_page = {
 	"Technician Supervisor": "service-order-portal",
 }
 
-# เส้นทางหน้ารายละเอียดงานของพอร์ทัลช่าง — <name> จะถูกส่งเข้า frappe.form_dict.name
+# เส้นทางหน้ารายละเอียดงาน / หน้าใบเบิกอะไหล่ของพอร์ทัลช่าง — <name> จะถูกส่งเข้า frappe.form_dict.name
 website_route_rules = [
+	{"from_route": "/service-order-portal/<name>/parts", "to_route": "service-order-parts"},
 	{"from_route": "/service-order-portal/<name>", "to_route": "service-order-job"},
 ]
 

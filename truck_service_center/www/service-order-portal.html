@@ -15,11 +15,35 @@
 					&middot; ข้อมูล ณ {{ fetched_at }}
 				</p>
 			</div>
-			<button type="button" class="tsc-refresh" data-action="refresh">
-				<span class="tsc-refresh-icon">&#8635;</span> รีเฟรช
-			</button>
+			<div class="tsc-head-actions">
+				<a class="tsc-refresh" href="/bay-monitor">ช่องจอด</a>
+				<button type="button" class="tsc-refresh" data-action="refresh">
+					<span class="tsc-refresh-icon">&#8635;</span> รีเฟรช
+				</button>
+			</div>
 		</div>
 	</header>
+
+	{% if pending_returns %}
+	<section class="tsc-approvals">
+		<h2 class="tsc-section-title">ใบคืนอะไหล่รออนุมัติ ({{ pending_returns | length }})</h2>
+		<div class="tsc-order-list">
+			{% for ret in pending_returns %}
+			<a class="card tsc-order-card tsc-approval-card" href="/service-order-portal/{{ ret.service_order }}/parts#tsc-returns">
+				<div class="card-body">
+					<div class="tsc-order-top">
+						<span class="tsc-order-id">{{ ret.name }} &middot; {{ ret.service_order }}</span>
+						<span class="es-badge" data-theme="orange">รออนุมัติคืน</span>
+					</div>
+					<div class="tsc-order-truck">{{ ret.truck_label }} &middot; ฿{{ ret.total_label }}</div>
+					<p class="tsc-req-meta">จากใบเบิก {{ ret.stock_entry }} &middot; ผู้ขอคืน {{ ret.requested_by_name }} &middot; {{ ret.requested_at }}</p>
+				</div>
+			</a>
+			{% endfor %}
+		</div>
+		{% if not pending_requisitions %}<h2 class="tsc-section-title">งานของฉัน</h2>{% endif %}
+	</section>
+	{% endif %}
 
 	{% if pending_requisitions %}
 	<section class="tsc-approvals">
@@ -42,7 +66,7 @@
 					<div class="tsc-req-actions">
 						<button type="button" class="tsc-req-btn tsc-req-approve"
 							data-action="approve" data-issue="{{ req.name }}">อนุมัติ</button>
-						<a class="tsc-req-btn" href="/service-order-portal/{{ req.service_order }}">ดูใบงาน / ไม่อนุมัติ</a>
+						<a class="tsc-req-btn" href="/service-order-portal/{{ req.service_order }}/parts">ดูใบเบิก / ไม่อนุมัติ</a>
 					</div>
 				</div>
 			</div>
@@ -216,6 +240,8 @@ document.addEventListener("click", function (event) {
 		background: var(--card-bg, #fff); cursor: pointer; flex-shrink: 0;
 	}
 	.tsc-refresh:disabled { opacity: 0.6; cursor: wait; }
+	a.tsc-refresh:hover { text-decoration: none; color: inherit; }
+	.tsc-head-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 	.tsc-refresh-icon { display: inline-block; line-height: 1; font-size: 1.05rem; }
 	.tsc-refresh:disabled .tsc-refresh-icon { animation: tsc-spin 0.8s linear infinite; }
 	@keyframes tsc-spin { to { transform: rotate(360deg); } }

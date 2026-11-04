@@ -1,0 +1,951 @@
+{% extends "templates/web.html" %}
+
+{% block title %}ใบเบิกอะไหล่ {{ job.name }}{% endblock %}
+
+{% block page_content %}
+<div class="tsc-parts">
+
+	<div class="tsc-topbar">
+		<a class="tsc-back" href="/service-order-portal/{{ job.name }}">&larr; กลับใบงาน</a>
+		<button type="button" class="tsc-refresh" data-action="refresh">
+			<span class="tsc-refresh-icon">&#8635;</span> รีเฟรช
+		</button>
+	</div>
+
+	<header class="tsc-head">
+		<div class="tsc-head-top">
+			<span class="tsc-head-id">ใบเบิกอะไหล่ &middot; {{ job.name }}</span>
+			<span class="es-badge" data-theme="{{ job.status_theme }}">{{ job.status_label }}</span>
+		</div>
+		<div class="tsc-head-truck">{{ job.truck_label }}</div>
+		<div class="tsc-head-spec">{{ job.vehicle_spec }} &middot; ข้อมูล ณ {{ fetched_at }}</div>
+	</header>
+
+	{% set s = job.parts_summary %}
+	<div class="tsc-stats">
+		<div class="tsc-stat"><b>{{ s.count }}</b><span>อะไหล่</span></div>
+		<div class="tsc-stat" data-tone="{{ 'warn' if s.unissued else '' }}"><b>{{ s.unissued }}</b><span>ยังไม่เบิก</span></div>
+		<div class="tsc-stat" data-tone="{{ 'info' if s.pending else '' }}"><b>{{ s.pending }}</b><span>รออนุมัติ</span></div>
+		<div class="tsc-stat" data-tone="{{ 'bad' if s.rejected else '' }}"><b>{{ s.rejected }}</b><span>ไม่อนุมัติ</span></div>
+	</div>
+
+	{% if job.parts_returns %}
+	<div class="tsc-return-summary">
+		คืนอะไหล่แล้ว <b>฿{{ "{:,.2f}".format(job.returned_amount) }}</b>
+		{% if s.returns_pending %} &middot; <span class="tsc-state" data-state="running">รออนุมัติคืน {{ s.returns_pending }} ใบ</span>{% endif %}
+		<a href="#tsc-returns">ดูใบคืน</a>
+	</div>
+	{% endif %}
+
+	{% if s.returns_to_approve %}
+	<div class="tsc-locked tsc-notice-approve">มีใบคืนอะไหล่รอคุณอนุมัติ {{ s.returns_to_approve }} ใบ — <a href="#tsc-returns">ดูใบคืน</a></div>
+	{% endif %}
+
+	{% if not doc_open %}
+	<div class="tsc-locked">ใบสั่งงานนี้ปิดหรือถูก submit แล้ว — ดูได้อย่างเดียว</div>
+	{% elif not received %}
+	<div class="tsc-locked">ยังไม่ได้รับรถเข้าซ่อม — ต้องรับรถที่หน้าใบงานก่อนจึงจะขอเบิกอะไหล่ได้</div>
+	{% endif %}
+
+	{% if s.to_approve %}
+	<div class="tsc-locked tsc-notice-approve">มีใบเบิกรอคุณอนุมัติ {{ s.to_approve }} ใบ — ดูได้ในกลุ่มด้านล่าง</div>
+	{% endif %}
+
+	<div class="tsc-cols">
+
+		<!-- ───────── อะไหล่ในใบงาน + ใบเบิก ───────── -->
+		<section class="tsc-col">
+			<div class="tsc-card" id="tsc-parts-list">
+				<h2 class="tsc-card-title">อะไหล่ในใบงาน ({{ job.parts | length }})</h2>
+				{% for group in job.part_groups %}
+				<div class="tsc-part-group">
+					<div class="tsc-part-group-head">
+						<span class="tsc-part-group-title">{{ group.label }}</span>
+						{% if doc_open and received and group.pending and group.can_request %}
+						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-sm"
+							data-action="requisition-open" data-group="{{ group.group }}">ขออนุมัติเบิก ({{ group.pending }})</button>
+						{% endif %}
+					</div>
+					{% if doc_open and received and group.pending and group.can_request %}
+					<div class="tsc-req-box" data-req-box="{{ group.group }}" hidden>
+						<p class="tsc-req-box-title">ส่งขออนุมัติเบิกอะไหล่ที่ยังไม่เบิกของกลุ่มนี้ {{ group.pending }} รายการ เป็นใบเดียว</p>
+						<div class="tsc-chips">
+							{% for preset in request_presets %}
+							<button type="button" class="tsc-chip" data-action="req-preset"
+								data-group="{{ group.group }}" data-value="{{ preset }}">{{ preset }}</button>
+							{% endfor %}
+						</div>
+						<textarea class="tsc-textarea" rows="2" maxlength="{{ limits.max_note }}"
+							data-req-note="{{ group.group }}" placeholder="เหตุผลที่ขอ (ไม่บังคับ) — ช่วยให้หัวหน้างานอนุมัติได้เร็วขึ้น"></textarea>
+						<div class="tsc-row-actions">
+							<button type="button" class="tsc-btn tsc-btn-primary"
+								data-action="requisition" data-group="{{ group.group }}">ยืนยันส่งขออนุมัติ</button>
+							<button type="button" class="tsc-btn tsc-btn-secondary"
+								data-action="requisition-cancel" data-group="{{ group.group }}">ยกเลิก</button>
+						</div>
+					</div>
+					{% endif %}
+					{% if group.jobs %}
+					<p class="tsc-group-jobs">งาน: {{ group.jobs | join(", ") }}</p>
+					{% endif %}
+
+					{% for issue in group.issues %}
+					<div class="tsc-issue-card" data-state="{{ issue.theme }}">
+						<div class="tsc-issue-head">
+							<span class="tsc-issue-name">ใบเบิก {{ issue.name }}</span>
+							<span class="tsc-state" data-state="{{ issue.theme }}">{{ issue.status_label }}</span>
+						</div>
+						<div class="tsc-line-sub">
+							{% if issue.requested_by_name %}ผู้ขอเบิก {{ issue.requested_by_name }}{% endif %}
+							{%- if issue.approved_by_name %} &middot; {% if issue.status == "Rejected" %}ไม่อนุมัติโดย{% else %}อนุมัติโดย{% endif %} {{ issue.approved_by_name }}{% endif %}
+						</div>
+						{% if issue.note %}
+						<div class="tsc-issue-note">เหตุผลที่ขอ: {{ issue.note }}</div>
+						{% endif %}
+						{% if issue.reason %}
+						<div class="tsc-issue-reason">เหตุผลที่ไม่อนุมัติ: {{ issue.reason }}</div>
+						{% endif %}
+						{% if issue.can_approve %}
+						<div class="tsc-row-actions">
+							<button type="button" class="tsc-btn tsc-btn-success"
+								data-action="approve" data-issue="{{ issue.name }}">อนุมัติ</button>
+							<button type="button" class="tsc-btn tsc-btn-secondary"
+								data-action="reject-open" data-issue="{{ issue.name }}">ไม่อนุมัติ</button>
+						</div>
+						<div class="tsc-reject-box" data-reject-box="{{ issue.name }}" hidden>
+							<div class="tsc-chips">
+								{% for preset in reject_presets %}
+								<button type="button" class="tsc-chip" data-action="reject-preset"
+									data-issue="{{ issue.name }}" data-value="{{ preset }}">{{ preset }}</button>
+								{% endfor %}
+							</div>
+							<textarea class="tsc-textarea" rows="2" maxlength="500"
+								data-reject-reason="{{ issue.name }}" placeholder="เหตุผลที่ไม่อนุมัติ (บังคับ)"></textarea>
+							<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-block"
+								data-action="reject" data-issue="{{ issue.name }}">ยืนยันไม่อนุมัติ</button>
+						</div>
+						{% endif %}
+						{% if issue.can_return %}
+						<div class="tsc-row-actions">
+							<button type="button" class="tsc-btn tsc-btn-secondary tsc-btn-sm"
+								data-action="return-open" data-issue="{{ issue.name }}">&#8617; คืนอะไหล่</button>
+						</div>
+						<div class="tsc-return-box" data-return-box="{{ issue.name }}" hidden>
+							<p class="tsc-req-box-title">คืนอะไหล่จากใบเบิก {{ issue.name }} — ระบุจำนวนที่คืน (คืนบางชิ้นได้)</p>
+							<ul class="tsc-return-lines">
+								{% for line in issue.return_lines %}
+								<li class="tsc-return-line">
+									<div class="tsc-cart-info">
+										<span class="tsc-line-main">{{ line.label }}</span>
+										<span class="tsc-line-sub">ในใบเบิก {{ line.issued }} {{ line.uom }}{% if line.pending %} &middot; รอคืน {{ line.pending }}{% endif %} &middot; คืนได้สูงสุด {{ line.max_qty }}</span>
+									</div>
+									<div class="tsc-stepper">
+										<button type="button" class="tsc-step-btn" data-action="return-step" data-step="-1" aria-label="ลด">&minus;</button>
+										<input class="tsc-step-input" type="number" inputmode="decimal" min="0" step="any"
+											value="0" max="{{ line.max_qty }}" data-return-qty="{{ line.row }}"
+											aria-label="จำนวนคืน {{ line.label }}">
+										<button type="button" class="tsc-step-btn" data-action="return-step" data-step="1" aria-label="เพิ่ม">+</button>
+									</div>
+								</li>
+								{% endfor %}
+							</ul>
+							<div class="tsc-chips">
+								{% for preset in return_presets %}
+								<button type="button" class="tsc-chip" data-action="return-preset"
+									data-issue="{{ issue.name }}" data-value="{{ preset }}">{{ preset }}</button>
+								{% endfor %}
+							</div>
+							<textarea class="tsc-textarea" rows="2" maxlength="{{ limits.max_note }}"
+								data-return-reason="{{ issue.name }}" placeholder="เหตุผลที่คืน (ไม่บังคับ)"></textarea>
+							<div class="tsc-row-actions">
+								<button type="button" class="tsc-btn tsc-btn-primary"
+									data-action="return-submit" data-issue="{{ issue.name }}">ส่งขออนุมัติคืน</button>
+								<button type="button" class="tsc-btn tsc-btn-secondary"
+									data-action="return-cancel" data-issue="{{ issue.name }}">ยกเลิก</button>
+							</div>
+						</div>
+						{% endif %}
+					</div>
+					{% endfor %}
+
+					<ul class="tsc-lines">
+						{% for line in group.parts %}
+						<li>
+							<div class="tsc-line-row">
+								<span class="tsc-line-main">{{ line.label }}</span>
+								<span class="tsc-line-qty">{{ line.qty }} {{ line.uom }}</span>
+							</div>
+							<div class="tsc-line-sub">
+								{% if line.issued %}<span class="tsc-state" data-state="done">เบิกแล้ว</span> {{ line.material_issue }}
+								{% elif line.pending_approval %}<span class="tsc-state" data-state="running">รออนุมัติ</span> {{ line.material_issue }}
+								{% elif line.material_issue %}<span class="tsc-state" data-state="approved">รอสต๊อก submit</span> {{ line.material_issue }}
+								{% elif line.needs_issue %}<span class="tsc-state">ยังไม่เบิก</span>
+								{% else %}<span class="tsc-muted-sm">ไม่ต้องเบิก (ไม่ใช่สินค้าคงคลัง)</span>{% endif %}
+								{%- if line.package %} <span class="tsc-pkg">{{ line.package }}</span>{% endif -%}
+								{%- if line.requested_by %} <span class="tsc-pkg tsc-pkg-req">ขอเพิ่มโดย {{ line.requested_by_name }}</span>{% endif -%}
+								{%- if line.returned_qty %} <span class="tsc-pkg tsc-pkg-ret">คืนแล้ว {{ line.returned_qty }}</span>{% endif -%}
+							</div>
+							{% if line.can_remove %}
+							<div class="tsc-row-actions">
+								<button type="button" class="tsc-btn tsc-btn-secondary tsc-btn-sm"
+									data-action="remove-part" data-row="{{ line.row_name }}" data-label="{{ line.label }}">ลบรายการนี้</button>
+							</div>
+							{% endif %}
+						</li>
+						{% endfor %}
+					</ul>
+				</div>
+				{% else %}
+				<p class="tsc-muted">ยังไม่มีรายการอะไหล่</p>
+				{% endfor %}
+			</div>
+
+			{% if job.parts_returns %}
+			<div class="tsc-card" id="tsc-returns">
+				<h2 class="tsc-card-title">ใบคืนอะไหล่ ({{ job.parts_returns | length }}) &middot; คืนแล้วรวม ฿{{ "{:,.2f}".format(job.returned_amount) }}</h2>
+				{% for ret in job.parts_returns %}
+				<div class="tsc-issue-card" data-state="{{ ret.theme }}">
+					<div class="tsc-issue-head">
+						<span class="tsc-issue-name">ใบคืน {{ ret.name }}</span>
+						<span class="tsc-state" data-state="{{ ret.theme }}">{{ ret.status_label }}</span>
+					</div>
+					<div class="tsc-line-sub">
+						จากใบเบิก {{ ret.stock_entry }}{% if ret.source_removed %} (คืนครบ ใบเบิกถูกลบ){% endif %}
+						&middot; ผู้ขอคืน {{ ret.requested_by_name }}
+						{%- if ret.approved_by_name %} &middot; {% if ret.status == "Rejected" %}ไม่อนุมัติโดย{% else %}อนุมัติโดย{% endif %} {{ ret.approved_by_name }}{% endif %}
+					</div>
+					<ul class="tsc-ret-lines">
+						{% for line in ret.lines %}
+						<li><span>{{ line.label }} &times; {{ line.qty }} {{ line.uom }}</span><span class="tsc-money">฿{{ line.amount }}</span></li>
+						{% endfor %}
+						<li class="tsc-ret-total"><span>ยอดเงินค่าอะไหล่ที่คืน</span><span class="tsc-money">฿{{ ret.total }}</span></li>
+					</ul>
+					{% if ret.reason %}<div class="tsc-issue-note">เหตุผลที่คืน: {{ ret.reason }}</div>{% endif %}
+					{% if ret.rejection_reason %}<div class="tsc-issue-reason">เหตุผลที่ไม่อนุมัติ: {{ ret.rejection_reason }}</div>{% endif %}
+					{% if ret.can_approve %}
+					<div class="tsc-row-actions">
+						<button type="button" class="tsc-btn tsc-btn-success"
+							data-action="return-approve" data-return="{{ ret.name }}" data-total="{{ ret.total }}">อนุมัติคืน</button>
+						<button type="button" class="tsc-btn tsc-btn-secondary"
+							data-action="return-reject-open" data-return="{{ ret.name }}">ไม่อนุมัติ</button>
+					</div>
+					<div class="tsc-reject-box" data-ret-reject-box="{{ ret.name }}" hidden>
+						<textarea class="tsc-textarea" rows="2" maxlength="500"
+							data-ret-reject-reason="{{ ret.name }}" placeholder="เหตุผลที่ไม่อนุมัติ (บังคับ)"></textarea>
+						<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-block"
+							data-action="return-reject" data-return="{{ ret.name }}">ยืนยันไม่อนุมัติ</button>
+					</div>
+					{% endif %}
+				</div>
+				{% endfor %}
+			</div>
+			{% endif %}
+		</section>
+
+		<!-- ───────── ฟอร์มขอเบิกเพิ่ม (มือถือ: เปิดเป็นหน้าเต็มจอจากปุ่มด้านล่าง) ───────── -->
+		{% if can_request %}
+		<section class="tsc-col tsc-sheet" id="tsc-request" aria-label="ขอเบิกอะไหล่เพิ่ม">
+			<div class="tsc-card tsc-request">
+				<div class="tsc-sheet-head">
+					<h2 class="tsc-card-title tsc-request-title">เพิ่มอะไหล่ที่ต้องเบิก</h2>
+					<button type="button" class="tsc-sheet-close" data-action="sheet-close" aria-label="ปิด">&times;</button>
+				</div>
+
+				{% if not received %}
+				<p class="tsc-muted">ต้องรับรถเข้าซ่อมก่อน จึงจะขอเบิกได้</p>
+				{% else %}
+				<div class="tsc-step">
+					<div class="tsc-step-label">1. เบิกให้งาน</div>
+					<div class="tsc-targets" role="radiogroup">
+						{% for target in request_targets %}
+						<button type="button" class="tsc-target" role="radio" aria-checked="false"
+							data-action="target" data-row="{{ target.row }}">
+							<span class="tsc-target-main">{{ target.label }}{% if target.package %} <span class="tsc-pkg">{{ target.package }}</span>{% endif %}</span>
+							<span class="tsc-target-sub">ผู้อนุมัติ: {{ target.group_label }}</span>
+						</button>
+						{% endfor %}
+					</div>
+				</div>
+
+				<div class="tsc-step">
+					<label class="tsc-step-label" for="tsc-search">2. ค้นหา / สแกนบาร์โค้ด</label>
+					<input id="tsc-search" class="tsc-input" type="search" inputmode="search" enterkeyhint="search"
+						autocomplete="off" autocapitalize="off" spellcheck="false"
+						placeholder="รหัส ชื่ออะไหล่ หรือบาร์โค้ด">
+					<div class="tsc-results" id="tsc-results" aria-live="polite"></div>
+				</div>
+
+				<div class="tsc-step">
+					<div class="tsc-step-label">3. รายการที่จะเพิ่ม <span id="tsc-cart-count"></span></div>
+					<ul class="tsc-cart" id="tsc-cart"></ul>
+					<p class="tsc-muted tsc-cart-empty" id="tsc-cart-empty">ยังไม่ได้เลือกอะไหล่ — ค้นหาแล้วแตะ &ldquo;เพิ่ม&rdquo;</p>
+				</div>
+
+				<button type="button" class="tsc-btn tsc-btn-primary tsc-btn-block tsc-submit"
+					data-action="submit-request" disabled>เพิ่มลงใบงาน</button>
+				<p class="tsc-hint">อะไหล่จะเข้าไปอยู่ในกลุ่มของงานที่เลือก แล้วกด &ldquo;ขออนุมัติเบิก&rdquo; ของกลุ่มนั้น
+					เพื่อส่งทุกรายการที่ยังไม่เบิกให้หัวหน้างานอนุมัติเป็นใบเดียว</p>
+				{% endif %}
+			</div>
+		</section>
+		{% endif %}
+
+	</div>
+
+	{% if can_request %}
+	<div class="tsc-fab-bar">
+		<button type="button" class="tsc-btn tsc-btn-primary tsc-fab" data-action="sheet-open">
+			+ เพิ่มอะไหล่ที่ต้องเบิก <span class="tsc-fab-count" id="tsc-fab-count" hidden></span>
+		</button>
+	</div>
+	{% endif %}
+
+</div>
+
+<script>
+(function () {
+	var JOB = {{ job.name | tojson }};
+	var API = "truck_service_center.api.technician_portal.";
+	var LIMITS = {{ limits | tojson }};
+	// ตะกร้าค้างไว้ใน localStorage ต่อใบงาน — reload/จอดับระหว่างคีย์แล้วของไม่หาย ส่งสำเร็จค่อยล้าง
+	var DRAFT_KEY = "tsc-parts-draft:" + JOB;
+
+	function toast(message, indicator) {
+		if (window.frappe && frappe.show_alert) {
+			frappe.show_alert({ message: message, indicator: indicator || "green" }, 4);
+		}
+	}
+
+	function call(method, args, btn, onSuccess) {
+		if (btn) { btn.disabled = true; btn.classList.add("is-busy"); }
+		frappe.call({
+			method: API + method,
+			args: Object.assign({ service_order: JOB }, args),
+			callback: function (r) {
+				if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
+				if (r && !r.exc && onSuccess) { onSuccess(r.message || {}); }
+			},
+			error: function () {
+				if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
+			}
+		});
+	}
+
+	function reloadAfter(method, args, btn) {
+		call(method, args, btn, function () { window.location.reload(); });
+	}
+
+	function el(tag, cls, text) {
+		var node = document.createElement(tag);
+		if (cls) { node.className = cls; }
+		if (text !== undefined && text !== null) { node.textContent = text; }
+		return node;
+	}
+
+	function num(value) {
+		var n = Math.round(parseFloat(value) * 100) / 100;
+		return isNaN(n) ? 0 : n;
+	}
+
+	// ── ใบเบิกเดิม: ขออนุมัติรายกลุ่ม / อนุมัติ / ไม่อนุมัติ / ลบแถวที่ขอเพิ่มเอง ──
+	function rejectBox(issue) { return document.querySelector('[data-reject-box="' + issue + '"]'); }
+	function rejectReason(issue) { return document.querySelector('[data-reject-reason="' + issue + '"]'); }
+	function returnBox(issue) { return document.querySelector('[data-return-box="' + issue + '"]'); }
+
+	function submitReturn(btn) {
+		var box = returnBox(btn.dataset.issue);
+		var lines = {};
+		var summary = [];
+		var invalid = null;
+		box.querySelectorAll("[data-return-qty]").forEach(function (input) {
+			var qty = num(input.value);
+			if (qty < 0 || qty > num(input.max)) { invalid = input; }
+			if (qty > 0) {
+				lines[input.dataset.returnQty] = qty;
+				summary.push("• " + input.getAttribute("aria-label").replace("จำนวนคืน ", "") + " × " + qty);
+			}
+		});
+		if (invalid) {
+			toast("จำนวนคืนต้องอยู่ระหว่าง 0 ถึง " + invalid.max, "red");
+			invalid.focus();
+			return;
+		}
+		if (!summary.length) {
+			toast("กรุณาระบุจำนวนคืนอย่างน้อยหนึ่งรายการ", "red");
+			return;
+		}
+		if (!window.confirm("คืนอะไหล่จากใบเบิก " + btn.dataset.issue + "\n" + summary.join("\n") + "\n\nส่งขออนุมัติคืนใช่หรือไม่?")) { return; }
+		reloadAfter("request_parts_return", {
+			stock_entry: btn.dataset.issue,
+			lines: JSON.stringify(lines),
+			reason: document.querySelector('[data-return-reason="' + btn.dataset.issue + '"]').value
+		}, btn);
+	}
+
+	function reqBox(group) { return document.querySelector('[data-req-box="' + group + '"]'); }
+	function reqNote(group) { return document.querySelector('[data-req-note="' + group + '"]'); }
+
+	function onIssueAction(btn) {
+		switch (btn.dataset.action) {
+			case "requisition-open":
+				reqBox(btn.dataset.group).hidden = false;
+				btn.hidden = true;
+				return true;
+			case "requisition-cancel":
+				reqBox(btn.dataset.group).hidden = true;
+				document.querySelector('[data-action="requisition-open"][data-group="' + btn.dataset.group + '"]').hidden = false;
+				return true;
+			case "req-preset":
+				reqNote(btn.dataset.group).value = btn.dataset.value;
+				return true;
+			case "requisition":
+				// หนึ่งใบต่อกลุ่ม — รวมอะไหล่ค้างเบิกทั้งกลุ่ม รวมที่ช่างเพิ่งเพิ่มเอง
+				reloadAfter("create_group_requisition", {
+					service_type_group: btn.dataset.group || "",
+					note: reqNote(btn.dataset.group).value
+				}, btn);
+				return true;
+			case "approve":
+				if (window.confirm("อนุมัติใบเบิก " + btn.dataset.issue + "?")) {
+					reloadAfter("approve_requisition", { stock_entry: btn.dataset.issue }, btn);
+				}
+				return true;
+			case "reject-open":
+				rejectBox(btn.dataset.issue).hidden = false;
+				rejectReason(btn.dataset.issue).focus();
+				return true;
+			case "reject-preset":
+				rejectReason(btn.dataset.issue).value = btn.dataset.value;
+				return true;
+			case "reject":
+				var reason = rejectReason(btn.dataset.issue).value.trim();
+				if (!reason) {
+					toast("กรุณาระบุเหตุผลที่ไม่อนุมัติ", "red");
+					rejectReason(btn.dataset.issue).focus();
+					return true;
+				}
+				reloadAfter("reject_requisition", { stock_entry: btn.dataset.issue, reason: reason }, btn);
+				return true;
+			case "return-open":
+				returnBox(btn.dataset.issue).hidden = false;
+				btn.hidden = true;
+				return true;
+			case "return-cancel":
+				returnBox(btn.dataset.issue).hidden = true;
+				document.querySelector('[data-action="return-open"][data-issue="' + btn.dataset.issue + '"]').hidden = false;
+				return true;
+			case "return-step":
+				var input = btn.parentNode.querySelector("[data-return-qty]");
+				input.value = Math.min(Math.max(num(input.value) + num(btn.dataset.step), 0), num(input.max));
+				return true;
+			case "return-preset":
+				document.querySelector('[data-return-reason="' + btn.dataset.issue + '"]').value = btn.dataset.value;
+				return true;
+			case "return-submit":
+				submitReturn(btn);
+				return true;
+			case "return-approve":
+				if (window.confirm("อนุมัติใบคืน " + btn.dataset["return"] + " ยอด ฿" + btn.dataset.total + "?\nจำนวนในใบเบิกและใบสั่งงานจะถูกลดตามที่คืน")) {
+					reloadAfter("approve_parts_return", { parts_return: btn.dataset["return"] }, btn);
+				}
+				return true;
+			case "return-reject-open":
+				document.querySelector('[data-ret-reject-box="' + btn.dataset["return"] + '"]').hidden = false;
+				return true;
+			case "return-reject":
+				var box = document.querySelector('[data-ret-reject-reason="' + btn.dataset["return"] + '"]');
+				if (!box.value.trim()) {
+					toast("กรุณาระบุเหตุผลที่ไม่อนุมัติ", "red");
+					box.focus();
+					return true;
+				}
+				reloadAfter("reject_parts_return", { parts_return: btn.dataset["return"], reason: box.value.trim() }, btn);
+				return true;
+			case "remove-part":
+				if (window.confirm("ลบ " + btn.dataset.label + " ออกจากใบงาน?")) {
+					reloadAfter("remove_requested_part", { item_row: btn.dataset.row }, btn);
+				}
+				return true;
+		}
+		return false;
+	}
+
+	// ── ฟอร์มขอเบิกเพิ่ม ──
+	var sheet = document.getElementById("tsc-request");
+	var search = document.getElementById("tsc-search");
+	var results = document.getElementById("tsc-results");
+	var cartList = document.getElementById("tsc-cart");
+	var submitBtn = document.querySelector('[data-action="submit-request"]');
+
+	var state = { target: null, cart: [] };
+	var lastResults = [];
+
+	function loadDraft() {
+		try {
+			var saved = JSON.parse(window.localStorage.getItem(DRAFT_KEY) || "null");
+			if (saved && Array.isArray(saved.cart)) {
+				state.cart = saved.cart;
+				state.target = saved.target;
+			}
+		} catch (e) { /* storage ปิดอยู่ — ใช้ได้แค่ไม่จำร่าง */ }
+	}
+
+	function saveDraft() {
+		try {
+			if (!state.cart.length) {
+				window.localStorage.removeItem(DRAFT_KEY);
+			} else {
+				window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ cart: state.cart, target: state.target }));
+			}
+		} catch (e) { /* ข้าม */ }
+	}
+
+	function clearDraft() {
+		try { window.localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ข้าม */ }
+	}
+
+	function selectTarget(row) {
+		var found = false;
+		document.querySelectorAll('[data-action="target"]').forEach(function (btn) {
+			var on = btn.dataset.row === row;
+			found = found || on;
+			btn.classList.toggle("is-active", on);
+			btn.setAttribute("aria-checked", on ? "true" : "false");
+		});
+		state.target = found ? row : null;
+		renderCart();
+	}
+
+	function addToCart(item) {
+		var line = state.cart.filter(function (l) { return l.item_code === item.item_code; })[0];
+		if (line) {
+			line.qty = Math.min(num(line.qty) + 1, LIMITS.max_qty);
+		} else {
+			if (state.cart.length >= LIMITS.max_lines) {
+				toast("ขอได้ครั้งละไม่เกิน " + LIMITS.max_lines + " รายการ", "red");
+				return;
+			}
+			state.cart.push({ item_code: item.item_code, item_name: item.item_name, uom: item.uom, qty: 1 });
+		}
+		toast("เพิ่ม " + item.item_name);
+		renderCart();
+	}
+
+	function renderCart() {
+		if (!cartList) { return; }
+		cartList.innerHTML = "";
+		state.cart.forEach(function (line, index) {
+			var li = el("li", "tsc-cart-line");
+			var info = el("div", "tsc-cart-info");
+			info.appendChild(el("div", "tsc-line-main", line.item_name));
+			info.appendChild(el("div", "tsc-line-sub", line.item_code + (line.uom ? " · " + line.uom : "")));
+
+			var stepper = el("div", "tsc-stepper");
+			var minus = el("button", "tsc-step-btn", "−");
+			minus.type = "button"; minus.dataset.cart = "minus"; minus.dataset.index = index;
+			minus.setAttribute("aria-label", "ลดจำนวน");
+			var input = el("input", "tsc-step-input");
+			input.type = "number"; input.inputMode = "decimal"; input.min = "0"; input.step = "any";
+			input.max = String(LIMITS.max_qty); input.value = line.qty; input.dataset.index = index;
+			input.setAttribute("aria-label", "จำนวน " + line.item_name);
+			var plus = el("button", "tsc-step-btn", "+");
+			plus.type = "button"; plus.dataset.cart = "plus"; plus.dataset.index = index;
+			plus.setAttribute("aria-label", "เพิ่มจำนวน");
+			stepper.appendChild(minus); stepper.appendChild(input); stepper.appendChild(plus);
+
+			var remove = el("button", "tsc-cart-x", "×");
+			remove.type = "button"; remove.dataset.cart = "remove"; remove.dataset.index = index;
+			remove.setAttribute("aria-label", "เอาออก " + line.item_name);
+
+			li.appendChild(info); li.appendChild(stepper); li.appendChild(remove);
+			cartList.appendChild(li);
+		});
+
+		var count = state.cart.length;
+		document.getElementById("tsc-cart-empty").hidden = count > 0;
+		document.getElementById("tsc-cart-count").textContent = count ? "(" + count + ")" : "";
+		var fab = document.getElementById("tsc-fab-count");
+		if (fab) { fab.hidden = !count; fab.textContent = count; }
+
+		var invalid = state.cart.some(function (l) { return !(num(l.qty) > 0); });
+		submitBtn.disabled = !count || state.target === null || invalid;
+		submitBtn.textContent = state.target === null && count
+			? "เลือกงานที่จะเบิกให้ก่อน"
+			: "เพิ่มลงใบงาน" + (count ? " (" + count + " รายการ)" : "");
+		saveDraft();
+	}
+
+	function renderResults(rows, query) {
+		lastResults = rows;
+		results.innerHTML = "";
+		if (!rows.length) {
+			results.appendChild(el("p", "tsc-muted", "ไม่พบอะไหล่ที่ตรงกับ “" + query + "”"));
+			return;
+		}
+		rows.forEach(function (row, index) {
+			var btn = el("button", "tsc-result");
+			btn.type = "button"; btn.dataset.result = index;
+			var info = el("span", "tsc-result-info");
+			info.appendChild(el("span", "tsc-line-main", row.item_name));
+			var sub = row.item_code;
+			if (row.actual_qty !== null && row.actual_qty !== undefined) {
+				sub += " · คงเหลือ " + num(row.actual_qty) + " " + (row.uom || "");
+			}
+			info.appendChild(el("span", "tsc-line-sub" + (row.actual_qty !== null && row.actual_qty <= 0 ? " tsc-out" : ""), sub));
+			btn.appendChild(info);
+			btn.appendChild(el("span", "tsc-result-add", "+ เพิ่ม"));
+			results.appendChild(btn);
+		});
+	}
+
+	var searchTimer = null;
+	var searchSeq = 0;
+	function runSearch(fromEnter) {
+		var query = search.value.trim();
+		if (query.length < LIMITS.min_chars) { results.innerHTML = ""; return; }
+		var seq = ++searchSeq;
+		frappe.call({
+			method: API + "search_parts",
+			args: { service_order: JOB, txt: query },
+			callback: function (r) {
+				if (seq !== searchSeq) { return; }   // ผลของคำค้นเก่าที่ตอบช้า
+				var rows = (r && r.message) || [];
+				// เครื่องสแกนบาร์โค้ดพิมพ์รหัสแล้วกด Enter — ตรงตัวรายการเดียว เพิ่มให้เลย แล้วพร้อมสแกนตัวต่อไป
+				if (fromEnter && rows.length && rows[0].exact && rows.filter(function (x) { return x.exact; }).length === 1) {
+					addToCart(rows[0]);
+					search.value = "";
+					results.innerHTML = "";
+					search.focus();
+					return;
+				}
+				renderResults(rows, query);
+			}
+		});
+	}
+
+	function submitRequest() {
+		var target = document.querySelector('[data-action="target"].is-active');
+		var lines = state.cart.map(function (l) { return "• " + l.item_name + " × " + num(l.qty) + " " + (l.uom || ""); });
+		var message = "เพิ่มให้งาน: " + (target ? target.querySelector(".tsc-target-main").textContent.trim() : "-")
+			+ "\n" + lines.join("\n") + "\n\nเพิ่มลงใบงานใช่หรือไม่?";
+		if (!window.confirm(message)) { return; }
+
+		call("add_parts", {
+			service_row: state.target || "",
+			parts: JSON.stringify(state.cart.map(function (l) { return { item_code: l.item_code, qty: num(l.qty) }; }))
+		}, submitBtn, function () {
+			clearDraft();
+			// reload แล้วหน้าจอเลื่อนมาที่รายการอะไหล่ ให้เห็นปุ่มขออนุมัติเบิกของกลุ่มทันที
+			window.location.replace(window.location.pathname + "#tsc-parts-list");
+			window.location.reload();
+		});
+	}
+
+	function openSheet() {
+		if (!sheet) { return; }
+		sheet.classList.add("is-open");
+		document.body.classList.add("tsc-sheet-lock");
+		if (search) { setTimeout(function () { search.focus(); }, 50); }
+	}
+
+	function closeSheet() {
+		if (!sheet) { return; }
+		sheet.classList.remove("is-open");
+		document.body.classList.remove("tsc-sheet-lock");
+	}
+
+	if (sheet && search) {
+		loadDraft();
+		var targets = document.querySelectorAll('[data-action="target"]');
+		// มีงานให้เลือกงานเดียว — เลือกให้เลย ไม่ต้องแตะเพิ่ม
+		if (state.target === null && targets.length === 1) { state.target = targets[0].dataset.row; }
+		selectTarget(state.target);
+		if (state.cart.length && window.matchMedia("(max-width: 767px)").matches) { openSheet(); }
+
+		search.addEventListener("input", function () {
+			clearTimeout(searchTimer);
+			searchTimer = setTimeout(function () { runSearch(false); }, 300);
+		});
+		search.addEventListener("keydown", function (event) {
+			if (event.key === "Enter") {
+				event.preventDefault();
+				clearTimeout(searchTimer);
+				runSearch(true);
+			}
+		});
+		results.addEventListener("click", function (event) {
+			var btn = event.target.closest("[data-result]");
+			if (btn) { addToCart(lastResults[+btn.dataset.result]); }
+		});
+		cartList.addEventListener("click", function (event) {
+			var btn = event.target.closest("[data-cart]");
+			if (!btn) { return; }
+			var line = state.cart[+btn.dataset.index];
+			if (btn.dataset.cart === "remove") { state.cart.splice(+btn.dataset.index, 1); }
+			if (btn.dataset.cart === "plus") { line.qty = Math.min(num(line.qty) + 1, LIMITS.max_qty); }
+			if (btn.dataset.cart === "minus") {
+				line.qty = num(line.qty) - 1;
+				if (line.qty <= 0) { state.cart.splice(+btn.dataset.index, 1); }
+			}
+			renderCart();
+		});
+		// พิมพ์จำนวนเอง (เช่น 0.5 ลิตร) — อัปเดตตะกร้าโดยไม่วาดใหม่ทั้งรายการ กันคีย์บอร์ดหุบ
+		cartList.addEventListener("input", function (event) {
+			var input = event.target.closest(".tsc-step-input");
+			if (!input) { return; }
+			state.cart[+input.dataset.index].qty = Math.min(num(input.value), LIMITS.max_qty);
+			var invalid = state.cart.some(function (l) { return !(num(l.qty) > 0); });
+			submitBtn.disabled = !state.cart.length || state.target === null || invalid;
+			saveDraft();
+		});
+	}
+
+	document.addEventListener("click", function (event) {
+		var btn = event.target.closest("[data-action]");
+		if (!btn || btn.disabled) { return; }
+
+		switch (btn.dataset.action) {
+			case "refresh": btn.disabled = true; window.location.reload(); return;
+			case "sheet-open": openSheet(); return;
+			case "sheet-close": closeSheet(); return;
+			case "target": selectTarget(btn.dataset.row); return;
+			case "submit-request": submitRequest(); return;
+		}
+		onIssueAction(btn);
+	});
+})();
+</script>
+
+<style>
+	/* แท็บเล็ต (≥768px): สองคอลัมน์ ฟอร์มขอเบิกปักขวา — มือถือ: คอลัมน์เดียว ฟอร์มเปิดเต็มจอจากปุ่มล่าง
+	   ปุ่มหลักสูงอย่างน้อย 48px ให้กดได้ขณะสวมถุงมือ */
+	.tsc-parts { max-width: 1100px; margin: 0 auto; padding-bottom: 6rem; }
+
+	.tsc-topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+	.tsc-back { display: inline-block; padding: 0.5rem 0; margin-bottom: 0.5rem; font-size: 0.9375rem; text-decoration: none; }
+
+	.tsc-head { padding: 0 0 0.75rem; }
+	.tsc-head-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.35rem; flex-wrap: wrap; }
+	.tsc-head-id { font-size: 0.875rem; font-weight: 500; color: var(--text-muted); }
+	.tsc-head-truck { font-size: 1.5rem; font-weight: 700; line-height: 1.2; word-break: break-word; }
+	.tsc-head-spec { font-size: 0.9375rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+	.tsc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+	.tsc-stat {
+		display: flex; flex-direction: column; align-items: center; padding: 0.5rem 0.25rem;
+		border: 1px solid var(--border-color); border-radius: 10px; background: var(--card-bg, #fff);
+	}
+	.tsc-stat b { font-size: 1.375rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+	.tsc-stat span { font-size: 0.75rem; color: var(--text-muted); }
+	.tsc-stat[data-tone="warn"] { background: #fff3cd; border-color: #ffe08a; }
+	.tsc-stat[data-tone="info"] { background: #dbeafe; border-color: #a9c7f5; }
+	.tsc-stat[data-tone="bad"] { background: #fde2e1; border-color: #f5b5b1; }
+
+	.tsc-locked {
+		padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.9375rem;
+		border: 1px solid var(--border-color); border-radius: 8px; background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-notice-approve { background: #fff3cd; border-color: #ffe08a; }
+
+	.tsc-cols { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+	.tsc-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+	.tsc-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; background: var(--card-bg, #fff); }
+	.tsc-card-title { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text-muted); margin: 0 0 0.75rem; }
+	.tsc-muted { margin: 0; font-size: 0.9375rem; color: var(--text-muted); }
+	.tsc-muted-sm { font-size: 0.8125rem; color: var(--text-muted); }
+	.tsc-hint { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--text-muted); text-align: center; }
+
+	.tsc-btn {
+		min-height: 48px; padding: 0.75rem 1.25rem; font-size: 1rem; font-weight: 600; border-radius: 8px;
+		border: 1px solid var(--border-color); background: var(--card-bg, #fff); color: inherit; cursor: pointer;
+	}
+	.tsc-btn-primary { background: var(--primary, #171717); border-color: var(--primary, #171717); color: #fff; }
+	.tsc-btn-success { background: #158947; border-color: #158947; color: #fff; }
+	.tsc-btn-secondary { background: var(--subtle-fg, #f4f5f6); }
+	.tsc-btn-block { width: 100%; margin-top: 0.75rem; }
+	.tsc-btn-sm { min-height: 40px; padding: 0.4rem 0.9rem; font-size: 0.875rem; }
+	.tsc-btn:disabled, .tsc-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+	.is-busy { opacity: 0.6; }
+
+	.tsc-refresh {
+		display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0.5rem 0.9rem;
+		font-size: 0.9375rem; font-weight: 500; color: inherit; border: 1px solid var(--border-color);
+		border-radius: 8px; background: var(--card-bg, #fff); cursor: pointer; flex-shrink: 0;
+	}
+	.tsc-refresh:disabled { opacity: 0.6; cursor: wait; }
+	.tsc-refresh:disabled .tsc-refresh-icon { animation: tsc-spin 0.8s linear infinite; }
+	.tsc-refresh-icon { display: inline-block; line-height: 1; font-size: 1.05rem; }
+	@keyframes tsc-spin { to { transform: rotate(360deg); } }
+
+	/* ── อะไหล่จัดกลุ่มตามกลุ่มบริการ ── */
+	.tsc-part-group + .tsc-part-group { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+	.tsc-part-group-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+	.tsc-part-group-head .tsc-btn { margin-left: auto; }
+	.tsc-part-group-title { font-size: 0.9375rem; font-weight: 600; }
+	.tsc-group-jobs { margin: -0.25rem 0 0.5rem; font-size: 0.8125rem; color: var(--text-muted); }
+
+	.tsc-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+	.tsc-lines li { display: grid; gap: 0.2rem; }
+	.tsc-lines li + li { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+	.tsc-line-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+	.tsc-line-main { font-size: 0.9375rem; font-weight: 500; word-break: break-word; }
+	.tsc-line-qty { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+	.tsc-line-sub { font-size: 0.8125rem; color: var(--text-muted); }
+
+	.tsc-state {
+		display: inline-block; padding: 0.05rem 0.5rem; font-size: 0.75rem; font-weight: 600; line-height: 1.6;
+		border-radius: 999px; border: 1px solid var(--border-color); background: var(--subtle-fg, #f4f5f6); color: var(--text-color, #1f272e);
+	}
+	.tsc-state[data-state="running"] { background: #fff3cd; border-color: #ffe08a; }
+	.tsc-state[data-state="done"] { background: #d8f0e0; border-color: #a9dcbe; }
+	.tsc-state[data-state="approved"] { background: #dbeafe; border-color: #a9c7f5; }
+	.tsc-state[data-state="rejected"] { background: #fde2e1; border-color: #f5b5b1; }
+
+	.tsc-issue-card {
+		display: grid; gap: 0.25rem; padding: 0.6rem 0.75rem; margin-bottom: 0.6rem;
+		border: 1px solid var(--border-color); border-radius: 8px; background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-issue-card[data-state="rejected"] { border-color: #f5b5b1; }
+	.tsc-issue-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.tsc-issue-name { font-size: 0.875rem; font-weight: 600; }
+	.tsc-issue-note { font-size: 0.8125rem; }
+	.tsc-issue-reason { font-size: 0.8125rem; color: #b42318; }
+	.tsc-row-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
+	.tsc-row-actions .tsc-btn:not(.tsc-btn-sm) { flex: 1 1 8rem; }
+	.tsc-reject-box { margin-top: 0.4rem; }
+	.tsc-req-box {
+		margin: 0 0 0.75rem; padding: 0.75rem; border: 1px solid var(--border-color);
+		border-radius: 8px; background: var(--subtle-fg, #f4f5f6);
+	}
+	.tsc-return-box {
+		margin-top: 0.5rem; padding: 0.75rem; border: 1px solid var(--border-color);
+		border-radius: 8px; background: var(--card-bg, #fff);
+	}
+	.tsc-return-lines { list-style: none; margin: 0 0 0.75rem; padding: 0; display: grid; gap: 0.5rem; }
+	.tsc-return-line { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.5rem; }
+	.tsc-ret-lines { list-style: none; margin: 0.25rem 0; padding: 0; display: grid; gap: 0.2rem; font-size: 0.875rem; }
+	.tsc-ret-lines li { display: flex; justify-content: space-between; gap: 0.75rem; }
+	.tsc-ret-total { border-top: 1px solid var(--border-color); padding-top: 0.25rem; font-weight: 600; }
+	.tsc-money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+	.tsc-pkg-ret { background: #d8f0e0; border-color: #a9dcbe; color: #14532d; }
+	.tsc-return-summary {
+		display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: -0.25rem 0 1rem;
+		font-size: 0.9375rem;
+	}
+	.tsc-return-summary a { margin-left: auto; }
+	.tsc-req-box-title { margin: 0 0 0.5rem; font-size: 0.875rem; font-weight: 600; }
+	.tsc-req-box .tsc-textarea { background: var(--card-bg, #fff); }
+
+	.tsc-pkg {
+		display: inline-block; padding: 0.05rem 0.45rem; margin-left: 0.15rem; font-size: 0.75rem; line-height: 1.5;
+		border-radius: 999px; background: var(--subtle-fg, #f4f5f6); border: 1px solid var(--border-color);
+	}
+	.tsc-pkg-req { background: #ede9fe; border-color: #c4b5fd; color: #4c1d95; }
+
+	.tsc-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 0.5rem; }
+	.tsc-chip {
+		min-height: 40px; padding: 0.4rem 0.75rem; font-size: 0.875rem; border-radius: 999px; color: inherit;
+		border: 1px solid var(--border-color); background: var(--subtle-fg, #f4f5f6); cursor: pointer;
+	}
+	.tsc-textarea {
+		width: 100%; padding: 0.75rem; font-size: 1rem; line-height: 1.6;
+		border: 1px solid var(--border-color); border-radius: 8px; resize: vertical;
+	}
+	.tsc-input {
+		min-height: 52px; padding: 0.5rem 0.85rem; font-size: 1.125rem; width: 100%;
+		border: 1px solid var(--border-color); border-radius: 8px;
+	}
+
+	/* ── ฟอร์มขอเบิกเพิ่ม ── */
+	.tsc-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+	.tsc-request-title { font-size: 1rem; color: inherit; margin: 0; }
+	.tsc-sheet-close { display: none; }
+	.tsc-step { margin-top: 1rem; display: grid; gap: 0.5rem; }
+	.tsc-step-label { font-size: 0.875rem; font-weight: 600; }
+
+	.tsc-targets { display: grid; gap: 0.4rem; }
+	.tsc-target {
+		display: grid; gap: 0.1rem; text-align: left; min-height: 52px; padding: 0.55rem 0.85rem;
+		border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg, #fff);
+		color: inherit; cursor: pointer;
+	}
+	.tsc-target-main { font-size: 0.9375rem; font-weight: 600; }
+	.tsc-target-sub { font-size: 0.75rem; color: var(--text-muted); }
+	.tsc-target.is-active { border-color: var(--primary, #171717); box-shadow: inset 0 0 0 2px var(--primary, #171717); }
+
+	.tsc-results { display: grid; gap: 0.4rem; }
+	.tsc-result {
+		display: flex; align-items: center; gap: 0.75rem; min-height: 56px; padding: 0.5rem 0.75rem; text-align: left;
+		border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg, #fff); color: inherit; cursor: pointer;
+	}
+	.tsc-result:active { background: var(--subtle-fg, #f4f5f6); }
+	.tsc-result-info { display: grid; gap: 0.1rem; flex: 1; min-width: 0; }
+	.tsc-result-add { flex-shrink: 0; font-weight: 600; font-size: 0.9375rem; color: var(--primary, #171717); }
+	.tsc-out { color: #b42318; }
+
+	.tsc-cart { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+	.tsc-cart-line {
+		display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0.5rem;
+		padding: 0.5rem 0.6rem; border: 1px solid var(--border-color); border-radius: 8px;
+	}
+	.tsc-cart-info { min-width: 0; display: grid; gap: 0.1rem; }
+	.tsc-stepper { display: grid; grid-template-columns: 44px 64px 44px; }
+	.tsc-step-btn {
+		height: 44px; font-size: 1.375rem; line-height: 1; border: 1px solid var(--border-color);
+		background: var(--subtle-fg, #f4f5f6); color: inherit; cursor: pointer;
+	}
+	.tsc-step-btn:first-child { border-radius: 8px 0 0 8px; }
+	.tsc-step-btn:last-child { border-radius: 0 8px 8px 0; }
+	.tsc-step-input {
+		height: 44px; width: 100%; text-align: center; font-size: 1.0625rem; font-weight: 600;
+		border: 1px solid var(--border-color); border-left: 0; border-right: 0; -moz-appearance: textfield;
+	}
+	.tsc-step-input::-webkit-outer-spin-button, .tsc-step-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+	.tsc-cart-x {
+		width: 40px; height: 44px; border: 0; background: none; font-size: 1.5rem; line-height: 1;
+		color: var(--text-muted); cursor: pointer;
+	}
+	.tsc-submit { min-height: 56px; font-size: 1.0625rem; }
+
+	.tsc-fab-bar { display: none; }
+
+	@media (min-width: 768px) {
+		.tsc-cols { grid-template-columns: minmax(0, 1fr) minmax(340px, 400px); align-items: start; }
+		.tsc-sheet { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+	}
+
+	@media (max-width: 767px) {
+		.tsc-stats { grid-template-columns: repeat(2, 1fr); }
+		.tsc-stat { flex-direction: row; justify-content: center; gap: 0.4rem; }
+		.tsc-stat b { font-size: 1.125rem; }
+
+		/* ฟอร์มเป็นหน้าเต็มจอ เปิดจากปุ่มล่าง — รายการอะไหล่ยาวแค่ไหนปุ่มก็อยู่ใต้นิ้วเสมอ */
+		.tsc-sheet {
+			display: none; position: fixed; inset: 0; z-index: 1050; overflow-y: auto;
+			background: var(--bg-color, #fff);
+			padding: calc(env(safe-area-inset-top, 0px) + 0.75rem) 0.75rem calc(env(safe-area-inset-bottom, 0px) + 1rem);
+		}
+		.tsc-sheet.is-open { display: block; }
+		.tsc-sheet .tsc-card { border: 0; padding: 0.25rem; }
+		.tsc-sheet-close {
+			display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px;
+			font-size: 1.75rem; border: 1px solid var(--border-color); border-radius: 8px;
+			background: var(--card-bg, #fff); color: inherit; cursor: pointer;
+		}
+		.tsc-sheet-head { position: sticky; top: 0; background: var(--bg-color, #fff); padding-bottom: 0.5rem; z-index: 1; }
+		body.tsc-sheet-lock { overflow: hidden; }
+
+		.tsc-fab-bar {
+			display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1040;
+			padding: 0.6rem 1rem calc(env(safe-area-inset-bottom, 0px) + 0.6rem);
+			background: var(--bg-color, #fff); border-top: 1px solid var(--border-color);
+		}
+		.tsc-fab { width: 100%; min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+		.tsc-fab-count {
+			min-width: 1.5rem; padding: 0 0.4rem; border-radius: 999px; background: #fff; color: var(--primary, #171717);
+			font-size: 0.875rem; line-height: 1.5rem;
+		}
+	}
+</style>
+{% endblock %}
