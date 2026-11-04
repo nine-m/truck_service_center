@@ -13,6 +13,7 @@ import frappe
 from frappe import _
 from frappe.utils import escape_html, flt, now_datetime
 
+from truck_service_center.branches import filter_users_by_branch
 from truck_service_center.queries import get_technician_users
 from truck_service_center.truck_service_center.doctype.parts_return.parts_return import (
 	RETURN_APPROVED,
@@ -246,6 +247,8 @@ def assign_technician(service_order, row_name, user):
 
 	if user not in get_technician_users():
 		frappe.throw(_("ผู้ใช้ {0} ไม่ได้เป็นช่าง").format(user))
+	if not filter_users_by_branch([user], doc.branch):
+		frappe.throw(_("ช่าง {0} ไม่ได้อยู่สาขา {1}").format(user, doc.branch))
 
 	if _user_on_row(row, user):
 		return {"value": user}
@@ -482,7 +485,7 @@ def search_parts(service_order, txt=None):
 	]
 	rows = rows[:SEARCH_LIMIT]
 
-	warehouse = get_default_parts_warehouse()
+	warehouse = get_default_parts_warehouse(frappe.db.get_value("Service Order", service_order, "branch"))
 	stock = {}
 	if warehouse and rows:
 		stock = dict(
@@ -575,7 +578,7 @@ def add_parts(service_order, parts, service_row=None):
 		frappe.throw(_("ยังไม่ได้รับรถเข้าซ่อม กรุณารับรถก่อนเพิ่มอะไหล่"))
 
 	merged = _parse_requested_parts(parts)
-	warehouse = get_default_parts_warehouse()
+	warehouse = get_default_parts_warehouse(doc.branch)
 
 	for code, qty in merged.items():
 		doc.append(

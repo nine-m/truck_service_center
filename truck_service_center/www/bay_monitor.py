@@ -16,11 +16,14 @@ Website User (ลูกค้า) เข้าไม่ได้ เพราะ
 ตรรกะจัดกลุ่ม/ตัดสินสถานะเป็น pure function ระดับ module เพื่อให้เทสต์ได้โดยไม่ต้อง insert เอกสาร
 """
 
+from urllib.parse import quote
+
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, format_datetime, get_datetime, getdate, now_datetime, today
 
 from truck_service_center.api.technician_portal import TECHNICIAN_FIELDS
+from truck_service_center.branches import branch_filters, get_allowed_branches, get_default_branch
 from truck_service_center.truck_service_center.doctype.service_appointment.service_appointment import (
 	EXCLUDED_STATUSES,
 	STATUS_CLOSED,
@@ -113,6 +116,7 @@ def get_context(context):
 	selected = _parse_date(frappe.form_dict.get("date"))
 	now = now_datetime()
 	is_today = selected == getdate(now)
+	branch, branch_options = _resolve_branch(frappe.form_dict.get("branch"))
 
 	context.no_cache = 1
 	context.full_width = True
@@ -127,9 +131,42 @@ def get_context(context):
 	context.next_date = str(add_days(selected, 1))
 	context.is_today = is_today
 	context.today = today()
+	context.branch = branch or ""
+	context.branch_options = branch_options
+	context.branch_label = next((row.label for row in branch_options if row.value == (branch or "")), "")
+	# ลิงก์เลื่อนวันต้องพาสาขาที่เลือกไปด้วย
+	context.branch_query = f"&branch={quote(branch)}" if branch else ""
 
-	context.board = get_board(selected, now, is_today)
+	context.board = get_board(selected, now, is_today, branch=branch)
 	return context
+
+
+def _resolve_branch(requested):
+	"""สาขาที่จะแสดง + ตัวเลือกใน dropdown
+
+	ช่องจอดเป็นของสาขาเดียว หน้านี้จึงดูทีละสาขา ผู้ใช้ที่ถูกผูกสาขาเลือกได้เฉพาะสาขาของตัวเอง
+	ผู้ใช้ที่ไม่ถูกจำกัดสาขา มีตัวเลือก "ทุกสาขา" (ค่าว่าง) เพิ่มสำหรับดูภาพรวม
+	ค่าที่ไม่มีสิทธิ์/ไม่มีอยู่จริงถอยไปสาขาเริ่มต้น ไม่ error ทั้งหน้า
+	"""
+	allowed = get_allowed_branches()
+	rows = frappe.get_all(
+		"Service Branch",
+		filters={"is_active": 1, **({"name": ["in", allowed]} if allowed is not None else {})},
+		fields=["name", "branch_name"],
+		order_by="branch_code asc",
+	)
+	options = [frappe._dict(value=row.name, label=row.branch_name or row.name) for row in rows]
+	if allowed is None and len(options) > 1:
+		options.insert(0, frappe._dict(value="", label="ทุกสาขา"))
+
+	values = {row.value for row in options}
+	if requested is not None and requested in values:
+		return requested or None, options
+
+	default = get_default_branch()
+	if default in values:
+		return default, options
+	return (options[0].value or None) if options else None, options
 
 
 def _parse_date(value):
@@ -142,15 +179,18 @@ def _parse_date(value):
 		return getdate(today())
 
 
-def get_board(date, now, is_today):
-	"""ประกอบข้อมูลทั้งหน้า — จำนวน query คงที่ ไม่ขึ้นกับจำนวนช่องจอด/รถ"""
-	availability = get_bay_availability(date)
-	appointments, appointment_bays = _get_appointments(date)
+def get_board(date, now, is_today, branch=None):
+	"""ประกอบข้อมูลทั้งหน้า — จำนวน query คงที่ ไม่ขึ้นกับจำนวนช่องจอด/รถ
+
+	branch = สาขาที่แสดง ไม่ระบุ = ทุกสาขาที่ผู้ใช้เห็นได้ (กรองแบบเดียวกับ get_bay_availability)
+	"""
+	availability = get_bay_availability(date, branch=branch)
+	appointments, appointment_bays = _get_appointments(date, branch)
 	bookings, unallocated = collect_bookings(appointments, appointment_bays, now, is_today)
 
 	occupants, unassigned = {}, []
 	if is_today:
-		orders, service_rows = _get_open_orders()
+		orders, service_rows = _get_open_orders(branch)
 		_attach_appointments(orders)
 		_attach_technician_labels(orders)
 		occupants, unassigned = collect_occupants(orders, service_rows, now)
@@ -381,17 +421,28 @@ def group_by_bay_type(cards):
 # ── IO ───────────────────────────────────────────────────────────────────────
 
 
-def _get_appointments(date):
+def _board_filters(filters, branch):
+	"""สาขาที่เลือก หรือทุกสาขาที่ผู้ใช้เห็นได้ — get_all ไม่กรองตาม User Permission ให้เอง"""
+	if branch:
+		filters["branch"] = branch
+		return filters
+	return branch_filters(filters)
+
+
+def _get_appointments(date, branch=None):
 	"""นัดหมายของวัน + แถวช่องจอดที่จองไว้ — ตัวกรองชุดเดียวกับ get_booked_hours_range
 	(ฉบับร่างนับด้วย ไม่นับ Cancelled/No Show) ตัวเลขบนการ์ดจึงตรงกับรายการจองที่แสดง
 	"""
 	appointments = frappe.get_all(
 		"Service Appointment",
-		filters={
-			"appointment_date": date,
-			"docstatus": ["!=", 2],
-			"status": ["not in", list(EXCLUDED_STATUSES)],
-		},
+		filters=_board_filters(
+			{
+				"appointment_date": date,
+				"docstatus": ["!=", 2],
+				"status": ["not in", list(EXCLUDED_STATUSES)],
+			},
+			branch,
+		),
 		fields=[
 			"name",
 			"appointment_time",
@@ -421,14 +472,14 @@ def _get_appointments(date):
 	return appointments, bay_rows
 
 
-def _get_open_orders():
+def _get_open_orders(branch=None):
 	"""ใบสั่งงานที่ยังเปิดอยู่ทุกใบ + แถวงานของใบเหล่านั้น — 2 query
 
 	สถานะชุดเดียวกับ get_busy_bays (รวมรอส่งมอบรถ — รถยังจอดอยู่ในศูนย์)
 	"""
 	orders = frappe.get_all(
 		"Service Order",
-		filters={"docstatus": 0, "status": ["in", OPEN_STATUSES]},
+		filters=_board_filters({"docstatus": 0, "status": ["in", OPEN_STATUSES]}, branch),
 		fields=[
 			"name",
 			"status",

@@ -13,6 +13,7 @@ from frappe import _
 from frappe.utils import format_datetime, now_datetime
 
 from truck_service_center.api.technician_portal import MANAGER_ROLES, TECHNICIAN_FIELDS
+from truck_service_center.branches import branch_filters
 from truck_service_center.truck_service_center.doctype.service_order.service_order import (
 	APPROVAL_PENDING,
 	get_supervised_groups,
@@ -110,11 +111,14 @@ def get_pending_requisitions(is_fallback=False, groups=(), limit=PAGE_LIMIT):
 	if not is_fallback and not groups:
 		return []
 
-	filters = {
-		"docstatus": 0,
-		"custom_approval_status": APPROVAL_PENDING,
-		"custom_service_order": ["is", "set"],
-	}
+	filters = branch_filters(
+		{
+			"docstatus": 0,
+			"custom_approval_status": APPROVAL_PENDING,
+			"custom_service_order": ["is", "set"],
+		},
+		fieldname="custom_branch",
+	)
 	if not is_fallback:
 		filters["custom_service_type_group"] = ["in", list(groups)]
 
@@ -188,7 +192,7 @@ def get_pending_returns(is_fallback=False, groups=(), limit=PAGE_LIMIT):
 	if not is_fallback and not groups:
 		return []
 
-	filters = {"approval_status": "Pending"}
+	filters = branch_filters({"approval_status": "Pending"})
 	if not is_fallback:
 		filters["service_type_group"] = ["in", list(groups)]
 
@@ -257,7 +261,8 @@ def get_open_orders(user, all_jobs=False, groups=(), limit=PAGE_LIMIT):
 			"priority",
 			*TECHNICIAN_FIELDS,
 		],
-		filters={"status": ["in", statuses], "docstatus": ["<", 2]},
+		# เห็นเฉพาะสาขาที่ตัวเองมีสิทธิ์ (User Permission ของ Service Branch) — get_all ไม่กรองให้เอง
+		filters=branch_filters({"status": ["in", statuses], "docstatus": ["<", 2]}),
 		# or_filters ถูกประกอบเป็นวงเล็บก้อนเดียว (grouped_or_conditions ใน db_query.py)
 		# จึงได้ ... AND (technician=u OR technician_2=u OR ... OR name in (...))
 		or_filters=or_filters,

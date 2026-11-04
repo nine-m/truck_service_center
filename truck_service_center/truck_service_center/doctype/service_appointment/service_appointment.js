@@ -194,6 +194,15 @@ frappe.ui.form.on('Service Appointment', {
 		// อัปเดตแถบความจุของวันที่เลือก (ชั่วโมงที่จองแล้ว / ที่รับได้)
 		load_capacity_meter(frm);
 	},
+
+	branch: function(frm) {
+		// ความจุคิดแยกสาขา และช่องจอดที่จองไว้เป็นของสาขาเดิม — ล้างแล้วให้ระบบจัดใหม่ตอนบันทึก
+		if ((frm.doc.bay_allocations || []).length) {
+			frm.clear_table('bay_allocations');
+			frm.refresh_field('bay_allocations');
+		}
+		load_capacity_meter(frm);
+	},
 	
 	discount_amount: function(frm) {
 		calculate_totals(frm);
@@ -238,6 +247,8 @@ function set_bay_filter(frm) {
 	frm.set_query('service_bay', 'bay_allocations', function(doc, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		let filters = { 'is_active': 1 };
+		// ช่องจอดเป็นของสาขาเดียว — เลือกได้เฉพาะช่องของสาขานัดหมายนี้
+		if (doc.branch) filters.branch = doc.branch;
 		// แถวรู้อยู่แล้วว่าเป็นงานประเภทไหน — กรองให้เหลือเฉพาะช่องจอดประเภทนั้น
 		// จะได้เลือกผิดประเภทด้วยมือยากขึ้น (ยังเตือนฝั่ง server อยู่ดีถ้าเลือกผิด)
 		if (row && row.bay_type) filters.bay_type = row.bay_type;
@@ -284,7 +295,8 @@ function load_capacity_meter(frm) {
 		'truck_service_center.truck_service_center.doctype.service_appointment.service_appointment.get_bay_day_status',
 		{
 			date: frm.doc.appointment_date,
-			exclude_appointment: null
+			exclude_appointment: null,
+			branch: frm.doc.branch || null
 		}
 	).then(function(data) {
 		if (req !== frm._capacity_req) return;
@@ -695,6 +707,8 @@ frappe.ui.form.on('Service Appointment Service Type', {
 	service_type: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (!row.service_type) return;
+
+		fill_service_type_rates(cdt, cdn, 'labor_charges');
 
 		// ดึงรายการอะไหล่มาตรฐานจาก Service Type (เหมือนใบสั่งงาน)
 		frappe.call({
@@ -1176,4 +1190,19 @@ function fetch_customer_addresses(frm) {
 			}
 		}
 	});
+}
+
+// ค่าแรง/เวลามาตรฐานของประเภทบริการ — เติมตอนเลือกประเภทบริการในแถวเท่านั้น
+// (ฟิลด์เหล่านี้ไม่ใช้ fetch_from แล้ว ไม่งั้นค่าที่แก้เองจะถูก master ทับทุกครั้งที่บันทึก)
+function fill_service_type_rates(cdt, cdn, labor_field) {
+	let row = locals[cdt][cdn];
+	if (!row || !row.service_type) return Promise.resolve();
+	return frappe.db
+		.get_value('Service Type', row.service_type, ['labor_rate', 'default_duration'])
+		.then(function (r) {
+			let data = (r && r.message) || {};
+			let values = { estimated_time: flt(data.default_duration) };
+			values[labor_field] = flt(data.labor_rate);
+			return frappe.model.set_value(cdt, cdn, values);
+		});
 }

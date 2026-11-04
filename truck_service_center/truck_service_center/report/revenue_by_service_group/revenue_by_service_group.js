@@ -4,6 +4,12 @@
 frappe.query_reports["Revenue by Service Group"] = {
 	filters: [
 		{
+			fieldname: "branch",
+			label: "สาขา",
+			fieldtype: "Link",
+			options: "Service Branch",
+		},
+		{
 			fieldname: "from_date",
 			label: "ตั้งแต่วันที่",
 			fieldtype: "Date",

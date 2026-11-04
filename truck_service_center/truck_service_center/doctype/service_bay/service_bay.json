@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "bay_name",
+  "branch",
   "bay_type",
   "daily_capacity_hours",
   "column_break_1",
@@ -23,6 +24,16 @@
    "label": "ชื่อช่องจอดซ่อม",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "options": "Service Branch",
+   "label": "สาขา",
+   "in_standard_filter": 1,
+   "reqd": 1,
+   "search_index": 1,
+   "in_list_view": 1
   },
   {
    "description": "ช่องจอดหนึ่งช่องมีได้ประเภทเดียว — เว้นว่างไว้ระบบจะเติมประเภทเริ่มต้นให้ตอนบันทึก",
@@ -65,7 +76,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-11 09:10:00.000000",
+ "modified": "2026-11-04 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Bay",

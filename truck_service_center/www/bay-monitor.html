@@ -15,16 +15,25 @@
 		<div>
 			<h1 class="tsc-bay-title">Bay Monitor</h1>
 			<p class="tsc-bay-subtitle">
-				{{ date_label }}{% if is_today %} (วันนี้){% endif %}
+				{% if branch_label %}{{ branch_label }} &middot; {% endif %}{{ date_label }}{% if is_today %} (วันนี้){% endif %}
 				&middot; ข้อมูล ณ {{ fetched_at }}
 				{% if is_today %}&middot; รีเฟรชอัตโนมัติใน <span data-countdown>{{ refresh_seconds }}</span> วินาที{% endif %}
 			</p>
 		</div>
 		<form class="tsc-bay-nav" method="get" action="/bay-monitor">
-			<a class="tsc-btn" href="/bay-monitor?date={{ prev_date }}" aria-label="วันก่อนหน้า">&lsaquo;</a>
+			{% if branch_options|length > 1 %}
+			<select class="tsc-date" name="branch" data-action="pick-branch" aria-label="สาขา">
+				{% for option in branch_options %}
+				<option value="{{ option.value }}"{% if option.value == branch %} selected{% endif %}>{{ option.label }}</option>
+				{% endfor %}
+			</select>
+			{% else %}
+			<input type="hidden" name="branch" value="{{ branch }}">
+			{% endif %}
+			<a class="tsc-btn" href="/bay-monitor?date={{ prev_date }}{{ branch_query }}" aria-label="วันก่อนหน้า">&lsaquo;</a>
 			<input class="tsc-date" type="date" name="date" value="{{ selected_date }}" data-action="pick-date">
-			<a class="tsc-btn" href="/bay-monitor?date={{ next_date }}" aria-label="วันถัดไป">&rsaquo;</a>
-			{% if not is_today %}<a class="tsc-btn" href="/bay-monitor">วันนี้</a>{% endif %}
+			<a class="tsc-btn" href="/bay-monitor?date={{ next_date }}{{ branch_query }}" aria-label="วันถัดไป">&rsaquo;</a>
+			{% if not is_today %}<a class="tsc-btn" href="/bay-monitor?date={{ today }}{{ branch_query }}">วันนี้</a>{% endif %}
 			<button type="button" class="tsc-btn" data-action="refresh">&#8635; รีเฟรช</button>
 		</form>
 	</header>
@@ -212,6 +221,11 @@
 		picker.addEventListener("change", function () {
 			if (picker.value) { picker.form.submit(); }
 		});
+	}
+	// เปลี่ยนสาขาแล้วไปเลยเหมือนกัน (ฟอร์มพาวันที่ที่เลือกไปด้วย)
+	var branchPicker = document.querySelector('[data-action="pick-branch"]');
+	if (branchPicker) {
+		branchPicker.addEventListener("change", function () { branchPicker.form.submit(); });
 	}
 
 	document.addEventListener("click", function (event) {

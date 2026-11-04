@@ -161,6 +161,7 @@ def create_parts_return(service_order, stock_entry, requested, reason=None, user
 	doc.update(
 		{
 			"service_order": service_order.name,
+			"branch": service_order.branch,
 			"stock_entry": stock_entry.name,
 			"service_type_group": stock_entry.get("custom_service_type_group"),
 			"approval_status": RETURN_PENDING,

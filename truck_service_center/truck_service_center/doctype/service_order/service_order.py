@@ -6,6 +6,12 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
 
+from truck_service_center.branches import (
+	get_branch_doc,
+	get_branch_settings,
+	is_branch_allowed,
+	validate_bays_in_branch,
+)
 from truck_service_center.discounts import distribute_package_discount, percent_of, resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
 from truck_service_center.truck_service_center.doctype.service_appointment.service_appointment import (
@@ -16,6 +22,9 @@ from truck_service_center.truck_service_center.doctype.service_appointment.servi
 )
 from truck_service_center.truck_service_center.doctype.service_package.service_package import (
 	assert_package_usable,
+)
+from truck_service_center.truck_service_center.doctype.service_type.service_type import (
+	fill_rates_from_service_type,
 )
 from truck_service_center.truck_service_center.doctype.service_type_group.service_type_group import (
 	APPROVER_FALLBACK_ROLES,
@@ -68,13 +77,13 @@ APPROVAL_REJECTED = "Rejected"
 ISSUE_SUBMIT_ORDER_STATUSES = ("Ready for Delivery", "Completed")
 
 
-def get_default_parts_warehouse():
-	"""คลังตั้งต้นของแถวอะไหล่ — คลังเบิกของ Truck Service Center Settings ก่อน แล้วค่อยถอยไป Stock Settings
+def get_default_parts_warehouse(branch=None):
+	"""คลังตั้งต้นของแถวอะไหล่ — คลังเบิกของสาขา → ของ Truck Service Center Settings → Stock Settings
 
 	ERPNext รุ่นใหม่ตัดฟิลด์ Stock Settings.default_warehouse ออกแล้ว get_single_value จะ throw
 	ถ้าอ่านฟิลด์ที่ไม่มีใน meta จึงต้องเช็ค has_field ก่อน ลำดับคลังตรงกับ build_material_issue_line
 	"""
-	settings = frappe.get_cached_doc("Truck Service Center Settings")
+	settings = get_branch_settings(branch)
 	warehouse = settings.default_source_warehouse or settings.default_warehouse
 	if warehouse:
 		return warehouse
@@ -141,10 +150,12 @@ class ServiceOrder(Document):
 		self.set_address_display()
 		self.check_material_issue_items()
 		self.apply_service_packages()
+		fill_rates_from_service_type(self.service_types, "labor_charges")
 		self.validate_service_type_removal()
 		self.remove_orphan_service_type_items()
 		self.calculate_totals()
 		self.apply_default_bay()
+		self.validate_bay_branch()
 		self.sync_row_technicians_to_parent()
 		self.validate_work_times()
 		self.compute_actual_time()
@@ -349,7 +360,7 @@ class ServiceOrder(Document):
 				)
 
 			# เพิ่ม parts จาก package
-			default_warehouse = get_default_parts_warehouse()
+			default_warehouse = get_default_parts_warehouse(self.branch)
 			for part, discount in zip(package.package_parts, part_discounts, strict=True):
 				self.append(
 					"service_items",
@@ -751,6 +762,12 @@ class ServiceOrder(Document):
 				row.time_entered_by = frappe.session.user
 				row.time_entered_on = now_datetime()
 
+	def validate_bay_branch(self):
+		"""ช่องจอดหลักและช่องจอดรายแถวต้องอยู่สาขาเดียวกับใบงาน (ต่างจากเรื่องประเภทช่องจอดที่แค่เตือน)"""
+		validate_bays_in_branch(
+			self.branch, [self.service_bay] + [row.service_bay for row in self.service_types or []]
+		)
+
 	def warn_bay_issues(self):
 		"""เตือนเรื่องช่องจอดอย่างเดียว ไม่บล็อกการบันทึก (ตามที่ผู้ใช้ยืนยัน)
 
@@ -909,8 +926,9 @@ class ServiceOrder(Document):
 		if self.sales_invoice:
 			frappe.throw("มีการสร้าง Sales Invoice ไปแล้ว")
 
-		# ดึงการตั้งค่าจาก Settings
-		settings = frappe.get_single("Truck Service Center Settings")
+		# ดึงการตั้งค่าจาก Settings — ทับด้วยคลัง/ศูนย์ต้นทุน/ชุดเลขของสาขาใบงาน
+		settings = get_branch_settings(self.branch)
+		branch = get_branch_doc(self.branch)
 
 		# ดึง company
 		company = (
@@ -924,6 +942,12 @@ class ServiceOrder(Document):
 		sales_invoice.disable_rounded_total = 1
 		sales_invoice.customer = self.customer
 		sales_invoice.company = company
+		# สาขาที่ออกใบกำกับภาษี — เลขสาขาภาษีพิมพ์จาก Service Branch ผ่านฟิลด์นี้
+		sales_invoice.custom_branch = self.branch
+		if settings.sales_invoice_series:
+			sales_invoice.naming_series = settings.sales_invoice_series
+		if branch and branch.letter_head:
+			sales_invoice.letter_head = branch.letter_head
 		sales_invoice.posting_date = self.service_date
 		sales_invoice.set_posting_time = 1
 		sales_invoice.due_date = self.service_date
@@ -1304,13 +1328,14 @@ def create_material_issue_for_rows(doc, rows, ignore_permissions=False, service_
 			title="ไม่สามารถสร้างใบเบิกอะไหล่ได้",
 		)
 
-	# ดึง settings
-	settings = frappe.get_single("Truck Service Center Settings")
+	# ดึง settings — คลัง/ศูนย์ต้นทุนของสาขาใบงานก่อน
+	settings = get_branch_settings(doc.branch)
 
 	# สร้าง Stock Entry
 	stock_entry = frappe.new_doc("Stock Entry")
 	stock_entry.stock_entry_type = "Material Issue"
 	stock_entry.company = settings.default_company or frappe.defaults.get_defaults().company
+	stock_entry.custom_branch = doc.branch
 	stock_entry.set_posting_time = 1
 	stock_entry.posting_date = frappe.utils.today()
 	stock_entry.custom_service_order = doc.name  # Link กลับไป Service Order
@@ -1590,11 +1615,13 @@ def plan_bay_assignment(
 	}
 
 
-def get_busy_bays(exclude_order=None):
+def get_busy_bays(exclude_order=None, branch=None):
 	"""ช่องจอดที่ใบสั่งงานอื่นซึ่งยังเปิดอยู่ใช้ค้าง ทั้งช่องหลักและช่องรายแถว — 2 query"""
 	filters = {"docstatus": 0, "status": ["in", OPEN_STATUSES]}
 	if exclude_order:
 		filters["name"] = ["!=", exclude_order]
+	if branch:
+		filters["branch"] = branch
 
 	orders = frappe.get_all("Service Order", filters=filters, fields=["name", "service_bay"])
 	if not orders:
@@ -1635,12 +1662,12 @@ def suggest_bay_assignment(doc):
 		else None
 	)
 	availability = get_bay_availability(
-		doc.service_date or frappe.utils.today(), exclude_appointment=own_appointment
+		doc.service_date or frappe.utils.today(), exclude_appointment=own_appointment, branch=doc.branch
 	)
 	default_bay_type = availability["default_bay_type"]
 	bay_type_by_service_type = get_bay_type_by_service_type(doc)
 	hours_by_bay_type = split_hours_by_bay_type(doc, bay_type_by_service_type, default_bay_type)
-	busy_bays = get_busy_bays(exclude_order=order_name)
+	busy_bays = get_busy_bays(exclude_order=order_name, branch=doc.branch)
 
 	plan = plan_bay_assignment(
 		doc.service_types,
@@ -1816,6 +1843,11 @@ def can_approve_requisition(stock_entry, user=None):
 	ผู้อนุมัติ จึงเหลือแต่ fallback roles ที่อนุมัติได้
 	"""
 	user = user or frappe.session.user
+	# อนุมัติได้เฉพาะใบเบิกของสาขาที่ตัวเองมีสิทธิ์ — ผู้จัดการสาขา A อนุมัติใบของสาขา B ไม่ได้
+	branch = stock_entry.get("custom_branch")
+	if branch and not is_branch_allowed(branch, user):
+		return False
+
 	if APPROVER_FALLBACK_ROLES & set(frappe.get_roles(user)):
 		return True
 
@@ -1947,7 +1979,7 @@ def push_to_material_issue(service_order, material_issue):
 	doc = frappe.get_doc("Service Order", service_order)
 	doc.check_permission("write")
 	stock_entry = get_editable_material_issue(service_order, material_issue)
-	settings = frappe.get_single("Truck Service Center Settings")
+	settings = get_branch_settings(doc.branch)
 
 	# เหลือเฉพาะแถวที่ยังชี้มาที่ใบเบิกนี้ — แถวที่ถูกลบหรือย้ายไปใบอื่นจะไม่อยู่ใน dict
 	pending_rows = {
@@ -2242,7 +2274,7 @@ def create_payment_entry(service_order):
 				title="ภาษีหัก ณ ที่จ่าย",
 			)
 		else:
-			settings = frappe.get_single("Truck Service Center Settings")
+			settings = get_branch_settings(doc.branch)
 			if not settings.wht_account:
 				frappe.throw(
 					"กรุณาตั้งค่า 'บัญชีภาษีถูกหัก ณ ที่จ่าย' ใน Truck Service Center Settings "

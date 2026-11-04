@@ -76,6 +76,9 @@ frappe.ui.form.on("Service Package Service Type", {
 		let row = locals[cdt][cdn];
 		if (!row.service_type) return;
 
+		// ค่าเริ่มต้นจาก master — แก้เป็นค่าของแพ็คเกจได้ และจะไม่ถูกทับตอนบันทึก
+		fill_service_type_rates(cdt, cdn, "labor_rate");
+
 		// ดึงอะไหล่จาก Service Type แล้วเพิ่มลงตาราง package_parts ทันที
 		frappe.call({
 			method: "truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items",
@@ -94,10 +97,9 @@ frappe.ui.form.on("Service Package Service Type", {
 					});
 					frm.refresh_field("package_parts");
 				}
-				// รอให้ fetch_from labor_rate/estimated_time เสร็จก่อนคำนวณ
-				setTimeout(function () {
-					calculate_package_totals(frm);
-				}, 300);
+				// ค่าแรง/เวลามาจาก fill_service_type_rates ซึ่งยิง handler labor_rate/estimated_time
+				// ให้คำนวณซ้ำเองเมื่อค่ามาถึง ที่นี่คำนวณเฉพาะยอดอะไหล่ที่เพิ่งเพิ่ม
+				calculate_package_totals(frm);
 			},
 		});
 	},
@@ -244,4 +246,19 @@ function rebuild_parts_from_service_types(frm) {
 		row.idx = idx + 1;
 	});
 	frm.refresh_field("package_parts");
+}
+
+// ค่าแรง/เวลามาตรฐานของประเภทบริการ — เติมตอนเลือกประเภทบริการในแถวเท่านั้น
+// (ฟิลด์เหล่านี้ไม่ใช้ fetch_from แล้ว ไม่งั้นค่าที่แก้เองจะถูก master ทับทุกครั้งที่บันทึก)
+function fill_service_type_rates(cdt, cdn, labor_field) {
+	let row = locals[cdt][cdn];
+	if (!row || !row.service_type) return Promise.resolve();
+	return frappe.db
+		.get_value("Service Type", row.service_type, ["labor_rate", "default_duration"])
+		.then(function (r) {
+			let data = (r && r.message) || {};
+			let values = { estimated_time: flt(data.default_duration) };
+			values[labor_field] = flt(data.labor_rate);
+			return frappe.model.set_value(cdt, cdn, values);
+		});
 }

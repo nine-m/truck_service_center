@@ -1,0 +1,282 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:branch_code",
+ "creation": "2026-11-04 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "branch_code",
+  "branch_name",
+  "column_break_1",
+  "is_active",
+  "tax_branch_code",
+  "document_prefix",
+  "contact_section",
+  "address",
+  "phone",
+  "column_break_2",
+  "letter_head",
+  "stock_section",
+  "default_source_warehouse",
+  "default_warehouse",
+  "column_break_3",
+  "default_cost_center",
+  "labor_cost_center",
+  "sales_invoice_series",
+  "scheduling_section",
+  "work_day_monday",
+  "work_day_tuesday",
+  "work_day_wednesday",
+  "work_day_thursday",
+  "column_break_scheduling",
+  "work_day_friday",
+  "work_day_saturday",
+  "work_day_sunday"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch_code",
+   "fieldtype": "Data",
+   "label": "รหัสสาขา",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "ตัวอักษรอังกฤษ/ตัวเลขสั้น ๆ เช่น HQ, BKK ใช้เป็นชื่อเอกสารสาขา (เปลี่ยนภายหลังไม่ได้)"
+  },
+  {
+   "fieldname": "branch_name",
+   "fieldtype": "Data",
+   "label": "ชื่อสาขา",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "เปิดใช้งาน",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tax_branch_code",
+   "fieldtype": "Data",
+   "label": "เลขที่สาขา (ภาษี)",
+   "in_list_view": 1,
+   "description": "เลขสาขา 5 หลักตามทะเบียนภาษีมูลค่าเพิ่ม เช่น 00000 = สำนักงานใหญ่, 00002 — แสดงบนใบกำกับภาษี"
+  },
+  {
+   "fieldname": "document_prefix",
+   "fieldtype": "Data",
+   "label": "รหัสนำหน้าเลขเอกสาร",
+   "description": "เช่น BKK → SO-BKK-2026-00001 เว้นว่าง = ใช้เลขชุดเดิม (SO-2026-00001) เหมาะกับสาขาหลัก"
+  },
+  {
+   "fieldname": "contact_section",
+   "fieldtype": "Section Break",
+   "label": "ที่อยู่และหัวกระดาษ"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "ที่อยู่สาขา"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "โทรศัพท์",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "letter_head",
+   "fieldtype": "Link",
+   "options": "Letter Head",
+   "label": "หัวกระดาษ",
+   "description": "ใช้กับใบแจ้งหนี้ที่สร้างจากใบสั่งงานของสาขานี้ เว้นว่าง = ค่าเริ่มต้นของระบบ"
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "คลังสินค้าและบัญชี",
+   "description": "เว้นว่างช่องใด = ใช้ค่าจาก Truck Service Center Settings"
+  },
+  {
+   "fieldname": "default_source_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "คลังเบิกอะไหล่"
+  },
+  {
+   "fieldname": "default_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "คลังสินค้าเริ่มต้น"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_cost_center",
+   "fieldtype": "Link",
+   "options": "Cost Center",
+   "label": "ศูนย์ต้นทุนเริ่มต้น"
+  },
+  {
+   "fieldname": "labor_cost_center",
+   "fieldtype": "Link",
+   "options": "Cost Center",
+   "label": "ศูนย์ต้นทุนค่าแรง"
+  },
+  {
+   "fieldname": "sales_invoice_series",
+   "fieldtype": "Data",
+   "label": "ชุดเลขใบแจ้งหนี้",
+   "description": "naming series ของ Sales Invoice เช่น INV-BKK-.YYYY.- ต้องเพิ่มไว้ใน Naming Series ของ Sales Invoice ก่อน"
+  },
+  {
+   "fieldname": "scheduling_section",
+   "fieldtype": "Section Break",
+   "label": "วันทำการ",
+   "description": "เว้นว่างวันใด = ใช้ค่าจาก Truck Service Center Settings"
+  },
+  {
+   "fieldname": "work_day_monday",
+   "fieldtype": "Select",
+   "label": "วันจันทร์",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "work_day_tuesday",
+   "fieldtype": "Select",
+   "label": "วันอังคาร",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "work_day_wednesday",
+   "fieldtype": "Select",
+   "label": "วันพุธ",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "work_day_thursday",
+   "fieldtype": "Select",
+   "label": "วันพฤหัสบดี",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "column_break_scheduling",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "work_day_friday",
+   "fieldtype": "Select",
+   "label": "วันศุกร์",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "work_day_saturday",
+   "fieldtype": "Select",
+   "label": "วันเสาร์",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  },
+  {
+   "fieldname": "work_day_sunday",
+   "fieldtype": "Select",
+   "label": "วันอาทิตย์",
+   "options": "\nเต็มวัน\nครึ่งวัน\nหยุด"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-04 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "Service Branch",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Service User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Manager"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Technician Supervisor"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock User"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "search_fields": "branch_name",
+ "show_title_field_in_link": 1,
+ "sort_field": "branch_code",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "branch_name",
+ "track_changes": 1
+}

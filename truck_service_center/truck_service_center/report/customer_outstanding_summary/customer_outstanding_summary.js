@@ -4,6 +4,12 @@
 frappe.query_reports["Customer Outstanding Summary"] = {
 	filters: [
 		{
+			fieldname: "branch",
+			label: "สาขา",
+			fieldtype: "Link",
+			options: "Service Branch",
+		},
+		{
 			fieldname: "customer",
 			label: "ลูกค้า",
 			fieldtype: "Link",

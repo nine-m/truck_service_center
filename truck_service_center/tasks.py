@@ -13,6 +13,8 @@ import frappe
 from frappe.utils import add_days, cint, formatdate, getdate, nowdate
 from frappe.utils.user import get_users_with_role
 
+from truck_service_center.branches import filter_users_by_branch, get_last_service_branches
+
 NOTIFY_ROLES = ("Service Manager", "Service User")
 
 # ฟิลด์วันหมดอายุบน Vehicle → ป้ายชื่อภาษาไทย
@@ -42,6 +44,16 @@ def _get_recipients():
 	for role in NOTIFY_ROLES:
 		users.update(get_users_with_role(role))
 	return sorted(users)
+
+
+def _users_for_vehicles(users, vehicles):
+	"""{รถ: ผู้รับ} — ส่งถึงพนักงานของสาขาที่รถเข้าซ่อมล่าสุด (ผู้ใช้ที่ไม่ผูกสาขาได้รับทุกคัน)
+
+	รถที่ยังไม่เคยเข้าซ่อม (ไม่มีสาขา) ส่งถึงทุกคนเหมือนเดิม — 1 query สาขาล่าสุด + 1 query สิทธิ์ต่อสาขา
+	"""
+	last_branch = get_last_service_branches([vehicle.name for vehicle in vehicles])
+	by_branch = {branch: filter_users_by_branch(users, branch) for branch in set(last_branch.values())}
+	return {vehicle.name: by_branch.get(last_branch.get(vehicle.name), users) for vehicle in vehicles}
 
 
 def _notify(users, subject, content, document_type, document_name):
@@ -86,6 +98,7 @@ def notify_vehicle_expirations():
 			],
 			fields=["name", "customer", field],
 		)
+		recipients = _users_for_vehicles(users, vehicles)
 
 		for vehicle in vehicles:
 			if not vehicle.get(field):
@@ -105,7 +118,7 @@ def notify_vehicle_expirations():
 				+ (f" (อีก {days_left} วัน)" if days_left >= 0 else f" (เกินมา {-days_left} วัน)")
 			)
 
-			_notify(users, subject, content, "Vehicle", vehicle.name)
+			_notify(recipients[vehicle.name], subject, content, "Vehicle", vehicle.name)
 
 
 def notify_service_due():
@@ -132,6 +145,7 @@ def notify_service_due():
 		],
 		fields=["name", "customer", "next_service_due", "next_service_mileage", "current_mileage"],
 	)
+	recipients = _users_for_vehicles(users, vehicles)
 
 	for vehicle in vehicles:
 		due_parts = []
@@ -159,7 +173,7 @@ def notify_service_due():
 			"แนะนำให้ติดต่อลูกค้าเพื่อนัดหมายเข้ารับบริการ"
 		)
 
-		_notify(users, subject, content, "Vehicle", vehicle.name)
+		_notify(recipients[vehicle.name], subject, content, "Vehicle", vehicle.name)
 
 
 def mark_expired_quotations():
