@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "override_date",
+  "branch",
   "service_bay",
   "column_break_1",
   "capacity_hours",
@@ -21,6 +22,17 @@
    "in_standard_filter": 1,
    "label": "วันที่",
    "reqd": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "options": "Service Branch",
+   "label": "สาขา",
+   "in_standard_filter": 1,
+   "reqd": 1,
+   "search_index": 1,
+   "in_list_view": 1,
+   "description": "ไม่ระบุช่องจอด = ปิด/ลดเวลาทั้งสาขานี้ ระบุช่องจอด = สาขาของช่องจอดนั้น"
   },
   {
    "description": "เว้นว่าง = มีผลทุกช่องจอด",
@@ -54,7 +66,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-04 10:10:00.000000",
+ "modified": "2026-11-04 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Bay Capacity Override",

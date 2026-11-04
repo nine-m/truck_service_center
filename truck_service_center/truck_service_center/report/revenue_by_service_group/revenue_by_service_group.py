@@ -7,6 +7,8 @@
 import frappe
 from frappe.utils import flt
 
+from truck_service_center.branches import branch_sql_condition
+
 
 def execute(filters=None):
 	filters = filters or {}
@@ -40,6 +42,7 @@ def _conditions(filters):
 		conditions += " and so.service_date <= %(to_date)s"
 	if filters.get("customer"):
 		conditions += " and so.customer = %(customer)s"
+	conditions += branch_sql_condition(filters)
 	return conditions
 
 

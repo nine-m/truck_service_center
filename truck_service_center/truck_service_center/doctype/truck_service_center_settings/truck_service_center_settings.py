@@ -112,3 +112,22 @@ def create_labor_item():
 	except Exception as e:
 		frappe.log_error(f"Error creating labor item: {e!s}")
 		frappe.throw(f"ไม่สามารถสร้าง Labor Item ได้: {e!s}")
+
+
+# ค่าที่ฟอร์มเอกสารต้องใช้ตอนสร้างใหม่ — ไม่มีเลขบัญชี/คลัง/ค่าลับใด ๆ ส่งออกได้กับทุกคนที่ใช้ desk
+FORM_DEFAULT_FIELDS = ("default_tax_type", "vat_rate", "default_company")
+
+
+@frappe.whitelist()
+def get_form_defaults():
+	"""ค่าตั้งต้นของฟอร์ม (ประเภทภาษี, อัตรา VAT, บริษัท) สำหรับผู้ใช้ที่อ่าน Settings ไม่ได้
+
+	สิทธิ์อ่าน Truck Service Center Settings มีแค่ Service Manager / System Manager ฟอร์ม
+	ใบเสนอราคา/ใบสั่งงานที่เคยอ่าน Settings ตรง ๆ จึงขึ้น "No permission" กับที่ปรึกษาบริการ
+	endpoint นี้คืนเฉพาะฟิลด์ใน FORM_DEFAULT_FIELDS — ห้ามเพิ่มฟิลด์บัญชี/คลังเข้ามา
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	settings = frappe.get_cached_doc("Truck Service Center Settings")
+	return {field: settings.get(field) for field in FORM_DEFAULT_FIELDS}

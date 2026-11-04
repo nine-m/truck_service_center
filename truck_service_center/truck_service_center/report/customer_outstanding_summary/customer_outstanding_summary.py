@@ -7,6 +7,8 @@
 import frappe
 from frappe.utils import date_diff, nowdate
 
+from truck_service_center.branches import branch_sql_condition
+
 
 def execute(filters=None):
 	filters = filters or {}
@@ -41,6 +43,8 @@ def get_data(filters):
 		conditions += " and so.service_date >= %(from_date)s"
 	if filters.get("to_date"):
 		conditions += " and so.service_date <= %(to_date)s"
+
+	conditions += branch_sql_condition(filters)
 
 	rows = frappe.db.sql(
 		f"""

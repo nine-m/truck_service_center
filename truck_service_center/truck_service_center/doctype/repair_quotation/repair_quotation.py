@@ -10,6 +10,9 @@ from truck_service_center.discounts import distribute_package_discount, percent_
 from truck_service_center.truck_service_center.doctype.service_package.service_package import (
 	assert_package_usable,
 )
+from truck_service_center.truck_service_center.doctype.service_type.service_type import (
+	fill_rates_from_service_type,
+)
 
 
 class RepairQuotation(Document):
@@ -17,6 +20,7 @@ class RepairQuotation(Document):
 		self.set_tax_defaults()
 		self.set_address_display()
 		self.apply_service_packages()
+		fill_rates_from_service_type(self.service_types, "labor_charges")
 		self.remove_orphan_service_type_items()
 		self.calculate_totals()
 		self.validate_valid_until()
@@ -245,7 +249,8 @@ def create_service_order_from_quotation(repair_quotation):
 	# สร้าง Service Order
 	so = frappe.new_doc("Service Order")
 
-	# ข้อมูลหลัก
+	# ข้อมูลหลัก — ใบงานอยู่สาขาเดียวกับใบเสนอราคา
+	so.branch = rq.branch
 	so.customer = rq.customer
 	so.vehicle = rq.vehicle
 	so.current_mileage = rq.current_mileage
@@ -299,7 +304,7 @@ def create_service_order_from_quotation(repair_quotation):
 		get_default_parts_warehouse,
 	)
 
-	default_warehouse = get_default_parts_warehouse()
+	default_warehouse = get_default_parts_warehouse(rq.branch)
 	for item in rq.service_items:
 		so.append(
 			"service_items",

@@ -1,0 +1,18 @@
+/* Copyright (c) 2026, SVL Technology Co. Ltd. and contributors
+ * For license information, please see license.txt
+ *
+ * โหลดผ่าน app_include_css ใน hooks.py — แก้แล้วต้อง bench build --app truck_service_center
+ */
+
+/* ช่อง shortcut ว่างใน workspace
+ *
+ * shortcut ที่ผู้ใช้ไม่มีสิทธิ์อ่าน doctype ปลายทาง (เช่น Truck Service Center Settings ของคนที่ไม่ใช่
+ * ผู้จัดการ) ถูกตัดออกจาก page_data ฝั่ง server แต่ block ของ Frappe ยังคืน <div> เปล่าที่ไม่มี class
+ * และยังได้ class คอลัมน์ (col-4) ไปด้วย จึงกลายเป็นช่องว่างกลางแถว — ซ่อนทั้ง block ไปเลย
+ *
+ * ต้องเลือกเฉพาะ div ที่ "ไม่มี class": spacer block ในโหมดอ่านอย่างเดียวก็เป็น div เปล่า
+ * แต่มี class "widget spacer" และต้องคงไว้เพื่อเว้นบรรทัด
+ */
+.layout-main-section .ce-block:has(> .ce-block__content > div:not([class]):empty) {
+	display: none;
+}

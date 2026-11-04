@@ -57,13 +57,16 @@ frappe.views.calendar["Service Appointment"] = {
 	load_capacity(start, end, force) {
 		if (!start || !end) return;
 
+		// ความจุคิดแยกสาขา — ใช้สาขาจากตัวกรองของปฏิทิน (ไม่กรอง = ทุกสาขาที่ผู้ใช้เห็นได้)
+		const branch = this.get_branch_filter();
+
 		// datesSet ยิงหลายครั้งต่อการเปลี่ยนมุมมองหนึ่งครั้ง — กัน request ซ้อนด้วย key ช่วงวัน
-		const key = `${start}|${end}`;
+		const key = `${start}|${end}|${branch || ""}`;
 		if (!force && this._capacity_range_key === key) return;
 		this._capacity_range_key = key;
 
 		const me = this;
-		frappe.xcall(this.capacity_method, { start: start, end: end })
+		frappe.xcall(this.capacity_method, { start: start, end: end, branch: branch })
 			.then(function(data) {
 				if (!data || !data.days) return;
 				me.capacity_days = Object.assign(me.capacity_days || {}, data.days);
@@ -75,6 +78,13 @@ frappe.views.calendar["Service Appointment"] = {
 				// ปล่อย key ทิ้ง เพื่อให้การเลื่อนกลับมาที่ช่วงเดิมลองใหม่ได้
 				if (me._capacity_range_key === key) me._capacity_range_key = null;
 			});
+	},
+
+	get_branch_filter() {
+		// filter_area.get() คืน [doctype, field, operator, value] — สนใจเฉพาะ branch = ค่าเดียว
+		const filters = (this.list_view && this.list_view.filter_area && this.list_view.filter_area.get()) || [];
+		const match = filters.find((f) => f[1] === "branch" && (f[2] === "=" || f[2] === "equals"));
+		return match ? match[3] : null;
 	},
 
 	repaint_capacity() {

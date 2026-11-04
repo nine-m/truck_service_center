@@ -6,8 +6,23 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 # ฟิลด์ที่แอปเพิ่มบน doctype ของ ERPNext เพื่อเชื่อมใบเบิกอะไหล่กลับมายังใบสั่งงาน
 # ทั้งคู่ระบบเป็นคนเขียน (create_material_issue) ผู้ใช้ไม่ต้องกรอกเอง
+# สาขาของใบเบิก/ใบแจ้งหนี้ที่สร้างจากใบสั่งงาน — กรองรายการ, กำหนดสิทธิ์อนุมัติ และพิมพ์เลขสาขาภาษี
+BRANCH_CUSTOM_FIELD = {
+	"fieldname": "custom_branch",
+	"label": "สาขา (ศูนย์บริการ)",
+	"fieldtype": "Link",
+	"options": "Service Branch",
+	"read_only": 1,
+	"in_standard_filter": 1,
+	"search_index": 1,
+}
+
 CUSTOM_FIELDS = {
+	"Sales Invoice": [
+		{**BRANCH_CUSTOM_FIELD, "insert_after": "customer_name", "print_hide": 1},
+	],
 	"Stock Entry": [
+		{**BRANCH_CUSTOM_FIELD, "insert_after": "custom_service_order", "print_hide": 1},
 		{
 			"fieldname": "custom_service_order",
 			"label": "ใบสั่งงาน",

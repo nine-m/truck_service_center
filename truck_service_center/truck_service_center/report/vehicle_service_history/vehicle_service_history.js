@@ -4,6 +4,12 @@
 frappe.query_reports["Vehicle Service History"] = {
 	filters: [
 		{
+			fieldname: "branch",
+			label: "สาขา",
+			fieldtype: "Link",
+			options: "Service Branch",
+		},
+		{
 			fieldname: "vehicle",
 			label: "ทะเบียนรถ",
 			fieldtype: "Link",

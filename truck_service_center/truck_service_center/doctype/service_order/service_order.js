@@ -14,11 +14,12 @@ frappe.ui.form.on("Service Order", {
 
 		// ตั้งค่าภาษีเริ่มต้นสำหรับเอกสารใหม่
 		if (frm.is_new()) {
-			frappe.db.get_value(
-				"Truck Service Center Settings",
-				"Truck Service Center Settings",
-				["default_tax_type", "vat_rate"],
-				function (r) {
+			// อ่านผ่าน endpoint — ผู้ใช้ส่วนใหญ่ไม่มีสิทธิ์อ่าน Settings ตรง ๆ
+			frappe
+				.xcall(
+					"truck_service_center.truck_service_center.doctype.truck_service_center_settings.truck_service_center_settings.get_form_defaults"
+				)
+				.then(function (r) {
 					if (r) {
 						if (!frm.doc.tax_type) {
 							frm.set_value("tax_type", r.default_tax_type || "ราคาแยก VAT");
@@ -27,8 +28,7 @@ frappe.ui.form.on("Service Order", {
 							frm.set_value("vat_rate", r.vat_rate || 7);
 						}
 					}
-				}
-			);
+				});
 		}
 		// คำนวณยอดรวมเมื่อโหลดครั้งแรก
 		calculate_totals(frm);
@@ -886,6 +886,8 @@ frappe.ui.form.on("Service Order Service Type", {
 		let row = locals[cdt][cdn];
 		if (!row.service_type) return;
 
+		fill_service_type_rates(cdt, cdn, "labor_charges");
+
 		// ใช้ตัวเดียวกับตอนสแกนบาร์โค้ด เพื่อให้ถามยืนยันและ stamp ที่มาเหมือนกัน
 		check_and_add_service_type_items(frm, row.service_type);
 	},
@@ -1573,12 +1575,14 @@ function set_technician_filter(frm) {
 
 function set_bay_filter(frm) {
 	// เลือกได้เฉพาะช่องจอดที่ยังเปิดใช้งาน ทั้งช่องจอดหลักและช่องจอดรายแถว
-	frm.set_query("service_bay", function () {
-		return { filters: { is_active: 1 } };
-	});
-	frm.set_query("service_bay", "service_types", function () {
-		return { filters: { is_active: 1 } };
-	});
+	// ช่องจอดเป็นของสาขาเดียว — เลือกได้เฉพาะช่องของสาขาใบงานนี้
+	let bay_filters = function (doc) {
+		let filters = { is_active: 1 };
+		if (doc.branch) filters.branch = doc.branch;
+		return { filters: filters };
+	};
+	frm.set_query("service_bay", bay_filters);
+	frm.set_query("service_bay", "service_types", bay_filters);
 }
 
 // เตือนเรื่องช่องจอดก่อนตั้งค่าจริง — ยกเลิกแล้วคืนค่าเดิม (เตือนอย่างเดียว ไม่ห้าม)
@@ -2777,4 +2781,19 @@ function fetch_customer_addresses(frm) {
 			}
 		},
 	});
+}
+
+// ค่าแรง/เวลามาตรฐานของประเภทบริการ — เติมตอนเลือกประเภทบริการในแถวเท่านั้น
+// (ฟิลด์เหล่านี้ไม่ใช้ fetch_from แล้ว ไม่งั้นค่าที่แก้เองจะถูก master ทับทุกครั้งที่บันทึก)
+function fill_service_type_rates(cdt, cdn, labor_field) {
+	let row = locals[cdt][cdn];
+	if (!row || !row.service_type) return Promise.resolve();
+	return frappe.db
+		.get_value("Service Type", row.service_type, ["labor_rate", "default_duration"])
+		.then(function (r) {
+			let data = (r && r.message) || {};
+			let values = { estimated_time: flt(data.default_duration) };
+			values[labor_field] = flt(data.labor_rate);
+			return frappe.model.set_value(cdt, cdn, values);
+		});
 }

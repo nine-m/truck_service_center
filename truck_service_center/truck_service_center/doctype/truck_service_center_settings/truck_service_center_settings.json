@@ -7,6 +7,7 @@
  "field_order": [
   "general_section",
   "default_company",
+  "default_branch",
   "default_warehouse",
   "labor_settings_section",
   "labor_item",
@@ -63,6 +64,13 @@
    "fieldtype": "Link",
    "label": "บริษัทเริ่มต้น",
    "options": "Company"
+  },
+  {
+   "fieldname": "default_branch",
+   "fieldtype": "Link",
+   "options": "Service Branch",
+   "label": "สาขาเริ่มต้น",
+   "description": "สาขาของเอกสารใหม่เมื่อผู้ใช้ไม่ได้ถูกผูกกับสาขาใด (User Permission ของ Service Branch) ค่าคลัง/ศูนย์ต้นทุน/วันทำการในหน้านี้เป็นค่ากลาง สาขาตั้งทับได้ที่ Service Branch"
   },
   {
    "fieldname": "default_warehouse",
@@ -331,7 +339,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-04 10:05:00.000000",
+ "modified": "2026-11-04 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center Settings",

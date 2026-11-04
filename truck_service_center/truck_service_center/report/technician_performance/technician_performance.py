@@ -11,6 +11,8 @@
 import frappe
 from frappe.utils import flt
 
+from truck_service_center.branches import branch_sql_condition
+
 TECHNICIAN_FIELDS = ("technician", *(f"technician_{i}" for i in range(2, 11)))
 
 
@@ -46,6 +48,8 @@ def get_data(filters):
 		conditions += " and so.service_date >= %(from_date)s"
 	if filters.get("to_date"):
 		conditions += " and so.service_date <= %(to_date)s"
+
+	conditions += branch_sql_condition(filters)
 
 	orders = frappe.db.sql(
 		f"""

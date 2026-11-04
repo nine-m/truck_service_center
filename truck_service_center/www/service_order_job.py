@@ -21,6 +21,7 @@ from truck_service_center.api.technician_portal import (
 	MANAGER_ROLES,
 	TECHNICIAN_FIELDS,
 )
+from truck_service_center.branches import filter_users_by_branch
 from truck_service_center.queries import get_technician_users
 from truck_service_center.truck_service_center.doctype.parts_return.parts_return import (
 	RETURN_APPROVED,
@@ -142,7 +143,8 @@ def get_context(context):
 	# ชื่อประเภทมาจาก query เดียวแล้วแปะลงทุกแถว ไม่ใช่ lookup รายช่อง
 	context.bays = frappe.get_all(
 		"Service Bay",
-		filters={"is_active": 1},
+		# ช่องจอดเป็นของสาขาเดียว — เลือกได้เฉพาะช่องของสาขาใบงานนี้
+		filters={"is_active": 1, "branch": doc.branch} if doc.branch else {"is_active": 1},
 		fields=["name", "bay_name", "bay_type"],
 		order_by="bay_name asc",
 	)
@@ -154,7 +156,7 @@ def get_context(context):
 
 	# รายชื่อช่างสำหรับ dropdown assign — เฉพาะคนที่ assign ได้อย่างน้อยหนึ่งแถว
 	can_assign = any(line.can_manage for line in context.job.service_types)
-	context.technician_options = _get_technician_options() if can_assign else []
+	context.technician_options = _get_technician_options(doc.branch) if can_assign else []
 
 	return context
 
@@ -216,9 +218,9 @@ def _has_requisition_in_groups(service_order, groups):
 	)
 
 
-def _get_technician_options():
-	"""ช่างทั้งหมดพร้อมชื่อเต็ม สำหรับ dropdown assign ของหัวหน้าช่าง"""
-	users = get_technician_users()
+def _get_technician_options(branch=None):
+	"""ช่างของสาขาใบงาน (รวมช่างที่ไม่ได้ผูกสาขา) พร้อมชื่อเต็ม สำหรับ dropdown assign ของหัวหน้าช่าง"""
+	users = filter_users_by_branch(get_technician_users(), branch)
 	if not users:
 		return []
 

@@ -9,6 +9,9 @@ from frappe.utils import cint, flt
 PM_INTERVAL_FIELDS = {"km": "service_interval_km", "hours": "pm_interval_hours"}
 
 from truck_service_center.discounts import distribute_package_discount, percent_of
+from truck_service_center.truck_service_center.doctype.service_type.service_type import (
+	fill_rates_from_service_type,
+)
 
 
 class ServicePackage(Document):
@@ -16,6 +19,8 @@ class ServicePackage(Document):
 		self.validate_package_service_types()
 		self.validate_service_types_active()
 		self.validate_pm_fields()
+		# ค่าแรง/เวลาของแพ็คเกจเป็นค่าของแพ็คเกจเอง — เติมจาก master เฉพาะแถวที่ยังไม่มีค่า
+		fill_rates_from_service_type(self.package_service_types, "labor_rate")
 		self.populate_parts_from_service_types()
 		self.calculate_totals()
 		self.validate_pricing()

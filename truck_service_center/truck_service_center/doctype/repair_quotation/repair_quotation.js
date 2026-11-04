@@ -5,8 +5,8 @@ frappe.ui.form.on('Repair Quotation', {
 	onload: function(frm) {
 		// ตั้งค่าภาษีเริ่มต้นสำหรับเอกสารใหม่
 		if (frm.is_new()) {
-			frappe.db.get_value('Truck Service Center Settings', 'Truck Service Center Settings',
-				['default_tax_type', 'vat_rate'], function(r) {
+			// อ่านผ่าน endpoint — ผู้ใช้ส่วนใหญ่ไม่มีสิทธิ์อ่าน Settings ตรง ๆ
+			frappe.xcall('truck_service_center.truck_service_center.doctype.truck_service_center_settings.truck_service_center_settings.get_form_defaults').then(function(r) {
 					if (r) {
 						if (!frm.doc.tax_type) {
 							frm.set_value('tax_type', r.default_tax_type || 'ราคาแยก VAT');
@@ -15,8 +15,7 @@ frappe.ui.form.on('Repair Quotation', {
 							frm.set_value('vat_rate', r.vat_rate || 7);
 						}
 					}
-				}
-			);
+				});
 		}
 		calculate_totals(frm);
 	},
@@ -434,6 +433,8 @@ frappe.ui.form.on('Repair Quotation Service Type', {
 	service_type: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (row.service_type) {
+
+		fill_service_type_rates(cdt, cdn, 'labor_charges');
 			// ตรวจสอบว่ามีอะไหล่มาตรฐานหรือไม่
 			frappe.call({
 				method: 'truck_service_center.truck_service_center.doctype.service_order.service_order.get_service_type_items',
@@ -1003,4 +1004,19 @@ function remove_orphan_service_type_items(frm) {
 
 	frm.doc.service_items.forEach(function(row, idx) { row.idx = idx + 1; });
 	frm.refresh_field('service_items');
+}
+
+// ค่าแรง/เวลามาตรฐานของประเภทบริการ — เติมตอนเลือกประเภทบริการในแถวเท่านั้น
+// (ฟิลด์เหล่านี้ไม่ใช้ fetch_from แล้ว ไม่งั้นค่าที่แก้เองจะถูก master ทับทุกครั้งที่บันทึก)
+function fill_service_type_rates(cdt, cdn, labor_field) {
+	let row = locals[cdt][cdn];
+	if (!row || !row.service_type) return Promise.resolve();
+	return frappe.db
+		.get_value('Service Type', row.service_type, ['labor_rate', 'default_duration'])
+		.then(function (r) {
+			let data = (r && r.message) || {};
+			let values = { estimated_time: flt(data.default_duration) };
+			values[labor_field] = flt(data.labor_rate);
+			return frappe.model.set_value(cdt, cdn, values);
+		});
 }

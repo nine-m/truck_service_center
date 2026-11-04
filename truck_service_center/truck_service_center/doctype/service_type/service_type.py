@@ -130,3 +130,40 @@ def get_item_price(item_code):
 			price = flt(item_data.standard_rate) or flt(item_data.valuation_rate)
 
 	return {"price": price or None}
+
+
+def fill_rates_from_service_type(rows, labor_field):
+	"""เติมค่าแรง/เวลามาตรฐานจาก master ให้แถวที่ "ยังไม่มีค่า" เท่านั้น — query เดียว
+
+	ฟิลด์ค่าแรง/เวลาของแถวประเภทบริการ (แพ็คเกจ, ใบสั่งงาน, ใบเสนอราคา, นัดหมาย) ไม่ใช้ fetch_from แล้ว
+	เพราะ fetch_from ของ Frappe ดึงค่าจาก master มาทับทุกครั้งที่บันทึกเอกสารที่ยังไม่ submit
+	ค่าที่ผู้ใช้แก้ (หรือค่าที่แพ็คเกจกำหนด) จึงหายไปทุกครั้งที่กดบันทึก
+
+	ฝั่งฟอร์มเติมค่าให้เองตอนเลือกประเภทบริการ ที่นี่เป็นทางสำรองสำหรับแถวที่มาทาง API/import
+	หรือบันทึกก่อนฟอร์มดึงค่าเสร็จ — "ยังไม่มีค่า" คือ None เท่านั้น ค่า 0 ที่ตั้งใจใส่ (ค่าแรงฟรี)
+	ต้องคงไว้ ห้ามเปลี่ยนเงื่อนไขเป็น falsy
+	"""
+	pending = [
+		row
+		for row in rows or []
+		if row.get("service_type") and (row.get(labor_field) is None or row.get("estimated_time") is None)
+	]
+	if not pending:
+		return
+
+	masters = {
+		master.name: master
+		for master in frappe.get_all(
+			"Service Type",
+			filters={"name": ["in", list({row.service_type for row in pending})]},
+			fields=["name", "labor_rate", "default_duration"],
+		)
+	}
+	for row in pending:
+		master = masters.get(row.service_type)
+		if not master:
+			continue
+		if row.get(labor_field) is None:
+			row.set(labor_field, master.labor_rate)
+		if row.get("estimated_time") is None:
+			row.set("estimated_time", master.default_duration)

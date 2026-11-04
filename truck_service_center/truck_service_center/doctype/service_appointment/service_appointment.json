@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "naming_series",
+  "branch",
   "status",
   "appointment_time",
   "column_break_1",
@@ -63,8 +64,20 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
-   "options": "APT-.YYYY.-",
-   "reqd": 1
+   "options": "APT-.branch_prefix.YYYY.-\nAPT-.YYYY.-",
+   "reqd": 1,
+   "default": "APT-.branch_prefix.YYYY.-"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "options": "Service Branch",
+   "label": "สาขา",
+   "in_standard_filter": 1,
+   "reqd": 1,
+   "search_index": 1,
+   "set_only_once": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "appointment_date",
@@ -378,7 +391,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-22 10:00:00.000000",
+ "modified": "2026-11-04 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Appointment",

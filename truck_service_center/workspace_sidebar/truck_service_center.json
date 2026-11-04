@@ -279,6 +279,19 @@
   {
    "child": 1,
    "collapsible": 1,
+   "icon": "building-2",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Service Branch",
+   "link_to": "Service Branch",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "icon": "calendar-clock",
    "indent": 0,
    "keep_closed": 0,
@@ -290,7 +303,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-10-15 09:00:00.000000",
+ "modified": "2026-11-04 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",

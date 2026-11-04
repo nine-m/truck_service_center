@@ -8,8 +8,17 @@ from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import add_days, add_to_date, date_diff, flt, get_datetime, get_time, getdate
 
+from truck_service_center.branches import (
+	get_allowed_branches,
+	get_branch_settings,
+	is_branch_allowed,
+	validate_bays_in_branch,
+)
 from truck_service_center.discounts import resolve_line_discount
 from truck_service_center.truck_service_center.doctype.bay_type.bay_type import get_default_bay_type
+from truck_service_center.truck_service_center.doctype.service_type.service_type import (
+	fill_rates_from_service_type,
+)
 
 # นัดหมายที่ไม่กินความจุของช่องจอด (ตรงกับตัวกรองเดิมของ check_slot_availability)
 EXCLUDED_STATUSES = ("Cancelled", "No Show")
@@ -58,6 +67,30 @@ NO_ACTIVE_BAY_NOTE = "ยังไม่มีช่องจอดซ่อม�
 # ปฏิทินรายเดือนขอมากสุด 42 ช่อง (6 สัปดาห์) — เผื่อไว้ราว 3 เดือน แล้วกันการยิงช่วงยาวผิดปกติ
 # ที่จะกวาดตาราง Service Appointment Bay ทั้งตาราง
 MAX_CAPACITY_RANGE_DAYS = 93
+
+
+def branch_scope(branch=None):
+	"""ขอบเขตสาขาของการคำนวณความจุ — คืน (ค่า filter ของฟิลด์ branch หรือ None = ทุกสาขา, สาขาเดียว)
+
+	ช่องจอดเป็นของสาขาเดียว ความจุจึงคิดแยกสาขา ระบุ branch = สาขานั้น (ต้องมีสิทธิ์)
+	ไม่ระบุ = ทุกสาขาที่ผู้ใช้เห็นได้ — สาขาเดียวที่คืนมาใช้เลือกวันทำการของสาขา
+	(หลายสาขาพร้อมกันใช้วันทำการกลาง เพราะแต่ละสาขาหยุดไม่ตรงกันได้)
+	"""
+	if branch:
+		if not is_branch_allowed(branch):
+			frappe.throw(f"คุณไม่มีสิทธิ์ดูข้อมูลของสาขา {branch}", frappe.PermissionError)
+		return branch, branch
+
+	allowed = get_allowed_branches()
+	if allowed is None:
+		return None, None
+	return ["in", allowed], allowed[0] if len(allowed) == 1 else None
+
+
+def with_branch(filters, branch_filter, fieldname="branch"):
+	if branch_filter is not None:
+		filters[fieldname] = branch_filter
+	return filters
 
 
 def resolve_bay_caps(bays, day_mode, overrides):
@@ -450,26 +483,28 @@ def build_capacity_warnings(
 	return warnings
 
 
-def get_bay_availability(date, exclude_appointment=None):
+def get_bay_availability(date, exclude_appointment=None, branch=None):
 	"""ฟังก์ชัน availability เดียวของระบบ — ใช้ทั้ง dialog, การจัดช่องจอด และคำเตือน
 
 	ดึงข้อมูลเป็น batch ทุกชุด (ช่องจอด / override / ชั่วโมงที่จองแล้ว) ไม่มี N+1
+	branch = สาขาของนัดหมาย/ใบงาน — นับเฉพาะช่องจอด override และนัดของสาขานั้น (ดู branch_scope)
 	"""
 	date = getdate(date)
+	branch_filter, single_branch = branch_scope(branch)
 
 	bays = frappe.get_all(
 		"Service Bay",
-		filters={"is_active": 1},
+		filters=with_branch({"is_active": 1}, branch_filter),
 		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
-	settings = frappe.get_cached_doc("Truck Service Center Settings")
+	settings = get_branch_settings(single_branch)
 	day_mode = settings.get(WEEKDAY_FIELDS[date.weekday()])
 
 	overrides = frappe.get_all(
 		"Bay Capacity Override",
-		filters={"override_date": date},
+		filters=with_branch({"override_date": date}, branch_filter),
 		fields=["service_bay", "capacity_hours", "reason"],
 		order_by="creation asc",
 	)
@@ -477,7 +512,7 @@ def get_bay_availability(date, exclude_appointment=None):
 	bay_type_names, default_bay_type = get_bay_type_info()
 
 	caps = resolve_bay_caps(bays, day_mode, overrides)
-	booked_hours = get_booked_hours(date, exclude_appointment)
+	booked_hours = get_booked_hours(date, exclude_appointment, branch=branch)
 
 	rows = build_day_rows(bays, caps, booked_hours, bay_type_names)
 	day_note = build_day_notes(day_mode, overrides)
@@ -507,7 +542,7 @@ def get_bay_type_info():
 	return names, default
 
 
-def get_booked_hours_range(start, end, exclude_appointment=None):
+def get_booked_hours_range(start, end, exclude_appointment=None, branch=None):
 	"""ชั่วโมงที่ถูกจองไว้แล้วของทุกช่องจอดตลอดช่วงวัน — 2 query ไม่ว่าช่วงยาวแค่ไหน
 
 	ตัวกรองนัดหมายตรงกับ check_slot_availability เดิม: ยังไม่ถูก cancel, สถานะไม่ใช่
@@ -526,6 +561,7 @@ def get_booked_hours_range(start, end, exclude_appointment=None):
 	}
 	if exclude_appointment:
 		filters["name"] = ["!=", exclude_appointment]
+	with_branch(filters, branch_scope(branch)[0])
 
 	appointments = frappe.get_all("Service Appointment", filters=filters, fields=["name", "appointment_date"])
 	if not appointments:
@@ -543,11 +579,11 @@ def get_booked_hours_range(start, end, exclude_appointment=None):
 	return fold_booked_hours(appointments, bay_rows)
 
 
-def get_booked_hours(date, exclude_appointment=None):
+def get_booked_hours(date, exclude_appointment=None, branch=None):
 	"""ชั่วโมงที่ถูกจองไว้แล้วของแต่ละช่องจอดในวันหนึ่ง (ฉบับวันเดียวของ range เวอร์ชัน)"""
 	date = getdate(date)
 
-	return get_booked_hours_range(date, date, exclude_appointment).get(str(date), {})
+	return get_booked_hours_range(date, date, exclude_appointment, branch=branch).get(str(date), {})
 
 
 def get_bay_type_by_service_type(doc):
@@ -575,7 +611,9 @@ def get_capacity_warnings(doc):
 	if not doc.get("appointment_date"):
 		return []
 
-	availability = get_bay_availability(doc.get("appointment_date"), exclude_appointment=doc.get("name"))
+	availability = get_bay_availability(
+		doc.get("appointment_date"), exclude_appointment=doc.get("name"), branch=doc.get("branch")
+	)
 
 	return build_capacity_warnings(
 		doc,
@@ -666,11 +704,17 @@ class ServiceAppointment(Document):
 		self.set_address_display()
 		self.validate_appointment_datetime()
 		self.sync_vehicle_info()
+		fill_rates_from_service_type(self.service_types, "labor_charges")
 		self.calculate_estimated_duration()
 		self.calculate_totals()
 		self.set_appointment_datetimes()
 		self.allocate_bays()
+		self.validate_bay_branch()
 		self.warn_capacity_issues()
+
+	def validate_bay_branch(self):
+		"""ช่องจอดที่จองต้องอยู่สาขาเดียวกับนัดหมาย"""
+		validate_bays_in_branch(self.branch, [row.service_bay for row in self.bay_allocations or []])
 
 	def calculate_estimated_duration(self):
 		"""ระยะเวลานัดหมาย = เวลาซ่อมจริงของแต่ละแพ็คเกจ + เวลาของงานที่ไม่ได้มาจากแพ็คเกจ
@@ -803,7 +847,9 @@ class ServiceAppointment(Document):
 		if not self.appointment_date or flt(self.estimated_duration) <= 0:
 			return
 
-		availability = get_bay_availability(self.appointment_date, exclude_appointment=self.name)
+		availability = get_bay_availability(
+			self.appointment_date, exclude_appointment=self.name, branch=self.branch
+		)
 		default_bay_type = availability["default_bay_type"]
 		hours_by_bay_type = split_hours_by_bay_type(
 			self, get_bay_type_by_service_type(self), default_bay_type
@@ -850,6 +896,7 @@ class ServiceAppointment(Document):
 			frappe.throw("มีการสร้าง Service Order ไปแล้ว")
 
 		service_order = frappe.new_doc("Service Order")
+		service_order.branch = self.branch
 		service_order.customer = self.customer
 		service_order.vehicle = self.vehicle
 		service_order.service_date = self.appointment_date
@@ -973,15 +1020,15 @@ def create_service_order_from_appointment(appointment):
 
 
 @frappe.whitelist()
-def get_bay_day_status(date, exclude_appointment=None):
+def get_bay_day_status(date, exclude_appointment=None, branch=None):
 	"""สถานะช่องจอดของวันหนึ่ง สำหรับ dialog ตอนเลือกวันที่นัดหมาย"""
 	frappe.has_permission("Service Appointment", "read", throw=True)
 
-	return get_bay_availability(date, exclude_appointment=exclude_appointment)
+	return get_bay_availability(date, exclude_appointment=exclude_appointment, branch=branch)
 
 
 @frappe.whitelist()
-def get_capacity_range(start, end):
+def get_capacity_range(start, end, branch=None):
 	"""ความจุรายวันตลอดช่วง สำหรับแปะตัวเลขลงทุกช่องของปฏิทิน
 
 	ปฏิทินเปิดหนึ่งครั้ง = 5 query + settings ที่ cache ไว้ ไม่ว่าช่วงจะยาวแค่ไหน
@@ -1001,21 +1048,23 @@ def get_capacity_range(start, end):
 	if date_diff(end, start) > MAX_CAPACITY_RANGE_DAYS:
 		frappe.throw(f"ขอข้อมูลความจุได้ครั้งละไม่เกิน {MAX_CAPACITY_RANGE_DAYS} วัน")
 
+	branch_filter, single_branch = branch_scope(branch)
+
 	bays = frappe.get_all(
 		"Service Bay",
-		filters={"is_active": 1},
+		filters=with_branch({"is_active": 1}, branch_filter),
 		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
-	settings = frappe.get_cached_doc("Truck Service Center Settings")
+	settings = get_branch_settings(single_branch)
 
 	# ดึงป้ายชื่อประเภททีเดียวนอกลูป — ในลูปคือ pure function ล้วน ไม่มี query รายวัน
 	bay_type_names, _default_bay_type = get_bay_type_info()
 
 	overrides = frappe.get_all(
 		"Bay Capacity Override",
-		filters={"override_date": ["between", [start, end]]},
+		filters=with_branch({"override_date": ["between", [start, end]]}, branch_filter),
 		fields=["override_date", "service_bay", "capacity_hours", "reason"],
 		order_by="override_date asc, creation asc",
 	)
@@ -1025,7 +1074,7 @@ def get_capacity_range(start, end):
 	for override in overrides:
 		overrides_by_date.setdefault(str(getdate(override.override_date)), []).append(override)
 
-	booked = get_booked_hours_range(start, end)
+	booked = get_booked_hours_range(start, end, branch=branch)
 
 	days = {}
 	date = start
@@ -1061,8 +1110,12 @@ def check_appointment_capacity(doc):
 	appointment = frappe.get_doc(doc)
 	appointment.calculate_estimated_duration()
 
+	if not appointment.get("branch"):
+		from truck_service_center.branches import get_default_branch
+
+		appointment.branch = get_default_branch()
 	availability = get_bay_availability(
-		appointment.appointment_date, exclude_appointment=appointment.get("name")
+		appointment.appointment_date, exclude_appointment=appointment.get("name"), branch=appointment.branch
 	)
 	bay_type_by_service_type = get_bay_type_by_service_type(appointment)
 	default_bay_type = availability["default_bay_type"]

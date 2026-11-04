@@ -39,6 +39,8 @@ add_to_apps_screen = [
 # ใช้ชื่อ .bundle.js ให้ bench build ใส่ hash ในชื่อไฟล์ — path ตรง ๆ ไม่มีเวอร์ชันใน URL
 # เบราว์เซอร์จะ cache ไฟล์เก่าไว้ 12 ชม. (max-age=43200) แก้แล้วผู้ใช้ไม่เห็น
 app_include_js = ["pm_package_dialog.bundle.js"]
+# ซ่อนช่อง shortcut ว่างใน workspace (ผู้ใช้ไม่มีสิทธิ์ doctype ปลายทาง) — public/css/truck_service_center.bundle.css
+app_include_css = ["truck_service_center.bundle.css"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/truck_service_center/css/truck_service_center.css"
@@ -174,6 +176,22 @@ doc_events = {
 		"on_submit": f"{_service_order}.on_sales_invoice_change",
 		"on_cancel": f"{_service_order}.on_sales_invoice_change",
 	},
+	# เอกสารที่มีสาขา: เติมสาขาเริ่มต้นก่อนตั้งชื่อ (เลขเอกสารใช้รหัสนำหน้าของสาขา) — branches.py
+	**{
+		doctype: {
+			"before_insert": "truck_service_center.branches.set_default_branch",
+			"before_validate": "truck_service_center.branches.set_default_branch",
+			"validate": "truck_service_center.branches.validate_branch",
+		}
+		for doctype in (
+			"Service Appointment",
+			"Service Order",
+			"Repair Quotation",
+			"Parts Return",
+			"Service Bay",
+			"Bay Capacity Override",
+		)
+	},
 	"Stock Entry": {
 		# ใบเบิกของใบสั่งงานต้องผ่านการอนุมัติของหัวหน้างานกลุ่มก่อน สต๊อกจึง submit ได้
 		"before_submit": f"{_service_order}.validate_requisition_approved",
@@ -181,6 +199,9 @@ doc_events = {
 		"on_cancel": f"{_service_order}.on_stock_entry_change",
 	},
 }
+
+# ".branch_prefix." ในชุดเลขเอกสาร = รหัสนำหน้าของสาขา (ว่างได้) — branches.py
+naming_series_variables = {"branch_prefix": "truck_service_center.branches.branch_prefix"}
 
 # Scheduled Tasks
 # ---------------
