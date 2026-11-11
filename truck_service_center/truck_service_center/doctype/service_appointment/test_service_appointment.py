@@ -610,6 +610,45 @@ class UnitTestBuildCapacityWarnings(UnitTestCase):
 		self.assertIn("ช่องจอดมีหลุมซ่อม", warnings[0])
 		self.assertIn("ช่องจอดทั่วไป", warnings[0])
 
+	def test_bay_picked_by_hand_without_bay_type_is_clean(self):
+		"""เลือกช่องเองโดยไม่กดจัด Bay อัตโนมัติ — ประเภทของแถวไม่ต้องกรอก ถ้าช่องตรงกับงานก็ไม่เตือน
+
+		row.bay_type ดึงจากช่องจอด (fetch_from) ตอนบันทึก คำเตือนจึงต้องไม่พึ่งค่านี้
+		"""
+		appointment = make_appointment(
+			service_rows=[{"service_type": "เปลี่ยนน้ำมันเครื่อง", "estimated_time": 2}],
+			bay_rows=[{"service_bay": "BAY-02", "allocated_hours": 2}],
+		)
+		appointment.estimated_duration = 2
+
+		warnings = self.warnings_for(
+			appointment,
+			[make_bay("BAY-01"), make_bay("BAY-02", bay_type=PIT)],
+			self.make_caps(bays=("BAY-01", "BAY-02")),
+			{"เปลี่ยนน้ำมันเครื่อง": PIT},
+		)
+
+		self.assertEqual(warnings, [])
+
+	def test_type_check_uses_the_bays_real_type_not_the_row_label(self):
+		"""แถวเก่าที่เก็บประเภทไว้ไม่ตรงกับช่องจริง — ตัดสินจากประเภทของช่องจอด ไม่ใช่ป้ายในแถว"""
+		appointment = make_appointment(
+			service_rows=[{"service_type": "ล้างอัดฉีด", "estimated_time": 2}],
+			# ป้ายแถวบอก GENERAL แต่ BAY-02 เป็นช่องหลุมซ่อม งานทั่วไปจึงยังไม่มีช่องรองรับจริง
+			bay_rows=[{"service_bay": "BAY-02", "bay_type": GENERAL, "allocated_hours": 2}],
+		)
+		appointment.estimated_duration = 2
+
+		warnings = self.warnings_for(
+			appointment,
+			[make_bay("BAY-01"), make_bay("BAY-02", bay_type=PIT)],
+			self.make_caps(bays=("BAY-01", "BAY-02")),
+		)
+
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("งานประเภท ช่องจอดทั่วไป ต้องใช้ 2.0 ชม.", warnings[0])
+		self.assertIn("ช่องจอดมีหลุมซ่อม", warnings[0])
+
 	def test_bay_type_without_any_active_bay_is_reported(self):
 		"""ประเภทที่วันนั้นไม่มีช่องจอดเปิดเลย → บอกจำนวนชั่วโมงที่ยังไม่ได้จัดช่องให้"""
 		appointment = make_appointment(
