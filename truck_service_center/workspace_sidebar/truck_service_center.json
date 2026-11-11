@@ -17,7 +17,8 @@
    "link_type": "Workspace",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 1
   },
   {
    "child": 0,
@@ -29,7 +30,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Section Break"
+   "type": "Section Break",
+   "idx": 2
   },
   {
    "child": 1,
@@ -42,7 +44,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 3
   },
   {
    "child": 1,
@@ -55,7 +58,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 4
   },
   {
    "child": 1,
@@ -68,7 +72,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 5
   },
   {
    "child": 1,
@@ -81,7 +86,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 6
   },
   {
    "child": 0,
@@ -93,7 +99,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Section Break"
+   "type": "Section Break",
+   "idx": 7
   },
   {
    "child": 1,
@@ -106,7 +113,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 8
   },
   {
    "child": 1,
@@ -119,7 +127,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 9
   },
   {
    "child": 1,
@@ -132,7 +141,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 10
   },
   {
    "child": 1,
@@ -145,7 +155,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 11
   },
   {
    "child": 1,
@@ -158,7 +169,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 12
   },
   {
    "child": 1,
@@ -171,7 +183,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 13
   },
   {
    "child": 1,
@@ -184,7 +197,22 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 14
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "icon": "layers",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "PM Group",
+   "link_to": "PM Group",
+   "link_type": "DocType",
+   "open_in_new_tab": 1,
+   "show_arrow": 0,
+   "type": "Link",
+   "idx": 15
   },
   {
    "child": 0,
@@ -197,7 +225,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Section Break"
+   "type": "Section Break",
+   "idx": 16
   },
   {
    "child": 1,
@@ -210,7 +239,8 @@
    "link_type": "Report",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 17
   },
   {
    "child": 1,
@@ -223,7 +253,8 @@
    "link_type": "Report",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 18
   },
   {
    "child": 1,
@@ -236,7 +267,8 @@
    "link_type": "Report",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 19
   },
   {
    "child": 1,
@@ -249,7 +281,8 @@
    "link_type": "Report",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 20
   },
   {
    "child": 0,
@@ -261,7 +294,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Section Break"
+   "type": "Section Break",
+   "idx": 21
   },
   {
    "child": 1,
@@ -274,7 +308,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 22
   },
   {
    "child": 1,
@@ -287,7 +322,8 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 23
   },
   {
    "child": 1,
@@ -300,10 +336,11 @@
    "link_type": "DocType",
    "open_in_new_tab": 1,
    "show_arrow": 0,
-   "type": "Link"
+   "type": "Link",
+   "idx": 24
   }
  ],
- "modified": "2026-11-04 10:00:00.000000",
+ "modified": "2026-11-11 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Truck Service Center",

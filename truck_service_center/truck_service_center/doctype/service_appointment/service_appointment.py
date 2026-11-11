@@ -181,6 +181,7 @@ def build_day_rows(bays, caps, booked_hours, bay_type_names=None):
 				"bay_name": bay.get("bay_name"),
 				"bay_type": bay_type,
 				"bay_type_name": bay_type_names.get(bay_type) or bay_type,
+				"pm_group": bay.get("pm_group"),
 				"cap": cap,
 				"cap_source": cap_info.get("source"),
 				"is_closed": bool(cap_info.get("is_closed")),
@@ -258,6 +259,37 @@ def summarize_day(rows, day_note=""):
 		"day_note": day_note or ("" if has_bays else NO_ACTIVE_BAY_NOTE),
 		"by_type": summarize_by_bay_type(rows),
 	}
+
+
+def summarize_pm_groups(rows):
+	"""กลุ่มงาน PM ที่มีช่องจอดเต็มในวันนั้น — ป้ายเตือนท้ายคอลัมน์วันบนปฏิทินนัดหมาย
+
+	รับแถวจาก build_day_rows ของวันเดียว คืนเฉพาะกลุ่มที่มีอย่างน้อยหนึ่งช่องเต็ม เรียงตามรหัสกลุ่ม
+	- full: ชื่อช่องจอดที่เต็ม (สถานะเดียวกับ badge ของช่องนั้น — จองครบหรือเกินความจุ)
+	- open: ช่องที่เปิดรับงานวันนั้น ช่องที่ปิดทำการไม่นับทั้งเป็นช่องเต็มและเป็นช่องที่รับได้
+	- all_full: ทุกช่องที่เปิดของกลุ่มเต็มหมด = กลุ่มนี้รับงานเพิ่มไม่ได้แล้ว (ป้ายแดง)
+	  ถ้ายังเหลือบางช่อง (ป้ายส้ม) งานยังลงช่องอื่นในกลุ่มได้
+
+	ช่องจอดที่ไม่ได้ผูกกลุ่มไม่อยู่ในผลลัพธ์ — กลุ่มเป็นเรื่องของงาน PM เท่านั้น
+	"""
+	groups = {}
+	for row in rows or []:
+		group = row.get("pm_group")
+		if not group or row.get("is_closed"):
+			continue
+		entry = groups.setdefault(group, {"pm_group": group, "open": 0, "full": []})
+		entry["open"] += 1
+		if row.get("status") == STATUS_FULL:
+			entry["full"].append(row.get("bay_name") or row.get("bay"))
+
+	result = []
+	for group in sorted(groups):
+		entry = groups[group]
+		if not entry["full"]:
+			continue
+		entry["all_full"] = len(entry["full"]) == entry["open"]
+		result.append(entry)
+	return result
 
 
 def summarize_by_bay_type(rows):
@@ -495,7 +527,7 @@ def get_bay_availability(date, exclude_appointment=None, branch=None):
 	bays = frappe.get_all(
 		"Service Bay",
 		filters=with_branch({"is_active": 1}, branch_filter),
-		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
+		fields=["name", "bay_name", "bay_type", "pm_group", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
@@ -1053,7 +1085,7 @@ def get_capacity_range(start, end, branch=None):
 	bays = frappe.get_all(
 		"Service Bay",
 		filters=with_branch({"is_active": 1}, branch_filter),
-		fields=["name", "bay_name", "bay_type", "daily_capacity_hours"],
+		fields=["name", "bay_name", "bay_type", "pm_group", "daily_capacity_hours"],
 		order_by="bay_name asc",
 	)
 
@@ -1087,6 +1119,7 @@ def get_capacity_range(start, end, branch=None):
 		days[key] = {
 			"summary": summarize_day(rows, build_day_notes(day_mode, day_overrides)),
 			"bays": rows,
+			"pm_groups": summarize_pm_groups(rows),
 		}
 		date = getdate(add_days(date, 1))
 

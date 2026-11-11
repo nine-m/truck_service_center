@@ -40,6 +40,9 @@ frappe.views.calendar["Service Appointment"] = {
 					info.startStr.slice(0, 10),
 					frappe.datetime.add_days(info.endStr.slice(0, 10), -1)
 				);
+				// footer อยู่นอก FullCalendar จึงไม่ถูกรื้อตามมุมมอง — ต้องวาดใหม่เอง (ลบทิ้งเมื่อเป็นมุมมองเดือน)
+				// load_capacity ข้ามการดึงซ้ำเมื่อช่วงวันเดิม จะรอ repaint ของมันอย่างเดียวไม่ได้
+				me.schedule_pm_footer();
 			},
 			dayCellDidMount: function(arg) {
 				me.paint_capacity_cell(arg.el, tsc_cell_date(arg), ".fc-daygrid-day-top");
@@ -155,6 +158,95 @@ frappe.views.calendar["Service Appointment"] = {
 		this.$cal.find("th.fc-col-header-cell[data-date]").each(function() {
 			me.paint_capacity_cell(this, $(this).attr("data-date"), null);
 		});
+		this.render_pm_footer();
+	},
+
+	schedule_pm_footer() {
+		// datesSet ยิงก่อน DOM ของมุมมองใหม่จะครบ และ ResizeObserver ยิงถี่ระหว่างลากขนาด
+		// รวบเป็นรอบเดียวต่อเฟรม
+		if (this._pm_footer_frame) return;
+		this._pm_footer_frame = requestAnimationFrame(() => {
+			this._pm_footer_frame = null;
+			this.render_pm_footer();
+		});
+	},
+
+	render_pm_footer() {
+		// แถวป้าย "กลุ่ม PM เต็ม" ใต้คอลัมน์วันของมุมมองสัปดาห์/วัน
+		// FullCalendar ไม่มีช่องท้ายคอลัมน์ให้ใช้ และห้ามแทรกอะไรใน root ของมัน (preact จะรื้อทิ้ง)
+		// จึงวางตารางของเราเองต่อท้าย $cal แล้วยืม colgroup + ความกว้างจากตารางหัวคอลัมน์ของมัน
+		// คอลัมน์จึงตรงกับวันข้างบนทุกพิกเซลโดยไม่ต้องวัดทีละช่อง
+		if (!this.$cal) return;
+		this.watch_calendar_size();
+		this.$cal.nextAll(".tsc-pm-footer").remove();
+
+		const view = this.fullCalendar && this.fullCalendar.view;
+		const header = this.$cal.find("table.fc-col-header").get(0);
+		const days = this.capacity_days || {};
+		const cells = header ? Array.from(header.querySelectorAll("thead tr:first-child > th")) : [];
+		const has_alert = cells.some((th) => {
+			const day = days[th.getAttribute("data-date")];
+			return day && (day.pm_groups || []).length;
+		});
+		if (!view || !view.type || view.type.indexOf("timeGrid") !== 0 || !has_alert) {
+			// footer หายไปแล้ว ต้องคืนความสูงให้ปฏิทินด้วย
+			this.fit_pm_footer();
+			return;
+		}
+
+		const $footer = $('<div class="tsc-pm-footer"></div>');
+		const $table = $('<table class="tsc-pm-footer-table"></table>').attr("style", header.getAttribute("style") || "");
+		const colgroup = header.querySelector("colgroup");
+		if (colgroup) $table.append(colgroup.cloneNode(true));
+
+		const $row = $("<tr></tr>");
+		cells.forEach((th) => {
+			const date = th.getAttribute("data-date");
+			const day = date ? days[date] : null;
+			const $td = $("<td></td>").attr("colspan", th.getAttribute("colspan") || 1);
+			if (day && (day.pm_groups || []).length) {
+				$td.html(tsc_pm_alerts_html(day.pm_groups, date));
+			}
+			$row.append($td);
+		});
+		$table.append($("<tbody></tbody>").append($row));
+		$footer.append($table);
+
+		// เส้นขอบซ้ายของ scrollgrid ดันตารางหัวคอลัมน์เข้าไป — เลื่อนตามให้ตรงกัน
+		const offset = header.getBoundingClientRect().left - this.$cal.get(0).getBoundingClientRect().left;
+		$footer.css("padding-left", Math.max(offset, 0) + "px");
+
+		this.$cal.after($footer);
+		this.bind_capacity_click();
+		this.fit_pm_footer();
+	},
+
+	fit_pm_footer() {
+		// ปรับความสูงปฏิทินเฉพาะเมื่อความสูง footer เปลี่ยนจริง — setOption("height") ทำให้ $cal
+		// เปลี่ยนขนาด ResizeObserver จะวาด footer ใหม่ ถ้าไม่เทียบค่าเดิมก่อนจะวนไม่รู้จบ
+		const height = this.$cal.nextAll(".tsc-pm-footer").outerHeight(true) || 0;
+		if (height === (this._pm_footer_height || 0)) return;
+		this._pm_footer_height = height;
+		this.set_calendar_height();
+	},
+
+	set_calendar_height() {
+		// สำเนาของ frappe.views.Calendar.set_calendar_height ที่หักความสูง footer กลุ่ม PM ออกด้วย
+		// ของเดิมเผื่อที่ให้ footnote อย่างเดียว footer จึงจะตกขอบจอ (เรียก prototype แล้วปรับซ้ำ = resize สองรอบ)
+		if (!this.$cal || !this.$cal.is(":visible")) return;
+		const main = document.querySelector(".main-section");
+		if (!main) return;
+		const top = this.$cal[0].getBoundingClientRect().top - main.getBoundingClientRect().top;
+		const footnote_height = this.footnote_area ? this.footnote_area.outerHeight(true) : 0;
+		const available = main.clientHeight - top - footnote_height - (this._pm_footer_height || 0);
+		this.fullCalendar.setOption("height", Math.max(available, 400));
+	},
+
+	watch_calendar_size() {
+		// ความกว้างคอลัมน์เปลี่ยนตามหน้าจอ/sidebar โดยไม่มี event ของ FullCalendar ให้ฟังครบทุกกรณี
+		if (this._pm_resize_observer || !window.ResizeObserver || !this.$cal) return;
+		this._pm_resize_observer = new ResizeObserver(() => this.schedule_pm_footer());
+		this._pm_resize_observer.observe(this.$cal.get(0));
 	},
 
 	paint_capacity_cell(el, date, host_selector) {
@@ -174,12 +266,23 @@ frappe.views.calendar["Service Appointment"] = {
 
 		// painter ต้อง idempotent ไม่งั้นสลับเดือนไป-กลับแล้ว badge จะซ้อนกันหลายอัน
 		$host.find(".tsc-cap").remove();
+		$el.find(".tsc-pm-cell").remove();
 		if (host_selector) $host.addClass("tsc-cap-host");
 
 		// ยังไม่มีข้อมูลก็ไม่แปะอะไร กันกะพริบระหว่างรอ response
 		if (!day) return;
 
 		$host.append(tsc_capacity_badge_html(day, date));
+
+		// มุมมองเดือน: ป้ายกลุ่ม PM แบบเดียวกับ footer ของมุมมองสัปดาห์ วางชิดล่างของช่องวัน
+		// วางใน .fc-daygrid-day-frame (position: relative) แบบ absolute เพราะ event ของเดือนเป็น
+		// absolute จากด้านบนอยู่แล้ว ถ้าวางแบบ in-flow ป้ายจะไปซ้อนทับ event แถวแรก
+		// (ช่องวันแบบ daygrid ยังโผล่ในแถว all-day ของมุมมองสัปดาห์ด้วย ซึ่งมี footer อยู่แล้ว)
+		const view_type = (this.fullCalendar && this.fullCalendar.view && this.fullCalendar.view.type) || "";
+		const $frame = $el.find(".fc-daygrid-day-frame").first();
+		if (host_selector && $frame.length && view_type.indexOf("dayGrid") === 0 && (day.pm_groups || []).length) {
+			$frame.append(`<div class="tsc-pm-cell">${tsc_pm_alerts_html(day.pm_groups, date)}</div>`);
+		}
 		this.bind_capacity_click();
 	},
 
@@ -192,11 +295,13 @@ frappe.views.calendar["Service Appointment"] = {
 		const me = this;
 		// FullCalendar ตัดสิน dateClick จาก pointer gesture (mousedown→mouseup) ไม่ใช่ event click
 		// การ stopPropagation ตอน click จึงสายเกินไป ต้องสกัดตั้งแต่ mousedown
-		this.$wrapper.on("mousedown", ".tsc-cap", function(e) {
+		// ป้าย/ชิปกลุ่ม PM เปิดรายละเอียดวันเดียวกับ badge ความจุ
+		const selector = ".tsc-cap, .tsc-pm-alert";
+		this.$wrapper.on("mousedown", selector, function(e) {
 			e.stopPropagation();
 			e.preventDefault();
 		});
-		this.$wrapper.on("click", ".tsc-cap", function(e) {
+		this.$wrapper.on("click", selector, function(e) {
 			e.stopPropagation();
 			e.preventDefault();
 			me.show_capacity_detail($(this).attr("data-date"));
@@ -380,6 +485,41 @@ function tsc_capacity_badge_html(day, date) {
 }
 
 
+// ── ป้ายกลุ่มงาน PM ─────────────────────────────────────────────────────────
+// ข้อมูลมาจาก summarize_pm_groups (มาเฉพาะกลุ่มที่มีช่องเต็มอย่างน้อยหนึ่งช่อง)
+// all_full = ทุกช่องที่เปิดของกลุ่มเต็ม (แดง รับเพิ่มไม่ได้) ไม่งั้นเต็มบางช่อง (ส้ม ยังลงช่องอื่นได้)
+
+const TSC_PM_ICON_FULL =
+	'<svg class="tsc-pm-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="currentColor"/>' +
+	'<path d="M8 6v3.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".9" fill="#fff"/></svg>';
+const TSC_PM_ICON_PARTIAL =
+	'<svg class="tsc-pm-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/>' +
+	'<path d="M8 4.4v4.2" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".9" fill="#fff"/></svg>';
+
+function tsc_pm_group_tooltip(group) {
+	const full = (group.full || []).length;
+	if (group.all_full) {
+		return `กลุ่ม ${group.pm_group} เต็มทุกช่อง (${full}/${group.open}) — รับงานเพิ่มในกลุ่มนี้ไม่ได้แล้ว`;
+	}
+	return `กลุ่ม ${group.pm_group} เต็ม ${full} จาก ${group.open} ช่อง — ยังลงช่องอื่นในกลุ่มได้`;
+}
+
+function tsc_pm_alerts_html(groups, date) {
+	const esc = frappe.utils.escape_html;
+	let html = `<div class="tsc-pm-alerts" data-date="${esc(date)}">`;
+	(groups || []).forEach(function(group) {
+		const mod = group.all_full ? "tsc-pm-alert--full" : "tsc-pm-alert--partial";
+		const icon = group.all_full ? TSC_PM_ICON_FULL : TSC_PM_ICON_PARTIAL;
+		const full = group.full || [];
+		html += `<div class="tsc-pm-alert ${mod}" role="button" tabindex="0" data-date="${esc(date)}"`;
+		html += ` title="${esc(tsc_pm_group_tooltip(group))}">`;
+		html += `<div class="tsc-pm-alert__title">${icon}<span>${esc(group.pm_group)} เต็ม · ${full.length} BAY</span></div>`;
+		html += `<div class="tsc-pm-alert__bays">BAY: ${esc(full.join(", "))}</div>`;
+		html += "</div>";
+	});
+	return html + "</div>";
+}
+
 function tsc_capacity_tooltip(day) {
 	// native tooltip รองรับ \n อยู่แล้ว ไม่ต้องพึ่ง JS tooltip เพิ่ม
 	const summary = day.summary || {};
@@ -420,6 +560,13 @@ function tsc_capacity_detail_html(day) {
 		html += ` <b class="text-danger">เกิน +${tsc_fmt_hours(summary.over)}</b>`;
 	}
 	html += "</p>";
+
+	(day.pm_groups || []).forEach(function(group) {
+		const cls = group.all_full ? "text-danger" : "text-warning";
+		html += `<p class="${cls}" style="margin-bottom: 4px;"><b>${frappe.utils.escape_html(group.pm_group)}</b> · `;
+		html += `${frappe.utils.escape_html(tsc_pm_group_tooltip(group))} `;
+		html += `<span class="text-muted">(${frappe.utils.escape_html((group.full || []).join(", "))})</span></p>`;
+	});
 
 	if (!(day.bays || []).length) {
 		html += '<p class="text-muted">ยังไม่มีช่องจอดซ่อมที่เปิดใช้งาน</p>';
@@ -497,6 +644,35 @@ function tsc_inject_capacity_css() {
 		.tsc-cap-full-day { background: var(--red-50, #fff5f5); }
 		/* หัวคอลัมน์ของมุมมองสัปดาห์/วัน — วางเป็นบรรทัดใหม่ใต้ชื่อวัน ไม่ต้องดันชิดขวา */
 		th.fc-col-header-cell .tsc-cap { margin-top: 2px; }
+		/* ป้ายกลุ่ม PM เต็ม — footer ใต้คอลัมน์วัน (สัปดาห์/วัน) และการ์ดชิดล่างช่องวัน (เดือน)
+		   แดง = เต็มทุกช่องของกลุ่ม ส้ม = เต็มบางช่อง */
+		.tsc-pm-footer { margin-top: 8px; }
+		.tsc-pm-footer-table { table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+		.tsc-pm-footer-table td { vertical-align: top; padding: 0 4px; }
+		.tsc-pm-alerts { display: flex; flex-direction: column; gap: 6px; }
+		.tsc-pm-alert {
+			cursor: pointer;
+			border: 1px solid;
+			border-radius: 8px;
+			padding: 8px 10px;
+			line-height: 1.35;
+			min-width: 0;
+		}
+		.tsc-pm-alert:hover { box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+		.tsc-pm-alert__title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+		.tsc-pm-alert__bays {
+			font-size: 11px; margin-top: 4px; padding-left: 22px;
+			overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+		}
+		.tsc-pm-icon { width: 16px; height: 16px; flex: none; }
+		.tsc-pm-alert--full { color: var(--red-700, #a31f1f); background: var(--red-50, #fff5f5); border-color: var(--red-200, #ffc4c4); }
+		.tsc-pm-alert--full .tsc-pm-icon { color: var(--red-500, #e03636); }
+		.tsc-pm-alert--partial { color: var(--orange-700, #96430f); background: var(--orange-50, #fff9f0); border-color: var(--orange-200, #fed7aa); }
+		.tsc-pm-alert--partial .tsc-pm-icon { color: var(--orange-500, #f2711c); }
+		/* มุมมองเดือน — z-index 7 เหนือ event (6) และเลขวัน (4) แบบเดียวกับ .tsc-cap ไม่งั้นคลิกไม่โดน */
+		.tsc-pm-cell { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 7; }
+		.tsc-pm-cell .tsc-pm-alerts { gap: 4px; }
+		.tsc-pm-cell .tsc-pm-alert { padding: 6px 8px; }
 		/* ตัวเลือกสาขาข้างปุ่ม Filter บนหัวปฏิทิน */
 		.tsc-branch-picker { width: 180px; margin-right: 8px; }
 		.tsc-branch-picker .form-group { margin-bottom: 0; }
