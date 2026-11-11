@@ -21,3 +21,4 @@ truck_service_center.patches.create_default_bay_types
 truck_service_center.patches.migrate_pit_to_bay_type
 truck_service_center.patches.add_requisition_approval_fields
 truck_service_center.patches.setup_multi_branch
+truck_service_center.patches.remove_duplicate_number_cards

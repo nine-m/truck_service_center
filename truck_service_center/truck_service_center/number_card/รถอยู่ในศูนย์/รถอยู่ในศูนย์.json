@@ -1,0 +1,22 @@
+{
+ "color": "#ff9800",
+ "creation": "2026-11-10 11:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "Service Order",
+ "filters_json": "[[\"Service Order\", \"docstatus\", \"=\", 0], [\"Service Order\", \"status\", \"in\", [\"In Progress\", \"On Hold\", \"Ready for Delivery\"]]]",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "รถอยู่ในศูนย์",
+ "modified": "2026-11-10 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "รถอยู่ในศูนย์",
+ "owner": "Administrator",
+ "show_full_number": 0,
+ "show_percentage_stats": 0,
+ "stats_time_interval": "Monthly",
+ "type": "Document Type"
+}

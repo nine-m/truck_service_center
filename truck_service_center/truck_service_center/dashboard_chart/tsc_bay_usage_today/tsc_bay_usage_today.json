@@ -1,0 +1,33 @@
+{
+ "chart_name": "TSC Bay Usage Today",
+ "chart_type": "Custom",
+ "creation": "2026-11-10 09:00:00.000000",
+ "custom_options": "{\"barOptions\": {\"stacked\": 1, \"spaceRatio\": 0.4}, \"colors\": [\"#f2711c\", \"#2490ef\", \"#d1d8dd\"], \"fieldtype\": \"Float\", \"axisOptions\": {\"xAxisMode\": \"tick\"}}",
+ "docstatus": 0,
+ "doctype": "Dashboard Chart",
+ "filters_json": "{}",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "modified": "2026-11-10 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Truck Service Center",
+ "name": "TSC Bay Usage Today",
+ "number_of_groups": 0,
+ "owner": "Administrator",
+ "roles": [
+  {
+   "doctype": "Has Role",
+   "role": "Desk User",
+   "parentfield": "roles",
+   "parenttype": "Dashboard Chart",
+   "parent": "TSC Bay Usage Today"
+  }
+ ],
+ "show_values_over_chart": 0,
+ "source": "TSC Bay Usage Today",
+ "timeseries": 0,
+ "type": "Bar",
+ "use_report_chart": 0,
+ "y_axis": []
+}

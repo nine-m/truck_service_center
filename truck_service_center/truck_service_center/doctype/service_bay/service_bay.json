@@ -10,6 +10,7 @@
   "bay_name",
   "branch",
   "bay_type",
+  "pm_group",
   "daily_capacity_hours",
   "column_break_1",
   "is_active",
@@ -45,6 +46,15 @@
    "reqd": 1
   },
   {
+   "fieldname": "pm_group",
+   "fieldtype": "Link",
+   "options": "PM Group",
+   "label": "กลุ่มงาน PM",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "หนึ่งช่องจอดอยู่ได้หนึ่งกลุ่ม — ปฏิทินนัดหมายจะเตือนเมื่อช่องจอดในกลุ่มเต็ม เว้นว่างได้ถ้าไม่ใช่ช่องงาน PM"
+  },
+  {
    "default": "8",
    "description": "กำลังรับงานของช่องจอดต่อวัน (ชม.) — เกินจากนี้ถือเป็น OT ระบบจะเตือนแต่ไม่ห้ามจอง",
    "fieldname": "daily_capacity_hours",
@@ -76,7 +86,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-04 09:00:00.000000",
+ "modified": "2026-11-11 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Truck Service Center",
  "name": "Service Bay",

@@ -6,6 +6,11 @@ from frappe.model.document import Document
 
 
 class BayType(Document):
+	def before_naming(self):
+		# autoname (field:...) ตั้งชื่อเอกสารก่อน validate — ปรับรหัสแค่ใน validate จะได้ชื่อ
+		# กับรหัสไม่ตรงกัน (พิมพ์ " pit " → เอกสารชื่อ "pit" แต่รหัส "PIT")
+		self.validate_code()
+
 	def validate(self):
 		self.validate_code()
 		self.validate_single_default()
