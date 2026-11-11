@@ -16,6 +16,11 @@ COMPANY_LINK_FIELDS = {
 
 
 class ServiceBranch(Document):
+	def before_naming(self):
+		# autoname (field:...) ตั้งชื่อเอกสารก่อน validate — ปรับรหัสแค่ใน validate จะได้ชื่อ
+		# กับรหัสไม่ตรงกัน (พิมพ์ " pit " → เอกสารชื่อ "pit" แต่รหัส "PIT")
+		self.branch_code = (self.branch_code or "").strip().upper()
+
 	def validate(self):
 		self.branch_code = (self.branch_code or "").strip().upper()
 		if not re.fullmatch(r"[A-Z0-9]+", self.branch_code):

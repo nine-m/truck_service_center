@@ -14,6 +14,11 @@ APPROVER_FALLBACK_ROLES = {"Technician Manager", "Service Manager", "System Mana
 
 
 class ServiceTypeGroup(Document):
+	def before_naming(self):
+		# autoname (field:...) ตั้งชื่อเอกสารก่อน validate — ปรับรหัสแค่ใน validate จะได้ชื่อ
+		# กับรหัสไม่ตรงกัน (พิมพ์ " pit " → เอกสารชื่อ "pit" แต่รหัส "PIT")
+		self.validate_group_code()
+
 	def validate(self):
 		"""ตรวจสอบความถูกต้องของข้อมูล"""
 		self.validate_group_code()
@@ -22,7 +27,7 @@ class ServiceTypeGroup(Document):
 	def validate_group_code(self):
 		"""ตรวจสอบรูปแบบรหัสกลุ่ม"""
 		if self.group_code:
-			self.group_code = self.group_code.upper()
+			self.group_code = self.group_code.strip().upper()
 
 	def validate_supervisors(self):
 		"""ผู้อนุมัติใบเบิกต้องไม่ซ้ำ และต้องมี role ที่อนุมัติได้จริง
