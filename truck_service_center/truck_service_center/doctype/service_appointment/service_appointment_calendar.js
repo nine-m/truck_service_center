@@ -29,6 +29,7 @@ frappe.views.calendar["Service Appointment"] = {
 		const me = this;
 		this.capacity_days = {};
 		tsc_inject_capacity_css();
+		this.setup_branch_picker();
 
 		Object.assign(this.cal_options, {
 			datesSet: function(info) {
@@ -78,6 +79,60 @@ frappe.views.calendar["Service Appointment"] = {
 				// ปล่อย key ทิ้ง เพื่อให้การเลื่อนกลับมาที่ช่วงเดิมลองใหม่ได้
 				if (me._capacity_range_key === key) me._capacity_range_key = null;
 			});
+	},
+
+	setup_branch_picker() {
+		// CalendarView ตั้ง hide_page_form = true ฟิลด์ in_standard_filter (สาขา) จึงไม่ถูกสร้าง
+		// บนปฏิทินเลย ผู้ใช้เลือกสาขาได้ทางปุ่ม Filter เท่านั้น — วางตัวเลือกสาขาไว้ข้างปุ่ม Filter
+		// แล้วเขียนค่าลง filter_list ตัวเดียวกัน ทั้ง event และความจุจึงอ่านจากแหล่งเดียว
+		const list_view = this.list_view;
+		if (!list_view || !list_view.$filter_section) return;
+
+		const $section = list_view.$filter_section;
+		$section.find(".tsc-branch-picker").remove();
+		const $parent = $('<div class="tsc-branch-picker"></div>').prependTo($section);
+
+		const me = this;
+		this.branch_control = frappe.ui.form.make_control({
+			df: {
+				fieldtype: "Link",
+				fieldname: "tsc_calendar_branch",
+				options: "Service Branch",
+				placeholder: __("สาขา"),
+				change() {
+					me.apply_branch_filter(me.branch_control.get_value() || null);
+				}
+			},
+			parent: $parent,
+			only_input: true,
+			render_input: true
+		});
+		this.sync_branch_picker();
+	},
+
+	apply_branch_filter(branch) {
+		// set_value ตอน sync ยิง change กลับมาด้วย — ค่าตรงกับตัวกรองแล้วไม่ต้องทำอะไร กันวน refresh
+		if ((branch || null) === (this.get_branch_filter() || null)) return;
+
+		const filter_list = this.list_view.filter_area.filter_list;
+		// เอาตัวกรองสาขาเดิมออกทุกตัว (รวม in / != ที่ตั้งจากปุ่ม Filter) ให้เหลือสาขาเดียวตามที่เลือก
+		filter_list.filters
+			.filter((f) => f.field && f.field.df.fieldname === "branch")
+			.forEach((f) => f.remove());
+
+		const added = branch
+			? filter_list.add_filter(this.doctype, "branch", "=", branch)
+			: Promise.resolve();
+		// apply() → on_change → list_view.refresh → calendar.refresh() ซึ่งดึงความจุใหม่ให้เอง
+		added.then(() => filter_list.apply());
+	},
+
+	sync_branch_picker() {
+		// ตัวกรองอาจถูกแก้จากปุ่ม Filter หรือโหลดจาก user settings — ให้ตัวเลือกแสดงตามจริง
+		const control = this.branch_control;
+		if (!control) return;
+		const branch = this.get_branch_filter() || "";
+		if ((control.get_value() || "") !== branch) control.set_value(branch);
 	},
 
 	get_branch_filter() {
@@ -163,6 +218,7 @@ frappe.views.calendar["Service Appointment"] = {
 		// Frappe เรียก refresh() ตอนกลับมาจากฟอร์ม ซึ่งเป็นแค่ refetchEvents()
 		// จึงไม่ยิง datesSet — ถ้าไม่ดึงความจุใหม่เอง badge จะค้างเป็นค่าก่อนแก้เอกสาร
 		frappe.views.Calendar.prototype.refresh.call(this);
+		this.sync_branch_picker();
 
 		const view = this.fullCalendar && this.fullCalendar.view;
 		if (!view) return;
@@ -441,6 +497,9 @@ function tsc_inject_capacity_css() {
 		.tsc-cap-full-day { background: var(--red-50, #fff5f5); }
 		/* หัวคอลัมน์ของมุมมองสัปดาห์/วัน — วางเป็นบรรทัดใหม่ใต้ชื่อวัน ไม่ต้องดันชิดขวา */
 		th.fc-col-header-cell .tsc-cap { margin-top: 2px; }
+		/* ตัวเลือกสาขาข้างปุ่ม Filter บนหัวปฏิทิน */
+		.tsc-branch-picker { width: 180px; margin-right: 8px; }
+		.tsc-branch-picker .form-group { margin-bottom: 0; }
 	`;
 	document.head.appendChild(style);
 }
