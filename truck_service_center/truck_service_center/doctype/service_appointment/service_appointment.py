@@ -490,16 +490,38 @@ def build_capacity_warnings(
 				f"({flt(cap, 2)} ชม.) — งานอาจทำข้ามวัน"
 			)
 
-	# แถวที่ถูกแก้มือไปลงช่องผิดประเภท (ระบบจัดเองไม่มีทางได้ผลแบบนี้)
+	# งานที่ถูกจัดลงช่องผิดประเภท (เลือกช่องเองโดยไม่กดจัด Bay อัตโนมัติ)
+	# ประเภทของแถวในตารางดึงจากช่องจอดที่เลือก (fetch_from) จึงเทียบรายแถวไม่ได้แล้ว — ให้เทียบ
+	# ชั่วโมงที่งานต้องใช้ต่อประเภท กับชั่วโมงที่ตารางจัดให้ต่อประเภท โดยใช้ประเภทจริงของช่องจอด
+	# จาก availability (ไม่เชื่อ row.bay_type — แถวเก่าที่ยังไม่ถูกบันทึกใหม่อาจเก็บค่าที่เลือกมือไว้)
+	# ประเภทที่จัดช่องไม่ได้อยู่แล้ว (ไม่มีช่องเปิด / ไม่รู้ประเภท) ถูกเตือนไปข้างบนแล้ว ไม่นับซ้ำ
+	needed = {
+		bay_type: flt(hours, 2)
+		for bay_type, hours in hours_by_bay_type.items()
+		if bay_type is not None and bay_type in types_with_bays and flt(hours, 2) > 0
+	}
+	given = {}
 	for row in rows:
 		info = by_bay.get(row.get("service_bay"))
-		required = row.get("bay_type")
-		actual = info.get("bay_type") if info else None
-		if info and required and actual and required != actual:
-			warnings.append(
-				f"งานประเภท {label(required)} ถูกจัดลงช่องจอด {row.get('service_bay')} "
-				f"ซึ่งเป็นประเภท {info.get('bay_type_name') or actual}"
-			)
+		if info is None:
+			continue
+		bay_type = info.get("bay_type")
+		given[bay_type] = flt(given.get(bay_type, 0.0) + flt(row.get("allocated_hours")), 2)
+
+	surplus = [
+		bay_type for bay_type in sorted(given, key=str) if given[bay_type] - needed.get(bay_type, 0.0) > 0.01
+	]
+	for bay_type in bay_type_order(needed, default_bay_type):
+		short = flt(needed[bay_type] - given.get(bay_type, 0.0), 2)
+		if short <= 0.01:
+			continue
+		message = (
+			f"งานประเภท {label(bay_type)} ต้องใช้ {needed[bay_type]} ชม. "
+			f"แต่ตารางจัดช่องจอดประเภทนี้ให้ {given.get(bay_type, 0.0)} ชม."
+		)
+		if surplus:
+			message += f" — ส่วนที่ขาดถูกจัดลงช่องจอดประเภท {', '.join(label(t) for t in surplus)} แทน"
+		warnings.append(message)
 
 	allocated = flt(sum(flt(row.get("allocated_hours")) for row in rows), 2)
 	duration = flt(doc.get("estimated_duration"), 2)
